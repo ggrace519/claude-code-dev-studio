@@ -165,8 +165,12 @@ cmd_verify() {
 }
 
 cmd_update() {
+    if (( ROLLBACK )); then
+        echo "rollback is implemented by install-playbook.sh."
+    else
+        echo "update is implemented by install-playbook.sh."
+    fi
     cat <<EOF
-update is implemented by install-playbook.sh.
 This command will be wired up in the next session increment.
 
 For now, re-run the bootstrap:
