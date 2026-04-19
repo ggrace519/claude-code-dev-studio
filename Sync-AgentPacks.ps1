@@ -132,6 +132,46 @@ foreach ($p in $Packs) {
     }
 }
 
+# --- Symlink-mode pre-flight (Windows only; *nix can symlink without elevation)
+if ($Mode -eq 'Symlink') {
+    $onWindows = ($PSVersionTable.Platform -eq $null) -or ($IsWindows -eq $true)
+    if ($onWindows) {
+        $devMode = $null
+        try {
+            $devMode = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -ErrorAction Stop).AllowDevelopmentWithoutDevLicense
+        } catch { $devMode = $null }
+        $isAdmin = $false
+        try {
+            $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+            $principal = New-Object Security.Principal.WindowsPrincipal($id)
+            $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        } catch { $isAdmin = $false }
+
+        if ($devMode -ne 1 -and -not $isAdmin) {
+            $msg = @"
+-Mode Symlink requires Developer Mode OR elevated (admin) PowerShell on Windows.
+Neither was detected on this host.
+
+Options:
+  1. Enable Developer Mode (recommended, non-admin):
+     Settings -> Privacy & security -> For developers -> Developer Mode = ON
+     Re-run this command afterward.
+
+  2. Relaunch PowerShell as Administrator, then re-run.
+
+  3. Use -Mode Copy (default). Copy mode is portable across all Windows hosts
+     and has no functional disadvantage for agent files -- they are small,
+     rarely changed, and re-synced on library updates.
+"@
+            if ($DryRun) {
+                Write-Warning ("DRY RUN: -Mode Symlink would fail on this host. " + ($msg -split "`n")[0])
+            } else {
+                throw $msg
+            }
+        }
+    }
+}
+
 # --- Ensure target dirs (unless dry run)
 if (-not $DryRun) {
     if (-not (Test-Path $TgtClaude)) { New-Item -ItemType Directory -Path $TgtClaude | Out-Null }

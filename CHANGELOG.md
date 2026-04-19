@@ -5,6 +5,76 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## Session 9 — 2026-04-19
+
+### What was done
+Closed the Session 7 / 8 deferred follow-up list (minus one kept-deferred item).
+
+- **`.gitattributes` added.** Normalizes line endings:
+  - `* text=auto` — default per-platform normalization
+  - `*.sh text eol=lf` — shell scripts stay LF everywhere (required for Git Bash and real *nix shells to execute them)
+  - `*.ps1 text` — PowerShell scripts use autocrlf (tolerated by PS 5.1 and 7+)
+  - `*.md`, `*.json` — text, autocrlf-handled
+  - `*.png`, `*.jpg`, `*.jpeg`, `*.gif`, `*.ico`, `*.pdf` — defensive binary markers (no binaries currently in repo)
+- **`SECURITY.md` added.** Responsible-disclosure channel (`ggrace@519lab.com`), 7-day acknowledgement / 30-day remediation-plan SLA, explicit scope boundaries (playbook + scripts + agent files IN; Claude Code CLI + third-party tools OUT), 30-day coordinated disclosure window, no bug bounty.
+- **`Sync-AgentPacks.sh` added** — *nix port of `Sync-AgentPacks.ps1`. Feature-complete and manifest-interchangeable with the PS1 version:
+  - Long-flag CLI: `--target-project`, `--packs`, `--library-root`, `--mode`, `--no-generalists`, `--dry-run`, `--write-adr`, `--allow-library-target`, `-h`/`--help`
+  - Same 15 valid prefixes, same generalists-by-default rule, same manifest schema (`.pack-manifest.json`, `schema: 1`)
+  - Copy and symlink modes (symlinks on *nix need no elevation, so the PS1 Windows pre-flight doesn't apply)
+  - Self-target guard via `realpath` + case-insensitive compare (handles macOS case-insensitive default FS), `--allow-library-target` override
+  - Manifest JSON hand-rolled (no `jq` dep); existing-manifest parsing prefers `python3` if present, falls back to `grep` extraction
+  - Requires bash 4+ (uses `mapfile`, associative arrays) and `realpath`
+  - Output format (`=== Sync plan ... + Add / - Remove / = Keep`) matches PS1 cosmetically for muscle-memory continuity
+- **`Sync-AgentPacks.ps1` Windows symlink-mode pre-flight added.** Before attempting any symlink creation, the script now checks whether either Developer Mode (`HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock\AllowDevelopmentWithoutDevLicense == 1`) or admin elevation (`WindowsPrincipal.IsInRole(Administrator)`) is present. If neither, it throws a readable three-option error (enable Developer Mode / relaunch as admin / use `-Mode Copy`) instead of per-file `New-Item` failures. Dry-run emits a `Write-Warning` rather than throwing, so plan output still renders.
+
+### Intentionally NOT done
+- **Removal of the `install-agents.ps1` deprecation wrapper.** No migration signal from downstream consumers yet; wrapper still forwards cleanly. Tracked as deferred.
+
+### Current file inventory
+```
+claude-code-dev-studio/
+├── .gitattributes                      (new)
+├── .gitignore                          (unchanged since Session 8)
+├── CHANGELOG.md                        (Session 9 entry added)
+├── CLAUDE.md                           (unchanged since Session 6)
+├── CONTRIBUTING.md                     (unchanged since Session 8)
+├── DECISIONS.md                        (unchanged since Session 8)
+├── LICENSE                             (unchanged since Session 8)
+├── README.md                           (unchanged since Session 8)
+├── SECURITY.md                         (new)
+├── Sync-AgentPacks.ps1                 (symlink pre-flight added)
+├── Sync-AgentPacks.sh                  (new — *nix port)
+├── install-agents.ps1                  (unchanged since Session 7; still deprecated)
+└── .claude/agents/                     (105 files — unchanged)
+```
+
+### Canonical *nix invocation (Session 9 addition)
+```bash
+# Activate SaaS + common for a new project, emit activation ADR:
+./Sync-AgentPacks.sh --target-project ~/code/acme-saas --packs saas,common --write-adr
+
+# Preview before applying:
+./Sync-AgentPacks.sh --target-project ~/code/game --packs game,common --dry-run
+
+# Switch packs (manifest-tracked removal):
+./Sync-AgentPacks.sh --target-project ~/code/app --packs ai,common
+
+# Symlink mode (no elevation needed on *nix):
+./Sync-AgentPacks.sh --target-project ~/code/app --packs saas --mode symlink
+```
+
+### Where things stand
+- 15-pack, 105-agent baseline is published, licensed, documented, contribution-ready, and activation scripts exist for both Windows (PS 5.1 / 7+) and *nix (bash 4+).
+- Manifests written by the two scripts are interchangeable: a project activated on Windows can be re-synced from Linux/macOS and vice versa.
+- No blockers.
+
+### Deferred follow-ups (carried forward)
+- Removal of `install-agents.ps1` wrapper once downstream consumers have migrated (carried from Session 7)
+- Consider publishing a bash-3.2-compatible fallback for default macOS installs (only relevant if someone hits the version wall)
+- `v0.2.0` tag after the first external PR or consumer-project usage
+
+---
+
 ## Session 8 — 2026-04-19
 
 ### What was done
