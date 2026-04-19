@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-agents-nix:
+    name: Verify agents (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Make verifier executable
+        run: chmod +x verify-agents.sh
+
+      - name: Run verify-agents.sh
+        run: ./verify-agents.sh
+
+  verify-agents-windows:
+    name: Verify agents (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Verify-Agents.ps1
+        shell: pwsh
+        run: ./Verify-Agents.ps1
+
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        env:
+          SHELLCHECK_OPTS: -e SC1091 -e SC2155
+        with:
+          scandir: './'
+          severity: warning
+
+  psscriptanalyzer:
+    name: PSScriptAnalyzer
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+
+      - name: Run PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error
+          if ($results) {
+              $results | Format-Table -AutoSize
+              Write-Error "PSScriptAnalyzer found $($results.Count) Error-severity issue(s)"
+              exit 1
+          }
+          Write-Host "PSScriptAnalyzer: clean (Error severity)" -ForegroundColor Green

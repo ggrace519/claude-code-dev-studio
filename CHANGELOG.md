@@ -5,6 +5,63 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## Session 10 — 2026-04-19
+
+### What was done
+Added self-testing infrastructure. The playbook now validates its own invariants in CI on every push and PR.
+
+- **`Verify-Agents.ps1` added.** PowerShell validator enforcing ADR-0001 invariants on every `.md` file in `.claude/agents/`:
+  1. Filename is lowercase kebab-case (`^[a-z0-9]+(-[a-z0-9]+)*\.md$`)
+  2. No UTF-8 BOM (`EF BB BF`) — the known silent failure mode
+  3. File begins with a valid YAML frontmatter block (`---`/`---` fences)
+  4. Frontmatter has non-empty `name` and `description`
+  5. Frontmatter `name` matches filename basename
+  6. No duplicate `name` across the corpus
+  - Exit codes: `0` pass, `1` validation failure(s), `2` config error (missing path, empty corpus)
+  - Flags: `-AgentsPath <path>`, `-Quiet`
+- **`verify-agents.sh` added** — *nix port with identical rules, exit codes, and output format. Uses an awk state machine for frontmatter extraction, `od -An -tx1` for BOM detection, and bash 4+ associative arrays for duplicate tracking. Requires bash 4+, `awk`, `od`, `head`, `find`.
+- **`.github/workflows/ci.yml` added.** Four jobs on every push/PR:
+  - `verify-agents-nix` (ubuntu-latest) — runs `./verify-agents.sh`
+  - `verify-agents-windows` (windows-latest) — runs `./Verify-Agents.ps1` via pwsh
+  - `shellcheck` (ubuntu-latest) — `ludeeus/action-shellcheck@master`, warning severity, `SC1091`/`SC2155` excluded
+  - `psscriptanalyzer` (windows-latest) — installs PSScriptAnalyzer, fails on `Error` severity only (intentionally lenient on first pass to keep main green; can tighten to `Warning` later)
+
+### Validation results (sandbox smoke test)
+- `verify-agents.sh` against live 105-agent corpus: **PASS** (105 scanned, 105 unique names, 0 failures, exit 0)
+- Negative fixtures (8 fabricated-bad files + 1 clean control): all 8 caught with correct error messages, clean control passed, exit 1
+- `Verify-Agents.ps1` deferred to Windows-side smoke test (pwsh unavailable in sandbox)
+
+### Why this matters
+ADR-0001 identified the BOM-in-agent-frontmatter failure as silent — the file exists on disk, Claude Code's YAML parser rejects it, and the agent never appears in `/agents` with no error surfaced. Previously the only feedback loop was "did the user notice the missing agent?". CI now catches all six classes of breakage before merge on both Linux and Windows runners, which matches the cross-platform shape of `Sync-AgentPacks.{ps1,sh}`.
+
+### Current file inventory
+```
+claude-code-dev-studio/
+├── .github/workflows/ci.yml            (new)
+├── .gitattributes                      (unchanged since Session 9)
+├── .gitignore                          (unchanged since Session 8)
+├── CHANGELOG.md                        (Session 10 entry added)
+├── CLAUDE.md                           (unchanged since Session 6)
+├── CONTRIBUTING.md                     (unchanged since Session 8)
+├── DECISIONS.md                        (unchanged since Session 8)
+├── LICENSE                             (unchanged since Session 8)
+├── README.md                           (unchanged since Session 8)
+├── SECURITY.md                         (unchanged since Session 9)
+├── Sync-AgentPacks.ps1                 (unchanged since Session 9)
+├── Sync-AgentPacks.sh                  (unchanged since Session 9)
+├── Verify-Agents.ps1                   (new)
+├── verify-agents.sh                    (new)
+├── install-agents.ps1                  (unchanged; still deprecated)
+└── .claude/agents/                     (105 files — unchanged)
+```
+
+### Next
+- User runs `Verify-Agents.ps1` on Windows to confirm cross-platform parity (expected: PASS, 105/105)
+- Commit + push; CI runs green → tag `v0.3.0`
+- Session 11: end-to-end test (Option B) — run `Sync-AgentPacks.ps1` against a scratch consumer project and verify Claude Code `/agents` loads the synced set
+
+---
+
 ## Session 9 — 2026-04-19
 
 ### What was done
