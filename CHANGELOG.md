@@ -5,6 +5,54 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## Session 8 — 2026-04-19
+
+### What was done
+- **Repository published to GitHub** (`ggrace519/claude-code-dev-studio`) and licensed.
+- **License chosen: PolyForm Noncommercial 1.0.0.** Copyright held by Onward Investment LLC. Full rationale in ADR-0005.
+- **New top-level files:**
+  - `LICENSE` — verbatim PolyForm Noncommercial 1.0.0 text + `Required Notice: Copyright 2026 Onward Investment LLC. All rights reserved.` + commercial-inquiry contact (`ggrace@519lab.com`).
+  - `README.md` — project overview, quick start (`Sync-AgentPacks.ps1` usage), available packs, conventions, license summary, commercial contact.
+  - `CONTRIBUTING.md` — scope of accepted contributions, file-encoding / layout / naming / handoff conventions, inbound-license grant to Onward Investment LLC (enables future relicensing or commercial license offering without re-contacting past contributors), DCO-style affirmation in lieu of a full CLA, security disclosure channel.
+  - `.gitignore` — excludes `.pack-manifest.json` (per-consumer project state), OS cruft (Thumbs.db, Desktop.ini, .DS_Store), editor state (.vscode, .idea, swp), logs/temp.
+- **ADR-0005** appended to `DECISIONS.md` — documents the license decision, alternatives considered (MIT, Apache-2.0, AGPL, AGPL+commercial dual, BSL, Elastic License v2, Commons Clause, custom), and consequences (source-available-not-open-source, contributor relicensing grant, enforcement posture, relicense path preserved).
+- **Git repository initialized** — previously absent (confirmed earlier this session via `git rev-parse --is-inside-work-tree` returning not-a-repo).
+
+### Current file inventory
+```
+claude-code-dev-studio/
+├── .gitignore                          (new)
+├── CHANGELOG.md                        (Session 8 entry added)
+├── CLAUDE.md                           (unchanged since Session 6)
+├── CONTRIBUTING.md                     (new)
+├── DECISIONS.md                        (ADR-0005 added)
+├── LICENSE                             (new — PolyForm NC 1.0.0)
+├── README.md                           (new)
+├── Sync-AgentPacks.ps1                 (unchanged since Session 7)
+├── install-agents.ps1                  (unchanged since Session 7)
+└── .claude/agents/                     (105 files — unchanged)
+```
+
+### License model (post-Session 8)
+- **Free for noncommercial use.** Individuals, students, hobbyists, nonprofits, educational institutions, public-interest organizations, government institutions — permitted by default per the PolyForm NC definition.
+- **Commercial use requires a separate license.** Contact: `ggrace@519lab.com`. Contracted via Onward Investment LLC.
+- **Contributors grant Onward Investment LLC a perpetual, worldwide, relicensing-capable license** over their contributions. Documented in `CONTRIBUTING.md`. DCO-style affirmation; no formal CLA workflow.
+
+### Where things stand
+- Repo is now public, licensed, and contribution-ready.
+- Distribution surface (`Sync-AgentPacks.ps1` + deprecated wrapper + 105-agent library) unchanged from Session 7.
+- Git history: single initial commit covering the full 15-pack baseline + playbook + licensing docs.
+- No blockers.
+
+### Deferred follow-ups
+- `Sync-AgentPacks.sh` port for *nix hosts (carried from Session 7)
+- Symlink-mode auto-elevation UX on Windows (carried from Session 7)
+- Removal of `install-agents.ps1` wrapper once downstream consumers have migrated (carried from Session 7)
+- Tag `v0.1.0` to mark the 15-pack baseline (optional; nice-to-have for referenceability)
+- Consider adding a short `SECURITY.md` pointer file (GitHub surfaces it in the Security tab); currently the disclosure channel is documented only in `CONTRIBUTING.md`.
+
+---
+
 ## Session 7 — 2026-04-19
 
 ### What was done

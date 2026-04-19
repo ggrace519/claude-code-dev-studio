@@ -270,3 +270,58 @@ Alternatives considered and rejected:
 - **Deprecates** the direct-install pattern in `install-agents.ps1` (kept as a forwarding wrapper; scheduled for removal).
 - **Closes** the "parameterized `-Pack` installer" follow-up noted in ADR-0002 (Consequences) and ADR-0003 (Consequences).
 - Extends ADR-0001, ADR-0002, ADR-0003.
+
+---
+
+## ADR-0005: License Choice — PolyForm Noncommercial 1.0.0
+
+**Date:** 2026-04-19
+**Status:** Accepted
+**Phase:** Initialize
+**Deciders:** Greg (Onward Investment LLC)
+
+### Context
+The repository is being published to GitHub (`ggrace519/claude-code-dev-studio`). A license is required to (a) let noncommercial users legally use the playbook and agent library, and (b) preserve the right to charge companies that want to use the work in commercial products or services. Without a license, visitors have no legal permission to use, copy, or modify the repository at all.
+
+Constraints:
+- **Noncommercial free / commercial paid** is the explicit goal. Permissive OSI licenses (MIT, Apache-2.0) and weak-copyleft (LGPL) all permit commercial use without payment and were ruled out.
+- **Single license for the whole repo.** Mixed content (PowerShell code, markdown playbook, 105 agent prompts) — splitting into code-vs-docs licenses adds friction without useful protection.
+- **Solo maintainer.** A dual-license operation (e.g., AGPL + commercial) was rejected as premature overhead.
+- **Copyright held by Onward Investment LLC**, not the maintainer personally, so that a future commercial license offering can be executed by the entity rather than the individual.
+
+### Decision
+License the repository under **PolyForm Noncommercial 1.0.0** (<https://polyformproject.org/licenses/noncommercial/1.0.0>). Copyright held by **Onward Investment LLC**.
+
+Artifacts added this session:
+- `LICENSE` — verbatim PolyForm Noncommercial 1.0.0 text with `Required Notice: Copyright 2026 Onward Investment LLC. All rights reserved.` and a commercial-inquiry contact line pointing to `ggrace@519lab.com`.
+- `README.md` — project overview, quick start, license summary, commercial contact.
+- `CONTRIBUTING.md` — declares that all contributions grant Onward Investment LLC a perpetual, worldwide, relicense-capable license. DCO-style affirmation in lieu of a full CLA. Preserves the ability to offer a separate commercial license without re-negotiating with past contributors.
+- `.gitignore` — excludes per-consumer `.pack-manifest.json`, OS cruft, editor state.
+
+### Rationale
+- **PolyForm Noncommercial draws the bright line the project wants.** "Any noncommercial purpose is a permitted purpose"; commercial use is prohibited without a separate license. Individuals, students, hobbyists, nonprofits, schools, and government institutions are explicitly permitted.
+- **Drafted by specialized counsel** (Heather Meeker + Kyle Mitchell). Standardized, legally reviewed, reusable — avoids the ambiguity of hand-written non-commercial clauses or "Commons Clause + MIT" hybrids.
+- **No sunset.** Unlike BSL, there is no automatic conversion to open source; that suits a maintainer-owned playbook that may always want to charge commercial users.
+- **Short and readable.** One-page structure with named clauses; easier to reason about than BSL's change-date mechanics or ELv2's managed-service carve-out.
+- **Inbound=outbound-plus for contributions.** The CONTRIBUTING.md terms intentionally go beyond "inbound equals outbound" by granting Onward Investment LLC relicensing rights. Without this, every past contributor would need to be re-contacted before offering a commercial license — the MongoDB-era lesson that blocked many dual-license transitions elsewhere.
+- **Copyright held by the entity, not the individual.** Onward Investment LLC holds the rights, enabling clean commercial license issuance, invoicing, and enforcement from the correct legal actor.
+
+Alternatives considered and rejected:
+- **MIT / Apache-2.0.** Permit commercial use outright; contradict the stated goal.
+- **AGPL-3.0 alone.** Allows commercial use subject to copyleft; in practice many companies ship AGPL software privately without sharing modifications. Does not achieve "companies pay."
+- **AGPL-3.0 + commercial dual license.** Effective but requires sales / contracts / invoicing operations; premature for a solo-maintained playbook.
+- **BSL 1.1.** Strong fit for company-backed OSS with a roadmap to open-source; change-date mechanics are overhead for this project.
+- **Elastic License v2.** Permits most commercial use except hosted/managed-service resale; this project isn't a service at risk of being rehosted, so the carve-out doesn't fit.
+- **Commons Clause + MIT/Apache.** Legally ambiguous patchwork; superseded by purpose-built source-available licenses.
+- **Custom hand-written license.** Unacceptable legal risk; hostile to adoption.
+
+### Consequences
+- **Repository is source-available, not open source.** This is intentional. Discovery via GitHub's license filter will list it as "Other" or "PolyForm Noncommercial," not as an OSI-approved license. Some OSS directories will exclude it; that's the tradeoff.
+- **Commercial use requires a separate license from Onward Investment LLC.** The inquiry channel is `ggrace@519lab.com` (stated in `LICENSE`, `README.md`, and `CONTRIBUTING.md`).
+- **Contributors grant Onward Investment LLC relicensing rights.** Contribution volume may be lower than for OSI-licensed projects; this is acceptable and expected.
+- **Relicense path remains open.** Onward Investment LLC (sole rights holder, plus contributor inbound grants) can later relicense the repository under a more permissive license (MIT, Apache-2.0) or a different source-available license (BSL, ELv2) without clearing past contributors.
+- **Enforcement falls on the copyright holder.** A license without enforcement is just a polite request. Active enforcement is optional but the right to enforce is preserved.
+- **Noncommercial definition follows the PolyForm text.** Edge cases (consultants, nonprofits charging fees, dual-use research) are governed by that definition; disputes should reference the license text rather than improvised criteria.
+
+### Supersedes
+None. Complements ADR-0001 through ADR-0004. Establishes the licensing baseline for all artifacts in this repository going forward.
