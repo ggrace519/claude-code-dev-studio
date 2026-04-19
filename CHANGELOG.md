@@ -5,6 +5,46 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## Session 11 — 2026-04-19
+
+### What was done
+End-to-end validation against the live Claude Code runtime. No library code changes — this session is the empirical proof that the Session 8–10 artifacts actually work against the real tool, not just against CI assertions.
+
+Run on Windows (PowerShell 5.1, Claude Code v2.1.113, scratch consumer at `C:\coding-projects\scratch-saas-consumer`).
+
+**Initial activation (saas + common + generalists):**
+- `Sync-AgentPacks.ps1 -Packs saas,common -WriteAdr` → 18 files installed (7 gen + 6 saas + 5 common)
+- `.pack-manifest.json` written with `schema: 1`, `mode: Copy`, `packs: [saas, common]`, `generalists: true`, 18 `managedFiles`
+- `DECISIONS.md` created with activation ADR
+- `Verify-Agents.ps1` against output: PASS, 18/18, exit 0
+- Claude Code `/agents` loaded all 18 project agents with correct per-agent model bindings (Opus for architects + secure-auditor, Haiku for deploy-checklist, Sonnet for rest)
+
+**Pack swap (saas → ai):**
+- `Sync-AgentPacks.ps1 -Packs ai,common` (dry-run first) → +7 ai / −6 saas / =12 keep, final file count 19
+- Removal scope correctly limited to manifest-tracked saas files; untracked files (DECISIONS.md) untouched
+- Manifest updated to `packs: [ai, common]`, 19 `managedFiles`
+- `Verify-Agents.ps1`: PASS, 19/19, exit 0
+- Claude Code `/agents` loaded all 19 project agents post-swap with zero saas-* remnants
+
+### Why this matters
+The BOM invariant (ADR-0001) and the filename/frontmatter invariants are silent failure modes: Claude Code's YAML parser rejects bad files without surfacing errors. Before this session, the verifier was proven against fabricated negative fixtures but never against the full Library → Sync → `.claude/agents/` → Claude Code runtime pipeline. With this session the full loop is empirically validated on Windows. CI is now known to be catching what actually matters.
+
+### Library repo changes
+- `CHANGELOG.md` (Session 11 entry only)
+
+No script, agent, or configuration changes. Scratch consumer at `C:\coding-projects\scratch-saas-consumer` is disposable and outside version control.
+
+### Intentionally NOT done
+- **No `v0.4.0` tag.** Validation-only session with zero code change. Tag the next feature/fix.
+- **Linux runtime check of Claude Code `/agents`.** CI verifies the files on ubuntu-latest; the runtime check would require running Claude Code on Linux. Deferred — not blocking on any downstream use case.
+- **Symlink-mode runtime check.** Copy mode is the default and was validated. Symlink mode is gated by the Session 9 Windows pre-flight; defer full runtime proof until a downstream consumer actually needs it.
+
+### Deferred (carried forward)
+- Removal of `install-agents.ps1` deprecation wrapper — no downstream migration signal
+- bash-3.2 fallback for default macOS — `Sync-AgentPacks.sh` currently requires bash 4+
+
+---
+
 ## Session 10 — 2026-04-19
 
 ### What was done
