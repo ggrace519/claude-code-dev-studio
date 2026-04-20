@@ -16,3 +16,6 @@ Desktop.ini
 *.log
 *.tmp
 *.bak
+
+# Release build output (produced by build-release.ps1)
+dist/
