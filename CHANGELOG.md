@@ -5,6 +5,111 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## Session 12 — 2026-04-19
+
+### What was done
+Shipped the global-install + per-project-activation architecture. The playbook is now a versioned, installable CLI with update/rollback/uninstall — no more "clone the repo and invoke the scripts directly" as the primary path.
+
+**New CLI surface (`claude-playbook`):**
+- `bin/claude-playbook.ps1` and `bin/claude-playbook.sh` — dispatcher for `sync`, `verify`, `update`, `uninstall`, `version`, `help`
+- Dispatcher resolves its install root via `$MyInvocation` / `readlink -f`, auto-detects installed vs dev layout, and delegates to the bundled `Sync-AgentPacks.*` / `verify-agents.*` scripts
+- `update` and `uninstall` fetch a fresh `Install-Playbook.{ps1,sh}` from `main` and re-invoke with `-Prefix <installRoot>` so the running install is modified in place — bug fixes to the installer propagate automatically to installed clients
+- `--include-prerelease` passthrough for picking up release candidates when resolving `latest`; `--rollback` restores from `<prefix>.previous`
+
+**Windows installer (`Install-Playbook.ps1`):**
+- One-line bootstrap: `iwr ... | iex`
+- Default prefix `%LOCALAPPDATA%\ClaudePlaybook`; override with `-Prefix`
+- Resolves GitHub release tag via API (stable by default, prerelease with `-IncludePrerelease`)
+- Downloads `claude-playbook-<tag>.zip` + `.sha256` sidecar, verifies SHA256, extracts to `<prefix>.new`
+- Snapshots existing install to `<prefix>.previous`, atomically promotes `.new` to `<prefix>`, cleans up on success
+- `-Rollback` restores `.previous`; `-Uninstall` removes install directory and User-PATH entry
+- `-NoPath` skips PATH mutation; `-LocalZip` installs from a local build; `-Token` supports GitHub PAT for rate-limited environments; `-DryRun` for preview
+- PATH managed as a single `<prefix>\bin` entry on User PATH (idempotent add/refresh/remove)
+
+**Linux/macOS installer (`install-playbook.sh`):**
+- One-line bootstrap: `curl -fsSL ... | bash`
+- Default prefix `$HOME/.local/share/claude-playbook`; override with `--prefix`
+- Same resolve/download/verify/stage/promote/rollback flow as the PS installer
+- No `jq` dependency — JSON parsing via `awk` with `RS="{"` over GitHub Releases API response
+- SHA256 via `sha256sum` (Linux) or `shasum -a 256` (macOS), auto-detected
+- Symlinks `<prefix>/bin/claude-playbook` → `claude-playbook.sh` so bare `claude-playbook` resolves on PATH (no PATHEXT on POSIX)
+- Shell-rc PATH management via marker block (`# >>> claude-playbook PATH >>>` … `# <<< claude-playbook PATH <<<`) across `~/.bashrc`, `~/.zshrc`, `~/.profile` — idempotent add/refresh/remove via `awk`
+- `--rollback` / `--uninstall` / `--no-path` / `--local-zip` / `--token` / `--include-prerelease` / `--dry-run` flags mirror the PS installer
+
+**Release pipeline:**
+- `scripts/build-release.ps1` — packages repo into `claude-playbook-<tag>.zip` with deterministic file list (excludes `.git`, editor state, test scratch); writes `.sha256` sidecar
+- `.github/workflows/release.yml` — tag-driven workflow (`v*.*.*` and `v*.*.*-*`): builds ZIP + sidecar, publishes GitHub Release with both as assets, marks as prerelease when tag contains `-`
+
+**Dispatcher smoke-tested end-to-end on both platforms against `v0.4.0-rc1`:**
+- `update v0.4.0-rc1` → `.previous` snapshot written, SHA256 verified, `.new` promoted
+- `update --rollback` → `.previous` restored, rollback-discard tree deleted
+- `uninstall` → prefix removed, PATH entry cleaned
+- Scenarios exercised: Windows (User PATH + Registry), Linux (bash rc marker block), throwaway prefix at `$env:TEMP\cp-update-test` / fake `HOME`
+
+**Fixes along the way:**
+- `bin/claude-playbook.sh` defaulted `MODE="Copy"` but `Sync-AgentPacks.sh` validates case-sensitive lowercase — fixed default to `copy`
+- Installer scripts write agent/script files as BOM-less UTF-8 per ADR-0001 (PS 5.1's `Set-Content -Encoding UTF8` writes a BOM that breaks YAML frontmatter discovery)
+
+### Why this matters
+Before this session the distribution story was "clone the repo, invoke `Sync-AgentPacks.ps1` with the full path." That works but doesn't scale: no version pinning, no update path, no rollback, no PATH integration. Per-project activation still required the consumer to know the library's on-disk location.
+
+With this session, a consumer runs a single bootstrap command, gets `claude-playbook` on PATH, activates packs into any project with `claude-playbook sync <packs>`, and can update/rollback/uninstall without knowing the internals. ZIP-based distribution + SHA256 sidecar gives a tamper-evident release surface that CI builds and the installer verifies end-to-end.
+
+### Library repo changes
+- `bin/claude-playbook.ps1` (new)
+- `bin/claude-playbook.sh` (new)
+- `Install-Playbook.ps1` (new)
+- `install-playbook.sh` (new)
+- `scripts/build-release.ps1` (new)
+- `.github/workflows/release.yml` (new)
+- `README.md` (install/update/uninstall sections + one-line bootstrap; quick start retargeted to `claude-playbook sync`)
+- `CHANGELOG.md` (Session 12 entry)
+
+### Current file inventory
+```
+claude-code-dev-studio/
+├── .github/workflows/
+│   ├── ci.yml                          (unchanged since Session 10)
+│   └── release.yml                     (new)
+├── .gitattributes                      (unchanged since Session 9)
+├── .gitignore                          (unchanged since Session 8)
+├── bin/
+│   ├── claude-playbook.ps1             (new)
+│   └── claude-playbook.sh              (new)
+├── scripts/
+│   └── build-release.ps1               (new)
+├── CHANGELOG.md                        (Session 12 entry)
+├── CLAUDE.md                           (unchanged since Session 6)
+├── CONTRIBUTING.md                     (unchanged since Session 8)
+├── DECISIONS.md                        (unchanged since Session 11)
+├── Install-Playbook.ps1                (new)
+├── install-playbook.sh                 (new)
+├── LICENSE                             (unchanged since Session 8)
+├── README.md                           (rewritten for CLI-first install flow)
+├── SECURITY.md                         (unchanged since Session 9)
+├── Sync-AgentPacks.ps1                 (unchanged since Session 9)
+├── Sync-AgentPacks.sh                  (unchanged since Session 9)
+├── Verify-Agents.ps1                   (unchanged since Session 10)
+├── verify-agents.sh                    (unchanged since Session 10)
+├── install-agents.ps1                  (unchanged; still deprecated)
+└── .claude/agents/                     (105 files — unchanged)
+```
+
+### Intentionally NOT done
+- **ADR-0005 for the global-install + per-project-activation architecture** — deferred; belongs alongside the existing license ADR-0005 but is its own decision, so next session will either renumber or append as ADR-0006
+- **Removal of `install-agents.ps1` wrapper** — no downstream migration signal yet
+- **bash-3.2 fallback for default macOS** — `install-playbook.sh` and `Sync-AgentPacks.sh` still require bash 4+; only relevant if a consumer hits the version wall
+
+### Deferred (carried forward)
+- ADR for global-install architecture
+- Removal of `install-agents.ps1` deprecation wrapper
+- bash-3.2 fallback for default macOS
+
+### Next
+- Tag `v0.4.0` stable (Session 12 work is complete and validated on both platforms)
+
+---
+
 ## Session 11 — 2026-04-19
 
 ### What was done
