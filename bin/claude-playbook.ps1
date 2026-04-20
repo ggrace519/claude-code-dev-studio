@@ -98,8 +98,9 @@ COMMANDS
   verify               Validate .claude\agents\ in the current directory
       --target <path>       Target path (default: current directory)
 
-  update               Download and install the latest release
+  update [tag]         Download and install a release (default: latest stable)
       --rollback            Restore the previous installed version
+      --include-prerelease  Pick up release candidates when resolving 'latest'
 
   uninstall            Remove the installation and PATH entries
 
@@ -131,23 +132,25 @@ function ConvertTo-Hashtable {
     param([string[]]$Arguments)
 
     $result = @{
-        Positional     = @()
-        DryRun         = $false
-        WriteAdr       = $false
-        NoGeneralists  = $false
-        Mode           = 'Copy'
-        Target         = $null
-        Rollback       = $false
+        Positional        = @()
+        DryRun            = $false
+        WriteAdr          = $false
+        NoGeneralists     = $false
+        Mode              = 'Copy'
+        Target            = $null
+        Rollback          = $false
+        IncludePrerelease = $false
     }
 
     $i = 0
     while ($i -lt $Arguments.Count) {
         $a = $Arguments[$i]
         switch -Regex ($a) {
-            '^--dry-run$'         { $result.DryRun = $true; $i++; continue }
-            '^--write-adr$'       { $result.WriteAdr = $true; $i++; continue }
-            '^--no-generalists$'  { $result.NoGeneralists = $true; $i++; continue }
-            '^--rollback$'        { $result.Rollback = $true; $i++; continue }
+            '^--dry-run$'             { $result.DryRun = $true; $i++; continue }
+            '^--write-adr$'           { $result.WriteAdr = $true; $i++; continue }
+            '^--no-generalists$'      { $result.NoGeneralists = $true; $i++; continue }
+            '^--rollback$'            { $result.Rollback = $true; $i++; continue }
+            '^--include-prerelease$'  { $result.IncludePrerelease = $true; $i++; continue }
             '^--mode$' {
                 if ($i + 1 -ge $Arguments.Count) { throw "--mode requires a value (copy|symlink)" }
                 $result.Mode = $Arguments[$i + 1]
@@ -230,22 +233,68 @@ function Invoke-VerifyCommand {
 }
 
 # ---------------------------------------------------------------------------
-# Command: update / uninstall (stubs for now — implemented with installer in Turn 2)
+# Command: update / uninstall (delegate to Install-Playbook.ps1 fetched from main)
 # ---------------------------------------------------------------------------
+$Script:InstallerUrlPs1 = 'https://raw.githubusercontent.com/ggrace519/claude-code-dev-studio/main/Install-Playbook.ps1'
+
+function Get-InstallerTempPath {
+    Join-Path $env:TEMP ("Install-Playbook-{0}.ps1" -f [guid]::NewGuid().ToString('N'))
+}
+
+function Save-RemoteInstaller {
+    param([string]$OutFile)
+    [Net.ServicePointManager]::SecurityProtocol = `
+        [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    $headers = @{ 'User-Agent' = 'claude-playbook-dispatcher' }
+    Invoke-WebRequest -Uri $Script:InstallerUrlPs1 -Headers $headers -OutFile $OutFile -UseBasicParsing
+}
+
 function Invoke-UpdateCommand {
     param([hashtable]$Opts)
-    Write-Host "update is implemented by Install-Playbook.ps1." -ForegroundColor Yellow
-    Write-Host "This command will be wired up in the next session increment." -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "For now, re-run the bootstrap:"
-    Write-Host "  irm https://raw.githubusercontent.com/ggrace519/claude-code-dev-studio/main/Install-Playbook.ps1 | iex"
-    exit 0
+
+    $installerTmp = Get-InstallerTempPath
+    try {
+        Write-Host "==> Fetching installer from main" -ForegroundColor Cyan
+        Save-RemoteInstaller -OutFile $installerTmp
+
+        $psArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $installerTmp,
+                    '-Prefix', $installRoot)
+
+        if ($Opts.Rollback) {
+            $psArgs += '-Rollback'
+        } else {
+            $requestedVersion = if ($Opts.Positional.Count -ge 1) { $Opts.Positional[0] } else { 'latest' }
+            $psArgs += @('-Version', $requestedVersion, '-Force')
+            if ($Opts.IncludePrerelease) { $psArgs += '-IncludePrerelease' }
+        }
+
+        & powershell.exe @psArgs
+        $code = $LASTEXITCODE
+    } finally {
+        if (Test-Path -LiteralPath $installerTmp) {
+            Remove-Item -LiteralPath $installerTmp -Force -ErrorAction SilentlyContinue
+        }
+    }
+    exit $code
 }
 
 function Invoke-UninstallCommand {
-    Write-Host "uninstall is implemented by Install-Playbook.ps1." -ForegroundColor Yellow
-    Write-Host "This command will be wired up in the next session increment." -ForegroundColor Yellow
-    exit 0
+    $installerTmp = Get-InstallerTempPath
+    try {
+        Write-Host "==> Fetching installer from main" -ForegroundColor Cyan
+        Save-RemoteInstaller -OutFile $installerTmp
+
+        $psArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $installerTmp,
+                    '-Prefix', $installRoot, '-Uninstall')
+
+        & powershell.exe @psArgs
+        $code = $LASTEXITCODE
+    } finally {
+        if (Test-Path -LiteralPath $installerTmp) {
+            Remove-Item -LiteralPath $installerTmp -Force -ErrorAction SilentlyContinue
+        }
+    }
+    exit $code
 }
 
 # ---------------------------------------------------------------------------
