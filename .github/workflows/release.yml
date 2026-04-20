@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Resolve version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "$env:GITHUB_REF_NAME"
+          Write-Host "Tag: $tag"
+          if ($tag -notmatch '^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
+              throw "Tag '$tag' does not match vMAJOR.MINOR.PATCH[-suffix]"
+          }
+          $prerelease = if ($tag -match '-') { 'true' } else { 'false' }
+          "version=$tag"          | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "prerelease=$prerelease" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "version=$tag prerelease=$prerelease"
+
+      - name: Build release ZIP
+        shell: pwsh
+        run: ./build-release.ps1 -Version "${{ steps.version.outputs.version }}"
+
+      - name: Verify artifacts
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $zip = "dist/claude-playbook-$version.zip"
+          $sha = "$zip.sha256"
+          if (-not (Test-Path $zip)) { throw "ZIP not found: $zip" }
+          if (-not (Test-Path $sha)) { throw "SHA256 sidecar not found: $sha" }
+          $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          $recorded = ((Get-Content $sha -Raw).Split(' ')[0]).Trim().ToLower()
+          if ($actual -ne $recorded) {
+              throw "SHA256 mismatch. Recorded=$recorded Actual=$actual"
+          }
+          Write-Host "ZIP bytes  : $((Get-Item $zip).Length)"
+          Write-Host "SHA256     : $actual"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.version }}
+          prerelease: ${{ steps.version.outputs.prerelease }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/claude-playbook-${{ steps.version.outputs.version }}.zip
+            dist/claude-playbook-${{ steps.version.outputs.version }}.zip.sha256
