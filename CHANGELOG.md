@@ -43,13 +43,19 @@ New sessions should read this file first to get up to speed before doing anythin
 - Old per-user install (`~/.claude/playbook/bin/ccds`) shadowed system package in PATH — root cause documented; removed old install tree to resolve
 - `\033[...]` color codes printed literally in `ccds-user-setup.sh` — fixed with `$'...'` ANSI-C quoting
 
+**Contact email redaction:**
+- Replaced personal email (`ggrace@519lab.com`) with role addresses across all public files
+- Security / responsible-disclosure contact: `security@519lab.com` (`SECURITY.md`, `CONTRIBUTING.md`)
+- Commercial licensing contact: `contact@519lab.com` (`LICENSE`, `README.md`, `DECISIONS.md`, `CHANGELOG.md`, `build-release.sh` maintainer field)
+
 ### Current state
-- `v0.5.0` tagged and pushed; CI running
+- `v0.5.0` tagged, pushed, and CI passed
 - Local install test passed: `sudo dpkg -i dist/ccds_0.5.0_all.deb && ccds version && ccds verify` → 105/105 agents PASS
 - `ccds setup`, `ccds version`, `ccds verify` all working from `/usr/bin/ccds`
+- No personal email addresses in any public file
 
 ### Next possible work
-- Monitor CI run; verify `.deb`, `.rpm`, and `.zip` all appear in the GitHub Release
+- Verify GitHub Release has all 4 artifacts: `.zip`, `.zip.sha256`, `.deb`, `.rpm`
 - Scoop bucket for Windows distribution (designed in Session 14, not yet built)
 - `ccds sync` integration test: activate a pack on a real project, verify agents land in `.claude/agents/`
 - Clean-shell install test: fresh user account, `sudo dpkg -i`, `ccds setup`, `ccds sync saas`
