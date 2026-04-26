@@ -25,7 +25,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 
 SCHEMA_VERSION=1
-LIBRARY_ROOT_DEFAULT="${CLAUDE_CODE_DEV_STUDIO:-$HOME/coding-projects/claude-code-dev-studio}"
+LIBRARY_ROOT_DEFAULT="${CCDS_LIBRARY_ROOT:-$HOME/.claude/playbook}"
 
 VALID_PREFIXES=(game saas mobile ai dataplat ecom fintech devtool desktop ext embed media orch infra common)
 
@@ -58,8 +58,8 @@ Required:
 
 Options:
   --library-root PATH     Override library location.
-                          Default: $CLAUDE_CODE_DEV_STUDIO env var, or
-                          ~/coding-projects/claude-code-dev-studio
+                          Default: $CCDS_LIBRARY_ROOT env var, or
+                          ~/.claude/playbook
   --mode MODE             copy (default) or symlink
   --no-generalists        Skip the 7 generalist agents
   --dry-run               Show plan without writing
@@ -137,7 +137,7 @@ esac
 [[ -d "$TARGET_PROJECT" ]] || err "TargetProject does not exist: $TARGET_PROJECT"
 [[ -d "$LIBRARY_ROOT"   ]] || err "LibraryRoot does not exist: $LIBRARY_ROOT"
 
-LIB_AGENTS="$LIBRARY_ROOT/.claude/agents"
+LIB_AGENTS="$LIBRARY_ROOT/agents"
 TGT_CLAUDE="$TARGET_PROJECT/.claude"
 TGT_AGENTS="$TGT_CLAUDE/agents"
 MANIFEST="$TGT_AGENTS/.pack-manifest.json"
@@ -388,3 +388,4 @@ if (( WRITE_ADR == 1 )); then
     } >> "$DECISIONS"
     printf 'OK ADR appended to %s\n' "$DECISIONS"
 fi
+                                                        

@@ -1,20 +1,24 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Build a Claude Playbook release ZIP + SHA256 sidecar.
+    Build a Claude Code Dev Studio release ZIP + SHA256 sidecar.
 
 .DESCRIPTION
-    Stages an installed-layout tree under .\dist\stage\claude-playbook-<version>\,
-    zips it to .\dist\claude-playbook-<version>.zip, and writes a matching
+    Stages an installed-layout tree under .\dist\stage\ccds-<version>\,
+    zips it to .\dist\ccds-<version>.zip, and writes a matching
     .sha256 sidecar.
 
     Installed layout (inside the ZIP):
-      bin/                 -- dispatcher scripts (claude-playbook.{ps1,sh})
-      scripts/             -- Sync-AgentPacks + Verify-Agents (ps1 + sh)
-      .claude/agents/      -- 105 agent markdown files (the library)
-      CLAUDE.md            -- playbook reference
+      bin/                 -- dispatcher scripts (ccds.{ps1,sh})
+      scripts/             -- Sync-AgentPacks, Verify-Agents, jit-claude.md
+      agents/              -- 105 agent .md files (all generalists + pack agents flat)
+      catalog.json         -- agent index with name/pack/model/description
       README.md            -- installer reference
       version.txt          -- the release version tag
+
+    After extraction to ~/.claude/playbook/ the installer:
+      - Copies 7 generalist agents to ~/.claude/agents/
+      - Injects the JIT protocol block into ~/.claude/CLAUDE.md (marker-based, idempotent)
 
 .PARAMETER Version
     Release version tag. Required. Example: 'v0.4.0-rc1'.
@@ -46,13 +50,15 @@ function Write-Step {
 # Preflight: required source files
 # ---------------------------------------------------------------------------
 $required = @(
-    'bin\claude-playbook.ps1'
-    'bin\claude-playbook.sh'
+    'bin\ccds.ps1'
+    'bin\ccds.sh'
     'Sync-AgentPacks.ps1'
     'Verify-Agents.ps1'
     'Sync-AgentPacks.sh'
     'verify-agents.sh'
-    'CLAUDE.md'
+    'catalog.json'
+    'scripts\jit-claude.md'
+    'scripts\ccds-user-setup.sh'
     'README.md'
     '.claude\agents'
 )
@@ -67,7 +73,7 @@ if ($missing.Count -gt 0) {
 # ---------------------------------------------------------------------------
 # Prepare output and stage directories
 # ---------------------------------------------------------------------------
-$pkgName  = "claude-playbook-$Version"
+$pkgName  = "ccds-$Version"
 $stageDir = Join-Path $OutputDir "stage\$pkgName"
 $zipPath  = Join-Path $OutputDir "$pkgName.zip"
 $shaPath  = "$zipPath.sha256"
@@ -85,13 +91,15 @@ if (-not (Test-Path -LiteralPath $OutputDir)) {
 # Copy map: source (repo-relative) -> destination (stage-relative)
 # ---------------------------------------------------------------------------
 $copyMap = @(
-    @{ Src = 'bin\claude-playbook.ps1' ; Dst = 'bin\claude-playbook.ps1' }
-    @{ Src = 'bin\claude-playbook.sh'  ; Dst = 'bin\claude-playbook.sh' }
+    @{ Src = 'bin\ccds.ps1' ; Dst = 'bin\ccds.ps1' }
+    @{ Src = 'bin\ccds.sh'  ; Dst = 'bin\ccds.sh' }
     @{ Src = 'Sync-AgentPacks.ps1'     ; Dst = 'scripts\Sync-AgentPacks.ps1' }
     @{ Src = 'Verify-Agents.ps1'       ; Dst = 'scripts\Verify-Agents.ps1' }
     @{ Src = 'Sync-AgentPacks.sh'      ; Dst = 'scripts\Sync-AgentPacks.sh' }
     @{ Src = 'verify-agents.sh'        ; Dst = 'scripts\verify-agents.sh' }
-    @{ Src = 'CLAUDE.md'               ; Dst = 'CLAUDE.md' }
+    @{ Src = 'scripts\jit-claude.md'        ; Dst = 'scripts\jit-claude.md' }
+    @{ Src = 'scripts\ccds-user-setup.sh'  ; Dst = 'scripts\ccds-user-setup.sh' }
+    @{ Src = 'catalog.json'            ; Dst = 'catalog.json' }
     @{ Src = 'README.md'               ; Dst = 'README.md' }
 )
 
@@ -106,15 +114,15 @@ foreach ($entry in $copyMap) {
     Copy-Item -LiteralPath $srcFull -Destination $dstFull -Force
 }
 
-# Copy the agents library (preserve .md files only — skip manifest + any cruft)
+# Copy the agents library flat to agents/ (all 105 .md files; installer decides what goes where)
 $agentsSrc = Join-Path $repoRoot '.claude\agents'
-$agentsDst = Join-Path $stageDir '.claude\agents'
+$agentsDst = Join-Path $stageDir 'agents'
 New-Item -ItemType Directory -Path $agentsDst -Force | Out-Null
 $agentFiles = Get-ChildItem -LiteralPath $agentsSrc -Filter '*.md' -File
 foreach ($file in $agentFiles) {
     Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $agentsDst $file.Name) -Force
 }
-Write-Step "Copied $($agentFiles.Count) agent files"
+Write-Step "Staged $($agentFiles.Count) agent files to agents\"
 
 # ---------------------------------------------------------------------------
 # Write version.txt (no BOM, trimmed)
@@ -124,13 +132,36 @@ $versionFile = Join-Path $stageDir 'version.txt'
 Write-Step "Wrote version.txt: $Version"
 
 # ---------------------------------------------------------------------------
-# Build ZIP
+# Build ZIP (POSIX paths — forward slashes in entry names)
+# ---------------------------------------------------------------------------
+# Compress-Archive writes backslash separators on Windows, causing 'unzip'
+# warnings on Linux. We use System.IO.Compression.ZipArchive directly and
+# normalise every entry name to forward slashes. This is safe on all platforms
+# and required for cross-platform install compatibility.
 # ---------------------------------------------------------------------------
 if (Test-Path -LiteralPath $zipPath) {
     Remove-Item -LiteralPath $zipPath -Force
 }
-Write-Step "Creating ZIP: $zipPath"
-Compress-Archive -Path (Join-Path $stageDir '*') -DestinationPath $zipPath -Force
+Write-Step "Creating ZIP (POSIX paths): $zipPath"
+
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+$zipStream = [System.IO.File]::Open($zipPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write)
+$archive   = New-Object System.IO.Compression.ZipArchive($zipStream, [System.IO.Compression.ZipArchiveMode]::Create)
+try {
+    Get-ChildItem -LiteralPath $stageDir -Recurse -File | ForEach-Object {
+        # Strip the stageDir prefix and normalise separators to forward slashes
+        $entryName = $_.FullName.Substring($stageDir.Length).TrimStart('\', '/').Replace('\', '/')
+        [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+            $archive, $_.FullName, $entryName,
+            [System.IO.Compression.CompressionLevel]::Optimal
+        ) | Out-Null
+    }
+} finally {
+    $archive.Dispose()
+    $zipStream.Dispose()
+}
 
 # ---------------------------------------------------------------------------
 # Compute SHA256 sidecar
@@ -153,9 +184,3 @@ Write-Host "ZIP       : $zipPath"
 Write-Host "Size      : $zipSizeKb KB"
 Write-Host "SHA256    : $hash"
 Write-Host "Sidecar   : $shaPath"
-Write-Host "Agents    : $($agentFiles.Count)"
-Write-Host ""
-Write-Host "Next steps:" -ForegroundColor Yellow
-Write-Host "  1. Inspect: Expand-Archive -Path '$zipPath' -DestinationPath .\dist\verify -Force"
-Write-Host "  2. Tag    : git tag $Version && git push origin $Version"
-Write-Host "  3. Release: gh release create $Version '$zipPath' '$shaPath' --notes-file CHANGELOG.md"

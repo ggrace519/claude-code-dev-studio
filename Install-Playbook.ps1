@@ -1,22 +1,25 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Install / update / rollback / uninstall claude-playbook from GitHub Releases.
+    Install / update / rollback / uninstall Claude Code Dev Studio from GitHub Releases.
 
 .DESCRIPTION
-    Downloads the claude-playbook release ZIP from GitHub, verifies its SHA256
-    against the published .sha256 sidecar, and installs it to a per-user prefix
-    (default: %LOCALAPPDATA%\ClaudePlaybook). Prepends <prefix>\bin to the User
-    PATH so 'claude-playbook <cmd>' is resolvable from any shell.
+    Downloads the Claude Code Dev Studio release ZIP from GitHub, verifies its SHA256
+    against the published .sha256 sidecar, and installs it to ~/.claude/playbook/
+    (i.e. %USERPROFILE%\.claude\playbook). Prepends <prefix>\bin to the User PATH
+    so 'ccds <cmd>' is resolvable from any shell.
 
     Installed layout:
-      <prefix>\
-        bin\                 (dispatcher)
-        scripts\             (Sync-AgentPacks, Verify-Agents, both PS and sh)
-        .claude\agents\      (agent library)
-        CLAUDE.md
-        README.md
-        version.txt
+      %USERPROFILE%\.claude\
+        agents\              (7 generalist agents — always loaded by Claude Code)
+        playbook\            (<prefix> — this is what the installer manages)
+          bin\               (dispatcher: ccds.ps1 / .sh)
+          scripts\           (Sync-AgentPacks, Verify-Agents, jit-claude.md)
+          agents\            (98 pack agents — copied to project on demand)
+          catalog.json       (agent index for JIT selection)
+          version.txt
+          README.md
+        CLAUDE.md            (user's global Claude instructions; playbook appends JIT block)
 
     Atomic upgrade:
       1. Stage to <prefix>.new
@@ -30,7 +33,7 @@
     to pick up release candidates).
 
 .PARAMETER Prefix
-    Install root. Default: %LOCALAPPDATA%\ClaudePlaybook.
+    Install root. Default: %USERPROFILE%\.claude\playbook (Claude Code Dev Studio default).
 
 .PARAMETER LocalZip
     Bypass download and install from a locally built ZIP (e.g. output of
@@ -41,7 +44,7 @@
     Can also be supplied via $env:GITHUB_TOKEN.
 
 .PARAMETER NoPath
-    Skip the PATH update. Caller is responsible for making 'claude-playbook'
+    Skip the PATH update. Caller is responsible for making 'ccds' (and 'ccds')
     resolvable.
 
 .PARAMETER IncludePrerelease
@@ -69,7 +72,7 @@
 
 .EXAMPLE
     # Local smoke test from build-release.ps1 output
-    .\Install-Playbook.ps1 -LocalZip .\dist\claude-playbook-v0.4.0-rc1.zip
+    .\Install-Playbook.ps1 -LocalZip .\dist\ccds-v0.4.0-rc1.zip
 
 .EXAMPLE
     # Roll back to previous version
@@ -93,7 +96,7 @@ param(
     [Parameter(ParameterSetName = 'Install')]
     [Parameter(ParameterSetName = 'Rollback')]
     [Parameter(ParameterSetName = 'Uninstall')]
-    [string]$Prefix = (Join-Path $env:LOCALAPPDATA 'ClaudePlaybook'),
+    [string]$Prefix = (Join-Path $env:USERPROFILE '.claude\playbook'),
 
     [Parameter(ParameterSetName = 'Install')]
     [string]$Token,
@@ -122,6 +125,17 @@ $ErrorActionPreference = 'Stop'
 $Script:Owner = 'ggrace519'
 $Script:Repo  = 'claude-code-dev-studio'
 
+# The 7 generalist agents that live permanently in ~/.claude/agents/
+$Script:GeneralistAgents = @(
+    'api-expert'
+    'deploy-checklist'
+    'plan-architect'
+    'pr-code-reviewer'
+    'secure-auditor'
+    'test-writer-runner'
+    'ux-design-critic'
+)
+
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
@@ -144,9 +158,9 @@ function Get-EffectiveToken {
 function New-AuthHeader {
     $t = Get-EffectiveToken
     if ($t) {
-        return @{ Authorization = "Bearer $t"; 'User-Agent' = 'claude-playbook-installer' }
+        return @{ Authorization = "Bearer $t"; 'User-Agent' = 'ccds-installer' }
     }
-    return @{ 'User-Agent' = 'claude-playbook-installer' }
+    return @{ 'User-Agent' = 'ccds-installer' }
 }
 
 function Invoke-Api {
@@ -200,7 +214,7 @@ function Get-AssetUrls {
     param([string]$Tag)
 
     $release = Invoke-Api "https://api.github.com/repos/$Script:Owner/$Script:Repo/releases/tags/$Tag"
-    $zipName = "claude-playbook-$Tag.zip"
+    $zipName = "ccds-$Tag.zip"
     $shaName = "$zipName.sha256"
 
     $zip = $release.assets | Where-Object { $_.name -eq $zipName } | Select-Object -First 1
@@ -302,6 +316,109 @@ function Remove-FromUserPath {
 }
 
 # ---------------------------------------------------------------------------
+# ~/.claude/ post-install helpers
+# ---------------------------------------------------------------------------
+
+# Copy the 7 generalist agents from <prefix>\agents\ to ~/.claude/agents/
+function Install-GeneralistAgents {
+    param(
+        [string]$Prefix,
+        [switch]$DryRun
+    )
+    $claudeAgentsDir = Join-Path $env:USERPROFILE '.claude\agents'
+
+    if ($DryRun) {
+        Write-Info "DRY RUN --would copy $($Script:GeneralistAgents.Count) generalist agents to $claudeAgentsDir"
+        return
+    }
+
+    if (-not (Test-Path $claudeAgentsDir)) {
+        New-Item -ItemType Directory -Path $claudeAgentsDir -Force | Out-Null
+    }
+
+    $copied = 0
+    foreach ($name in $Script:GeneralistAgents) {
+        $src = Join-Path $Prefix "agents\$name.md"
+        $dst = Join-Path $claudeAgentsDir "$name.md"
+        if (Test-Path $src) {
+            Copy-Item -LiteralPath $src -Destination $dst -Force
+            $copied++
+        } else {
+            Write-WarnMsg "Generalist agent not found in package: agents\$name.md"
+        }
+    }
+    Write-OkMsg "Copied $copied generalist agents to $claudeAgentsDir"
+}
+
+# Inject or update the playbook JIT block in ~/.claude/CLAUDE.md (idempotent)
+function Set-ClaudePlaybookBlock {
+    param(
+        [string]$JitBlockPath,
+        [switch]$DryRun
+    )
+    $claudeHome = Join-Path $env:USERPROFILE '.claude'
+    $claudeMd   = Join-Path $claudeHome 'CLAUDE.md'
+
+    if ($DryRun) {
+        Write-Info "DRY RUN --would inject/update playbook JIT block in $claudeMd"
+        return
+    }
+
+    if (-not (Test-Path $claudeHome)) {
+        New-Item -ItemType Directory -Path $claudeHome -Force | Out-Null
+    }
+
+    $blockContent = Get-Content -LiteralPath $JitBlockPath -Raw
+    $existing     = if (Test-Path $claudeMd) { Get-Content $claudeMd -Raw } else { '' }
+
+    $markerStart = '# >>> ccds >>>'
+    $markerEnd   = '# <<< ccds <<<'
+
+    if ($existing -match [regex]::Escape($markerStart)) {
+        # Replace existing block (preserves everything outside the markers)
+        $pattern = "(?s)$([regex]::Escape($markerStart)).*?$([regex]::Escape($markerEnd))`r?`n?"
+        $updated = [regex]::Replace($existing, $pattern, "$blockContent`n")
+        [System.IO.File]::WriteAllText($claudeMd, $updated, [System.Text.UTF8Encoding]::new($false))
+        Write-OkMsg "Updated playbook JIT block in $claudeMd"
+    } else {
+        # Append block; ensure there is a blank line separator if file has content
+        $sep = if ($existing -and -not $existing.EndsWith("`n")) { "`n`n" } elseif ($existing) { "`n" } else { '' }
+        [System.IO.File]::WriteAllText($claudeMd, $existing + $sep + $blockContent + "`n", [System.Text.UTF8Encoding]::new($false))
+        Write-OkMsg "Appended playbook JIT block to $claudeMd"
+    }
+}
+
+# Remove the playbook JIT block from ~/.claude/CLAUDE.md (used by uninstall)
+function Remove-ClaudePlaybookBlock {
+    param([switch]$DryRun)
+    $claudeMd = Join-Path $env:USERPROFILE '.claude\CLAUDE.md'
+
+    if (-not (Test-Path $claudeMd)) {
+        Write-Info "No CLAUDE.md at $claudeMd — nothing to remove."
+        return
+    }
+
+    $existing    = Get-Content $claudeMd -Raw
+    $markerStart = '# >>> ccds >>>'
+
+    if (-not ($existing -match [regex]::Escape($markerStart))) {
+        Write-Info "No playbook block found in CLAUDE.md — nothing to remove."
+        return
+    }
+
+    if ($DryRun) {
+        Write-Info "DRY RUN --would remove playbook JIT block from $claudeMd"
+        return
+    }
+
+    $markerEnd = '# <<< ccds <<<'
+    $pattern   = "(?s)`r?`n?$([regex]::Escape($markerStart)).*?$([regex]::Escape($markerEnd))`r?`n?"
+    $updated   = [regex]::Replace($existing, $pattern, '')
+    [System.IO.File]::WriteAllText($claudeMd, $updated, [System.Text.UTF8Encoding]::new($false))
+    Write-OkMsg "Removed playbook JIT block from $claudeMd"
+}
+
+# ---------------------------------------------------------------------------
 # Install core
 # ---------------------------------------------------------------------------
 function Install-FromZip {
@@ -333,11 +450,12 @@ function Install-FromZip {
     Write-Step "Extracting to $newDir"
     Expand-Archive -LiteralPath $ZipPath -DestinationPath $newDir -Force
 
-    # Sanity: bin\claude-playbook.ps1 must exist in the extracted tree
-    $sentinel = Join-Path $newDir 'bin\claude-playbook.ps1'
-    if (-not (Test-Path $sentinel)) {
-        Remove-Item -LiteralPath $newDir -Recurse -Force
-        throw "Extraction did not produce bin\claude-playbook.ps1 --archive layout is unexpected."
+    # Sanity: key files must exist in the extracted tree
+    foreach ($sentinel in @('bin\ccds.ps1', 'catalog.json', 'agents')) {
+        if (-not (Test-Path (Join-Path $newDir $sentinel))) {
+            Remove-Item -LiteralPath $newDir -Recurse -Force
+            throw "Extraction did not produce '$sentinel' -- archive layout is unexpected."
+        }
     }
 
     if (Test-Path $Prefix) {
@@ -394,6 +512,8 @@ function Invoke-Uninstall {
     if ($DryRun) {
         if (Test-Path $Prefix) { Write-Info "DRY RUN --would remove $Prefix" }
         if (-not $NoPath)      { Write-Info "DRY RUN --would remove $binDir from User PATH" }
+        Write-Info "DRY RUN --would remove playbook JIT block from $(Join-Path $env:USERPROFILE '.claude\CLAUDE.md')"
+        Write-Info "DRY RUN --note: generalist agents in $(Join-Path $env:USERPROFILE '.claude\agents') are NOT removed"
         return
     }
 
@@ -408,6 +528,13 @@ function Invoke-Uninstall {
     if (-not $NoPath) {
         [void](Remove-FromUserPath -Entry $binDir)
     }
+
+    # Remove the JIT block from ~/.claude/CLAUDE.md
+    Write-Step "Removing playbook JIT block from CLAUDE.md"
+    Remove-ClaudePlaybookBlock -DryRun:$DryRun
+
+    Write-WarnMsg "Generalist agents in $(Join-Path $env:USERPROFILE '.claude\agents') were NOT removed."
+    Write-WarnMsg "Delete them manually if desired."
 }
 
 # ---------------------------------------------------------------------------
@@ -474,26 +601,40 @@ try {
         (Get-Content $installedVersionFile -Raw).Trim()
     } else { $resolvedTag }
 
+    # Copy 7 generalist agents to ~/.claude/agents/ (always-loaded by Claude Code)
+    Write-Step "Installing generalist agents to $(Join-Path $env:USERPROFILE '.claude\agents')"
+    Install-GeneralistAgents -Prefix $Prefix -DryRun:$DryRun
+
+    # Inject/update JIT protocol block in ~/.claude/CLAUDE.md
+    Write-Step "Updating JIT block in $(Join-Path $env:USERPROFILE '.claude\CLAUDE.md')"
+    $jitBlock = Join-Path $Prefix 'scripts\jit-claude.md'
+    Set-ClaudePlaybookBlock -JitBlockPath $jitBlock -DryRun:$DryRun
+
     if (-not $NoPath) {
         $binDir = Join-Path $Prefix 'bin'
         [void](Add-ToUserPath -Entry $binDir)
     }
 
     Write-Host ""
-    Write-Host "=== claude-playbook installed ===" -ForegroundColor Green
+    Write-Host "=== Claude Code Dev Studio installed ===" -ForegroundColor Green
     Write-Host "Prefix  : $Prefix"
     Write-Host "Version : $installedVersion"
     if (-not $NoPath) {
         Write-Host "PATH    : $(Join-Path $Prefix 'bin') (prepended to User PATH)"
         Write-Host ""
-        Write-Host "Current session: 'claude-playbook' is available now." -ForegroundColor Yellow
+        Write-Host "Current session: 'ccds' is available now." -ForegroundColor Yellow
         Write-Host "Future shells : PATH update persists automatically." -ForegroundColor Yellow
     }
     Write-Host ""
+    Write-Host "Library : $(Join-Path $env:USERPROFILE '.claude\playbook\agents') ($($Script:GeneralistAgents.Count) generalists → .claude\agents; 98 pack agents here)"
+    Write-Host "CLAUDE  : $(Join-Path $env:USERPROFILE '.claude\CLAUDE.md') (JIT block injected)"
+    Write-Host ""
     Write-Host "Smoke test:" -ForegroundColor Yellow
-    Write-Host "  claude-playbook version"
+    Write-Host "  ccds version"
     Write-Host "  cd <your-project>"
-    Write-Host "  claude-playbook sync saas,common --dry-run"
+    Write-Host "  ccds sync saas,common --dry-run"
+    Write-Host ""
+    Write-Host "Then restart Claude Code to activate the generalist agents." -ForegroundColor Yellow
 } finally {
     if ($tempDir -and (Test-Path $tempDir.FullName)) {
         Remove-Item -LiteralPath $tempDir.FullName -Recurse -Force -ErrorAction SilentlyContinue

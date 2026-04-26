@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# claude-playbook -- Linux/macOS dispatcher
+# ccds -- Claude Code Dev Studio dispatcher (Linux/macOS)
 
 set -euo pipefail
 
@@ -7,14 +7,21 @@ SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || python3 -c "import
 BIN_DIR="$(dirname "$SCRIPT_PATH")"
 INSTALL_ROOT="$(cd "$BIN_DIR/.." && pwd)"
 
+# Detect layout kind
 if [[ -f "$INSTALL_ROOT/scripts/Sync-AgentPacks.sh" ]]; then
     SYNC_SCRIPT="$INSTALL_ROOT/scripts/Sync-AgentPacks.sh"
     VERIFY_SCRIPT="$INSTALL_ROOT/scripts/verify-agents.sh"
+    SETUP_SCRIPT="$INSTALL_ROOT/scripts/ccds-user-setup.sh"
     LIBRARY_ROOT="$INSTALL_ROOT"
-    LAYOUT_KIND="installed"
+    # Distinguish system package (/usr/share/ccds) from per-user install (~/.claude/playbook)
+    case "$INSTALL_ROOT" in
+        /usr/share/ccds*) LAYOUT_KIND="package" ;;
+        *)                LAYOUT_KIND="installed" ;;
+    esac
 elif [[ -f "$INSTALL_ROOT/Sync-AgentPacks.sh" ]]; then
     SYNC_SCRIPT="$INSTALL_ROOT/Sync-AgentPacks.sh"
     VERIFY_SCRIPT="$INSTALL_ROOT/verify-agents.sh"
+    SETUP_SCRIPT="$INSTALL_ROOT/scripts/ccds-user-setup.sh"
     LIBRARY_ROOT="$INSTALL_ROOT"
     LAYOUT_KIND="dev"
 else
@@ -22,9 +29,35 @@ else
     exit 2
 fi
 
+# ---------------------------------------------------------------------------
+# Per-user setup detection
+# ---------------------------------------------------------------------------
+# Checks whether the per-user setup has been run (generalists present + JIT
+# block injected). Returns 0 if setup is complete, 1 if it needs to run.
+needs_user_setup() {
+    # Check for at least one generalist agent
+    [[ -f "$HOME/.claude/agents/plan-architect.md" ]] || return 0
+    # Check for JIT block in CLAUDE.md
+    [[ -f "$HOME/.claude/CLAUDE.md" ]] && grep -qF '# >>> ccds >>>' "$HOME/.claude/CLAUDE.md" || return 0
+    return 1
+}
+
+run_user_setup_if_needed() {
+    if needs_user_setup; then
+        echo "==> First run: performing per-user setup..."
+        cmd_setup
+        echo ""
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 installed_version() {
     if [[ -f "$INSTALL_ROOT/version.txt" ]]; then
-        tr -d '[:space:]' < "$INSTALL_ROOT/version.txt"
+        local v
+        v="$(tr -d '[:space:]' < "$INSTALL_ROOT/version.txt")"
+        echo "$v"
     else
         echo "dev"
     fi
@@ -32,10 +65,9 @@ installed_version() {
 
 show_help() {
     cat <<EOF
-claude-playbook -- Claude Code agent pack activator
-
+ccds -- Claude Code Dev Studio
 USAGE
-  claude-playbook <command> [arguments]
+  ccds <command> [arguments]
 
 COMMANDS
   sync <packs>         Activate packs in the current directory (default: apply)
@@ -48,6 +80,9 @@ COMMANDS
   verify               Validate .claude/agents/ in the current directory
       --target <path>       Target path (default: current directory)
 
+  setup                Copy generalist agents and inject JIT block into CLAUDE.md
+      --dry-run             Preview without writing
+
   update [tag]         Download and install a release (default: latest stable)
       --rollback            Restore the previous installed version
       --include-prerelease  Pick up release candidates when resolving 'latest'
@@ -59,11 +94,12 @@ COMMANDS
   help                 Show this help
 
 EXAMPLES
-  claude-playbook sync saas,common
-  claude-playbook sync saas,ai,common --write-adr
-  claude-playbook sync game --dry-run
-  claude-playbook verify
-  claude-playbook --target /opt/foo verify
+  ccds sync saas,common
+  ccds sync saas,ai,common --write-adr
+  ccds sync game --dry-run
+  ccds verify
+  ccds setup
+  ccds --target /opt/foo verify
 
 LAYOUT
   Install location : $INSTALL_ROOT
@@ -75,6 +111,9 @@ LAYOUT
 EOF
 }
 
+# ---------------------------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------------------------
 DRY_RUN=0
 WRITE_ADR=0
 NO_GENERALISTS=0
@@ -89,7 +128,7 @@ if (( $# == 0 )); then
     exit 0
 fi
 
-COMMAND="$1"; shift
+COMMAND="${1//$'\r'/}"; shift
 
 case "$COMMAND" in
     -h|--help|help)    show_help; exit 0 ;;
@@ -115,11 +154,26 @@ while (( $# > 0 )); do
     esac
 done
 
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
+cmd_setup() {
+    [[ -f "$SETUP_SCRIPT" ]] || {
+        echo "ERROR: ccds-user-setup.sh not found at $SETUP_SCRIPT" >&2
+        exit 2
+    }
+    local dry=""
+    (( DRY_RUN )) && dry="--dry-run"
+    bash "$SETUP_SCRIPT" "$INSTALL_ROOT" $dry
+}
+
 cmd_sync() {
     if (( ${#POSITIONAL[@]} < 1 )); then
-        echo "ERROR: sync requires a pack list. Example: claude-playbook sync saas,common" >&2
+        echo "ERROR: sync requires a pack list. Example: ccds sync saas,common" >&2
         exit 2
     fi
+    run_user_setup_if_needed
+
     local packs="${POSITIONAL[0]}"
     local target="${TARGET:-$PWD}"
 
@@ -129,14 +183,15 @@ cmd_sync() {
         --library-root "$LIBRARY_ROOT"
         --mode "$MODE"
     )
-    (( DRY_RUN ))          && args+=(--dry-run)
-    (( WRITE_ADR ))        && args+=(--write-adr)
-    (( NO_GENERALISTS ))   && args+=(--no-generalists)
+    (( DRY_RUN ))        && args+=(--dry-run)
+    (( WRITE_ADR ))      && args+=(--write-adr)
+    (( NO_GENERALISTS )) && args+=(--no-generalists)
 
     exec "$SYNC_SCRIPT" "${args[@]}"
 }
 
 cmd_verify() {
+    run_user_setup_if_needed
     local target="${TARGET:-$PWD}"
     local agents_path="$target/.claude/agents"
     if [[ ! -d "$agents_path" ]]; then
@@ -152,7 +207,7 @@ fetch_installer() {
     local out="$1"
     command -v curl >/dev/null 2>&1 || { echo "ERROR: curl is required for update/uninstall" >&2; exit 2; }
     echo "==> Fetching installer from main"
-    if ! curl -fsSL -H "User-Agent: claude-playbook-dispatcher" -o "$out" "$INSTALLER_URL_SH"; then
+    if ! curl -fsSL -H "User-Agent: ccds-dispatcher" -o "$out" "$INSTALLER_URL_SH"; then
         echo "ERROR: Failed to download installer from $INSTALLER_URL_SH" >&2
         exit 2
     fi
@@ -160,6 +215,13 @@ fetch_installer() {
 }
 
 cmd_update() {
+    if [[ "$LAYOUT_KIND" == "package" ]]; then
+        echo "This installation is managed by your system package manager."
+        echo "To update: sudo apt upgrade ccds  (Debian/Ubuntu)"
+        echo "           sudo dnf upgrade ccds   (RHEL/Fedora)"
+        exit 0
+    fi
+
     local tmp
     tmp="$(mktemp -t install-playbook.XXXXXXXX.sh)"
     trap 'rm -f "$tmp"' EXIT
@@ -176,11 +238,17 @@ cmd_update() {
     fi
 
     bash "$tmp" "${args[@]}"
-    local code=$?
-    exit "$code"
+    exit "$?"
 }
 
 cmd_uninstall() {
+    if [[ "$LAYOUT_KIND" == "package" ]]; then
+        echo "This installation is managed by your system package manager."
+        echo "To remove: sudo apt remove ccds   (Debian/Ubuntu)"
+        echo "           sudo dnf remove ccds    (RHEL/Fedora)"
+        exit 0
+    fi
+
     local tmp
     tmp="$(mktemp -t install-playbook.XXXXXXXX.sh)"
     trap 'rm -f "$tmp"' EXIT
@@ -190,13 +258,19 @@ cmd_uninstall() {
     exit "$?"
 }
 
-case "$COMMAND" in
-    sync)      cmd_sync ;;
-    verify)    cmd_verify ;;
-    update)    cmd_update ;;
-    uninstall) cmd_uninstall ;;
-    *)
-        echo "ERROR: Unknown command: $COMMAND. Run 'claude-playbook help' for usage." >&2
-        exit 2
-        ;;
-esac
+# ---------------------------------------------------------------------------
+# Dispatch
+# Strip any trailing \r so the dispatcher works even if the script has
+# Windows line endings (CRLF) baked in from the build host.
+# ---------------------------------------------------------------------------
+COMMAND="${COMMAND//$'\r'/}"
+
+if   [[ "$COMMAND" == "setup"     ]]; then cmd_setup
+elif [[ "$COMMAND" == "sync"      ]]; then cmd_sync
+elif [[ "$COMMAND" == "verify"    ]]; then cmd_verify
+elif [[ "$COMMAND" == "update"    ]]; then cmd_update
+elif [[ "$COMMAND" == "uninstall" ]]; then cmd_uninstall
+else
+    echo "ERROR: Unknown command: $COMMAND. Run 'ccds help' for usage." >&2
+    exit 2
+fi

@@ -8,9 +8,15 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Build and publish release
+  # ---------------------------------------------------------------------------
+  # Windows: build ZIP + SHA256 sidecar
+  # ---------------------------------------------------------------------------
+  build-zip:
+    name: Build ZIP (Windows)
     runs-on: windows-latest
+    outputs:
+      version:    ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -20,43 +26,113 @@ jobs:
         shell: pwsh
         run: |
           $tag = "$env:GITHUB_REF_NAME"
-          Write-Host "Tag: $tag"
           if ($tag -notmatch '^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
               throw "Tag '$tag' does not match vMAJOR.MINOR.PATCH[-suffix]"
           }
           $prerelease = if ($tag -match '-') { 'true' } else { 'false' }
-          "version=$tag"          | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "version=$tag"           | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           "prerelease=$prerelease" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          Write-Host "version=$tag prerelease=$prerelease"
+          Write-Host "version=$tag  prerelease=$prerelease"
 
       - name: Build release ZIP
         shell: pwsh
         run: ./build-release.ps1 -Version "${{ steps.version.outputs.version }}"
 
-      - name: Verify artifacts
+      - name: Verify ZIP + SHA256
         shell: pwsh
         run: |
           $version = "${{ steps.version.outputs.version }}"
-          $zip = "dist/claude-playbook-$version.zip"
+          $zip = "dist/ccds-$version.zip"
           $sha = "$zip.sha256"
           if (-not (Test-Path $zip)) { throw "ZIP not found: $zip" }
           if (-not (Test-Path $sha)) { throw "SHA256 sidecar not found: $sha" }
-          $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          $actual   = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
           $recorded = ((Get-Content $sha -Raw).Split(' ')[0]).Trim().ToLower()
-          if ($actual -ne $recorded) {
-              throw "SHA256 mismatch. Recorded=$recorded Actual=$actual"
-          }
-          Write-Host "ZIP bytes  : $((Get-Item $zip).Length)"
-          Write-Host "SHA256     : $actual"
+          if ($actual -ne $recorded) { throw "SHA256 mismatch. Recorded=$recorded Actual=$actual" }
+          Write-Host "ZIP bytes : $((Get-Item $zip).Length)"
+          Write-Host "SHA256    : $actual"
+
+      - name: Upload ZIP artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: zip-artifacts
+          path: |
+            dist/ccds-${{ steps.version.outputs.version }}.zip
+            dist/ccds-${{ steps.version.outputs.version }}.zip.sha256
+
+  # ---------------------------------------------------------------------------
+  # Linux: build .deb + .rpm via fpm
+  # ---------------------------------------------------------------------------
+  build-packages:
+    name: Build packages (Linux)
+    runs-on: ubuntu-latest
+    needs: build-zip
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install fpm
+        run: |
+          sudo apt-get install -y ruby ruby-dev rpm
+          sudo gem install fpm --no-document
+
+      - name: Build .deb and .rpm
+        run: |
+          chmod +x build-release.sh
+          ./build-release.sh --version "${{ needs.build-zip.outputs.version }}"
+
+      - name: Verify packages exist
+        run: |
+          VERSION="${{ needs.build-zip.outputs.version }}"
+          VERSION_BARE="${VERSION#v}"
+          DEB="dist/ccds_${VERSION_BARE}_all.deb"
+          RPM="dist/ccds-${VERSION_BARE}-1.noarch.rpm"
+          [[ -f "$DEB" ]] || { echo "ERROR: .deb not found: $DEB"; exit 1; }
+          [[ -f "$RPM" ]] || { echo "ERROR: .rpm not found: $RPM"; exit 1; }
+          echo "DEB: $(du -h "$DEB" | cut -f1)  $DEB"
+          echo "RPM: $(du -h "$RPM" | cut -f1)  $RPM"
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pkg-artifacts
+          path: |
+            dist/*.deb
+            dist/*.rpm
+
+  # ---------------------------------------------------------------------------
+  # Publish: collect all artifacts and create GitHub Release
+  # ---------------------------------------------------------------------------
+  publish:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-zip, build-packages]
+    steps:
+      - name: Download ZIP artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: zip-artifacts
+          path: dist/
+
+      - name: Download package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: pkg-artifacts
+          path: dist/
+
+      - name: List release artifacts
+        run: ls -lh dist/
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.version }}
-          name: ${{ steps.version.outputs.version }}
-          prerelease: ${{ steps.version.outputs.prerelease }}
+          tag_name:               ${{ needs.build-zip.outputs.version }}
+          name:                   ${{ needs.build-zip.outputs.version }}
+          prerelease:             ${{ needs.build-zip.outputs.prerelease }}
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
-            dist/claude-playbook-${{ steps.version.outputs.version }}.zip
-            dist/claude-playbook-${{ steps.version.outputs.version }}.zip.sha256
+            dist/ccds-*.zip
+            dist/ccds-*.zip.sha256
+            dist/ccds_*.deb
+            dist/ccds-*.rpm

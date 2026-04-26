@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
-# install-playbook.sh -- Install / update / rollback / uninstall claude-playbook
+# install-playbook.sh -- Install / update / rollback / uninstall Claude Code Dev Studio
 #                        from GitHub Releases (Linux / macOS).
 #
 # Installed layout:
-#   $PREFIX/
-#     bin/                 (dispatcher)
-#     scripts/             (Sync-AgentPacks, Verify-Agents, both PS and sh)
-#     .claude/agents/      (agent library)
-#     CLAUDE.md
-#     README.md
-#     version.txt
+#   ~/.claude/                         ($HOME/.claude)
+#     agents/                          (7 generalists — always loaded by Claude Code)
+#     playbook/                        ($PREFIX — what this installer manages)
+#       bin/                           (dispatcher: ccds.sh)
+#       scripts/                       (Sync-AgentPacks, Verify-Agents, jit-claude.md)
+#       agents/                        (98 pack agents — copied to projects on demand)
+#       catalog.json                   (agent index for JIT selection)
+#       version.txt
+#       README.md
+#     CLAUDE.md                        (JIT block injected between markers)
 #
 # Atomic upgrade:
 #   1. Stage to $PREFIX.new
@@ -23,7 +26,7 @@
 #
 # Options:
 #   --version <tag>           Release tag to install (default: latest)
-#   --prefix <path>           Install root (default: $HOME/.local/share/claude-playbook)
+#   --prefix <path>           Install root (default: $HOME/.claude/playbook)
 #   --local-zip <file>        Install from a locally built ZIP instead of downloading
 #   --token <pat>             GitHub PAT for private-repo downloads (or $GITHUB_TOKEN)
 #   --no-path                 Skip shell-rc PATH update
@@ -37,7 +40,7 @@
 # Examples:
 #   curl -fsSL https://raw.githubusercontent.com/ggrace519/claude-code-dev-studio/main/install-playbook.sh | bash
 #   ./install-playbook.sh --version v0.4.0
-#   ./install-playbook.sh --local-zip ./dist/claude-playbook-v0.4.0-rc1.zip
+#   ./install-playbook.sh --local-zip ./dist/ccds-v0.4.0-rc1.zip
 #   ./install-playbook.sh --rollback
 #   ./install-playbook.sh --uninstall
 
@@ -50,7 +53,7 @@ REPO="claude-code-dev-studio"
 # Defaults
 # ---------------------------------------------------------------------------
 VERSION="latest"
-PREFIX="${HOME}/.local/share/claude-playbook"
+PREFIX="${HOME}/.claude/playbook"
 LOCAL_ZIP=""
 TOKEN=""
 NO_PATH=0
@@ -122,7 +125,7 @@ fi
 # HTTP helpers
 # ---------------------------------------------------------------------------
 curl_auth_args() {
-    local -a args=(-fsSL -H "User-Agent: claude-playbook-installer")
+    local -a args=(-fsSL -H "User-Agent: ccds-installer")
     if [[ -n "$TOKEN" ]]; then
         args+=(-H "Authorization: Bearer $TOKEN")
     fi
@@ -217,7 +220,7 @@ resolve_release_tag() {
 # Populates ASSET_ZIP_URL and ASSET_SHA_URL globals.
 lookup_release_assets() {
     local tag="$1"
-    local zip_name="claude-playbook-$tag.zip"
+    local zip_name="ccds-$tag.zip"
     local sha_name="$zip_name.sha256"
     local json
     json="$(http_api "https://api.github.com/repos/$OWNER/$REPO/releases/tags/$tag")"
@@ -248,8 +251,8 @@ verify_sha256() {
 # ---------------------------------------------------------------------------
 # Shell-rc PATH management
 # ---------------------------------------------------------------------------
-PATH_MARKER_BEGIN="# >>> claude-playbook PATH >>>"
-PATH_MARKER_END="# <<< claude-playbook PATH <<<"
+PATH_MARKER_BEGIN="# >>> ccds PATH >>>"
+PATH_MARKER_END="# <<< ccds PATH <<<"
 
 rc_targets() {
     # Emit one rc file per line. Only existing OR sensible-to-create files.
@@ -292,10 +295,10 @@ add_to_path_rc() {
                 { print }
             ' "$rc" > "$tmp"
             mv "$tmp" "$rc"
-            log_info "Refreshed claude-playbook PATH block in $rc"
+            log_info "Refreshed ccds PATH block in $rc"
         else
             printf '%s' "$block" >> "$rc"
-            log_ok "Added claude-playbook PATH block to $rc"
+            log_ok "Added ccds PATH block to $rc"
         fi
         updated=1
     done < <(rc_targets)
@@ -326,9 +329,58 @@ remove_path_rc() {
                 { print }
             ' "$rc" > "$tmp"
             mv "$tmp" "$rc"
-            log_ok "Removed claude-playbook PATH block from $rc"
+            log_ok "Removed ccds PATH block from $rc"
         fi
     done < <(rc_targets)
+}
+
+# ---------------------------------------------------------------------------
+# ~/.claude/ post-install helpers
+# ---------------------------------------------------------------------------
+
+GENERALIST_AGENTS=(
+    api-expert
+    deploy-checklist
+    plan-architect
+    pr-code-reviewer
+    secure-auditor
+    test-writer-runner
+    ux-design-critic
+)
+
+
+# Remove the playbook JIT block from ~/.claude/CLAUDE.md (used by uninstall)
+remove_claude_playbook_block() {
+    local claude_md="$HOME/.claude/CLAUDE.md"
+    local marker_begin="# >>> ccds >>>"
+    local marker_end="# <<< ccds <<<"
+
+    if [[ ! -f "$claude_md" ]]; then
+        log_info "No CLAUDE.md at $claude_md -- nothing to remove."
+        return
+    fi
+
+    if ! grep -qF "$marker_begin" "$claude_md"; then
+        log_info "No playbook block found in CLAUDE.md -- nothing to remove."
+        return
+    fi
+
+    if (( DRY_RUN )); then
+        log_info "DRY RUN -- would remove playbook JIT block from $claude_md"
+        return
+    fi
+
+    local tmp
+    tmp="$(mktemp)"
+    awk -v b="$marker_begin" -v e="$marker_end" '
+        BEGIN { in_block=0 }
+        $0 == b { in_block=1; next }
+        $0 == e { in_block=0; next }
+        in_block { next }
+        { print }
+    ' "$claude_md" > "$tmp"
+    mv "$tmp" "$claude_md"
+    log_ok "Removed playbook JIT block from $claude_md"
 }
 
 # ---------------------------------------------------------------------------
@@ -357,18 +409,19 @@ install_from_zip() {
     log_step "Extracting to $new_dir"
     unzip -q "$zip_path" -d "$new_dir"
 
-    # Sanity: bin/claude-playbook.sh must exist in the extracted tree.
-    local sentinel="$new_dir/bin/claude-playbook.sh"
-    if [[ ! -f "$sentinel" ]]; then
-        rm -rf "$new_dir"
-        die "Extraction did not produce bin/claude-playbook.sh -- archive layout is unexpected."
-    fi
-    chmod +x "$new_dir/bin/claude-playbook.sh" 2>/dev/null || true
+    # Sanity: key files must exist in the extracted tree.
+    for sentinel in "bin/ccds.sh" "catalog.json" "agents"; do
+        if [[ ! -e "$new_dir/$sentinel" ]]; then
+            rm -rf "$new_dir"
+            die "Extraction did not produce '$sentinel' -- archive layout is unexpected."
+        fi
+    done
+    chmod +x "$new_dir/bin/ccds.sh" 2>/dev/null || true
     # Make all *.sh under scripts/ executable too
     find "$new_dir/scripts" -maxdepth 1 -name '*.sh' -type f -exec chmod +x {} + 2>/dev/null || true
 
-    # Create bare 'claude-playbook' symlink for PATH resolution.
-    ln -sf "claude-playbook.sh" "$new_dir/bin/claude-playbook"
+    # Create bare 'ccds' symlink for PATH resolution.
+    ln -sf "ccds.sh" "$new_dir/bin/ccds"
 
     if [[ -d "$PREFIX" ]]; then
         if [[ -d "$prev_dir" ]]; then
@@ -411,7 +464,9 @@ do_uninstall() {
 
     if (( DRY_RUN )); then
         [[ -d "$PREFIX" ]] && log_info "DRY RUN -- would remove $PREFIX"
-        (( NO_PATH == 0 )) && log_info "DRY RUN -- would remove claude-playbook PATH block from shell rc files"
+        (( NO_PATH == 0 )) && log_info "DRY RUN -- would remove ccds PATH block from shell rc files"
+        log_info "DRY RUN -- would remove playbook JIT block from $HOME/.claude/CLAUDE.md"
+        log_info "DRY RUN -- note: generalist agents in $HOME/.claude/agents are NOT removed"
         return
     fi
 
@@ -426,6 +481,13 @@ do_uninstall() {
     if (( NO_PATH == 0 )); then
         remove_path_rc
     fi
+
+    # Remove the JIT block from ~/.claude/CLAUDE.md
+    log_step "Removing playbook JIT block from CLAUDE.md"
+    remove_claude_playbook_block
+
+    log_warn "Generalist agents in $HOME/.claude/agents were NOT removed."
+    log_warn "Delete them manually if desired."
 }
 
 # ---------------------------------------------------------------------------
@@ -495,14 +557,21 @@ if [[ -f "$PREFIX/version.txt" ]]; then
     INSTALLED_VERSION="$(tr -d '[:space:]' < "$PREFIX/version.txt")"
 fi
 
+# Per-user setup: generalist agents + CLAUDE.md JIT block
+dry_flag=""
+(( DRY_RUN )) && dry_flag="--dry-run"
+bash "$PREFIX/scripts/ccds-user-setup.sh" "$PREFIX" $dry_flag
+
 if (( NO_PATH == 0 )); then
     add_to_path_rc "$PREFIX/bin"
 fi
 
 printf '\n'
-printf '%s=== claude-playbook installed ===%s\n' "$C_GREEN" "$C_RESET"
+printf '%s=== Claude Code Dev Studio installed ===%s\n' "$C_GREEN" "$C_RESET"
 printf 'Prefix  : %s\n' "$PREFIX"
 printf 'Version : %s\n' "$INSTALLED_VERSION"
+printf 'Library : %s/agents (98 pack agents; %d generalists → ~/.claude/agents)\n' "$PREFIX" "${#GENERALIST_AGENTS[@]}"
+printf 'CLAUDE  : %s/.claude/CLAUDE.md (JIT block injected)\n' "$HOME"
 if (( NO_PATH == 0 )); then
     printf 'PATH    : %s (added to shell rc files)\n' "$PREFIX/bin"
     printf '\n'
@@ -511,6 +580,8 @@ if (( NO_PATH == 0 )); then
 fi
 printf '\n'
 printf '%sSmoke test:%s\n' "$C_YELLOW" "$C_RESET"
-printf '  claude-playbook version\n'
+printf '  ccds version\n'
 printf '  cd <your-project>\n'
-printf '  claude-playbook sync saas,common --dry-run\n'
+printf '  ccds sync saas,common --dry-run\n'
+printf '\n'
+printf '%sThen restart Claude Code to activate the generalist agents.%s\n' "$C_YELLOW" "$C_RESET"

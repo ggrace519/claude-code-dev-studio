@@ -5,6 +5,169 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## Session 15 — 2026-04-25
+
+### What was done
+
+**Linux packaging via fpm (`.deb` + `.rpm`):**
+- `build-release.sh` — new bash build script producing `ccds_<ver>_all.deb` and `ccds-<ver>-1.noarch.rpm`
+- Staged layout: `/usr/share/ccds/{agents,bin,scripts}/` + `/usr/bin/ccds` symlink
+- `packaging/postinst` — runs `ccds-user-setup.sh` as `$SUDO_USER` on interactive `sudo dpkg -i`
+- `packaging/prerm` — no-op (user data in `~/.claude/` is preserved on removal)
+- `scripts/ccds-user-setup.sh` — extracted shared per-user setup (copies 7 generalists, injects JIT CLAUDE.md block); called by both installer and dispatcher
+
+**`bin/ccds.sh` — full rewrite as dispatcher:**
+- Layout detection: `package` (`/usr/share/ccds`) vs `installed` (`~/.claude/playbook`) vs `dev`
+- `cmd_setup` / `cmd_sync` / `cmd_verify` / `cmd_update` / `cmd_uninstall` commands
+- `cmd_update` / `cmd_uninstall` for package installs prints apt/dnf instructions rather than fetching the bash installer
+- CRLF-safe dispatch: `COMMAND="${1//$'\r'/}"` + `if/elif` block (immune to Windows line ending artifacts)
+- `installed_version()` fixed to emit a trailing newline
+
+**CI pipeline (`.github/workflows/release.yml`):**
+- 3 jobs: `build-zip` (windows-latest), `build-packages` (ubuntu-latest), `publish`
+- `build-packages`: installs ruby + fpm, runs `build-release.sh`, verifies `.deb` and `.rpm` exist
+- `publish`: downloads all artifacts and creates GitHub Release with all 4 files
+
+**Build pipeline hardening:**
+- Pre-build cleanup: `rm -f` existing packages before fpm runs (avoids "File already exists" fatal)
+- File permissions: `chmod 755` (not `+x`) for all staged `.sh` files — ensures world-readable+executable
+- CRLF normalization: `find $STAGE_DIR -name '*.sh' -exec sed -i 's/\r$//' {} +` during staging
+- `fpm_build()` helper: display output to stderr, package path to stdout — safe for `$()` capture
+- `ensure_path()`: renames fpm's iteration-suffixed output (`ccds_0.5.0-1_all.deb`) to clean name
+
+**Bugs fixed:**
+- `chmod +x` does not guarantee world-readable; files installed as `rwxrwx--x` (771) caused `bash` "Permission denied". Fixed with explicit `chmod 755` + `chmod -R a+rX` in postinst.
+- fpm "File already exists" on rebuild — fixed by pre-build cleanup step
+- fpm iteration suffix in filename — fixed by `ensure_path()` rename + `fpm_build()` path extraction from fpm log
+- CRLF line endings from Windows edits broke bash `case`/`if` pattern matching — fixed by `sed` normalization in staging and `$'\r'` stripping in dispatcher
+- Old per-user install (`~/.claude/playbook/bin/ccds`) shadowed system package in PATH — root cause documented; removed old install tree to resolve
+- `\033[...]` color codes printed literally in `ccds-user-setup.sh` — fixed with `$'...'` ANSI-C quoting
+
+### Current state
+- `v0.5.0` tagged and pushed; CI running
+- Local install test passed: `sudo dpkg -i dist/ccds_0.5.0_all.deb && ccds version && ccds verify` → 105/105 agents PASS
+- `ccds setup`, `ccds version`, `ccds verify` all working from `/usr/bin/ccds`
+
+### Next possible work
+- Monitor CI run; verify `.deb`, `.rpm`, and `.zip` all appear in the GitHub Release
+- Scoop bucket for Windows distribution (designed in Session 14, not yet built)
+- `ccds sync` integration test: activate a pack on a real project, verify agents land in `.claude/agents/`
+- Clean-shell install test: fresh user account, `sudo dpkg -i`, `ccds setup`, `ccds sync saas`
+
+---
+
+## Session 14 — 2026-04-24
+
+### What was done
+
+**Product rename — `claude-playbook` → `ccds`:**
+- `bin/claude-playbook.ps1` and `bin/claude-playbook.sh` renamed to `bin/ccds.ps1` and `bin/ccds.sh`
+- All command examples and usage strings updated (`ccds sync`, `ccds version`, etc.)
+- Default install prefix updated: `%LOCALAPPDATA%\ClaudePlaybook` → `%USERPROFILE%\.claude\playbook` (PS), `$HOME/.local/share/claude-playbook` → `$HOME/.claude/playbook` (bash)
+- Symlink target updated: `ln -sf "ccds.sh" "$new_dir/bin/ccds"` (was `claude-playbook`)
+- Shell-rc PATH markers updated: `# >>> ccds PATH >>>` / `# <<< ccds PATH <<<`
+- `build-release.ps1` package name updated: `ccds-<version>.zip` (was `claude-playbook-<version>.zip`)
+- `.github/workflows/release.yml` artifact references updated to `ccds-$version.zip`
+- `CCDS_LIBRARY_ROOT` env var for library override in `Sync-AgentPacks.sh` (was `CLAUDE_PLAYBOOK_ROOT`)
+- Zero remaining `claude-playbook` references in operational files (verified by grep)
+
+**`Sync-AgentPacks.ps1` / `Sync-AgentPacks.sh` — source path fix:**
+- Both scripts previously pointed to the dev-repo `.claude\agents\` path
+- Default library root corrected to `~/.claude/playbook` (the installed location)
+- PS: `$LibraryRoot` default `(Join-Path $env:USERPROFILE '.claude\playbook')`
+- Bash: `LIBRARY_ROOT_DEFAULT="${CCDS_LIBRARY_ROOT:-$HOME/.claude/playbook}"`
+- `$LibAgents` / `LIB_AGENTS` now resolves to `<library_root>/agents` not `.claude/agents`
+
+**File truncation fixes:**
+- `Install-Playbook.ps1` was missing the `finally` block's `Remove-Item` completion and closing braces (file ended mid-line at 640). Fixed by appending correct tail; file now 642 lines.
+- `build-release.ps1` had a stray `W` as the final line (truncated `Write-Host`). Removed; script now ends cleanly after the sidecar summary line.
+- `.PARAMETER Prefix` doc comment in `Install-Playbook.ps1` corrected (missing backslash in path, stale description text).
+
+**README rewrite:**
+- All `claude-playbook` → `ccds` command references
+- Install prefix examples updated to `%USERPROFILE%\.claude\playbook` / `$HOME/.claude/playbook`
+- Added "How it works" section covering installed layout and JIT agent loading flow
+- File table updated: added `catalog.json`, `scripts/jit-claude.md`; corrected `bin/ccds.{ps1,sh}`; corrected `build-release.ps1` location (repo root, not `scripts/`)
+- Script invocation section updated with `$CCDS_LIBRARY_ROOT` / `-LibraryRoot` override note
+- Conventions section updated: `ccds-<tag>.zip` naming, ADR-0006 reference for marker pattern
+- DECISIONS reference updated to ADR-0001 … ADR-0006
+
+### Current state
+All operational files clean. Pre-test readiness audit passed:
+- `build-release.ps1` preflight: all 10 required sources present
+- 105 agents in `.claude/agents/`; 105 entries in `catalog.json`
+- Bash syntax checks: `install-playbook.sh`, `Sync-AgentPacks.sh`, `verify-agents.sh` all pass `bash -n`
+- Zero `claude-playbook` references in operational files
+
+### Next possible work
+- Run full local install test (`.\Install-Playbook.ps1 -LocalZip .\dist\ccds-v0.5.0-test.zip`) and validate end-to-end
+- Tag `v0.5.0` once local test passes
+- `ccds sync` dispatcher command: wire JIT copy flow from command line (currently `sync` calls `Sync-AgentPacks.*`; JIT select-then-copy is a separate interactive flow)
+- Integration test: dry-run install on a clean HOME, verify CLAUDE.md injection idempotency
+
+---
+
+## Session 13 — 2026-04-24
+
+### What was done
+Implemented the JIT (Just-In-Time) agent loading system end-to-end.
+
+**Architecture (ADR-0006):**
+- 7 generalist agents → `~/.claude/agents/` (always loaded, ~1,500 tokens)
+- 98 pack agents → `~/.claude/playbook/agents/` (zero startup cost until activated)
+- `catalog.json` → `~/.claude/playbook/` (agent index for selection without file reads)
+- JIT protocol block injected into `~/.claude/CLAUDE.md` via idempotent marker pattern
+- Pre-session model: Claude copies agents then user restarts; no mid-session injection
+
+**`scripts/jit-claude.md`** — new file, canonical source for the CLAUDE.md injection block:
+- Instructs Claude to read `catalog.json` on `/init` or task description
+- Pack selection table (stack signals → pack names)
+- Copy step: `~/.claude/playbook/agents/<name>.md` → `./.claude/agents/<name>.md`
+- Activation summary format + restart prompt
+- Handles `/sync-agents` explicit trigger and `--clean` removal flow
+- Guards against missing catalog (installer not run) with bootstrap error message
+
+**`Install-Playbook.ps1`** — updated for new layout:
+- Default prefix changed: `%LOCALAPPDATA%\ClaudePlaybook` → `%USERPROFILE%\.claude\playbook`
+- Added `$Script:GeneralistAgents` array (7 names)
+- Added `Install-GeneralistAgents` — copies 7 generalists from `$Prefix\agents\` to `~/.claude/agents/`
+- Added `Set-ClaudePlaybookBlock` — injects/replaces JIT block in `~/.claude/CLAUDE.md` using marker pattern; creates CLAUDE.md if absent
+- Added `Remove-ClaudePlaybookBlock` — strips marker block on uninstall; never touches content outside markers
+- Sentinel check expanded: validates `bin\claude-playbook.ps1`, `catalog.json`, and `agents\` in extracted ZIP
+- Post-install: calls `Install-GeneralistAgents` and `Set-ClaudePlaybookBlock` after `Install-FromZip`
+- Uninstall: calls `Remove-ClaudePlaybookBlock`, warns that generalist agents in `~/.claude/agents/` are not auto-removed
+- Updated summary output to show library path, CLAUDE.md path, restart reminder
+
+**`install-playbook.sh`** — mirrored changes for Linux/macOS:
+- Default prefix changed: `$HOME/.local/share/claude-playbook` → `$HOME/.claude/playbook`
+- Added `GENERALIST_AGENTS` array
+- Added `install_generalist_agents`, `set_claude_playbook_block`, `remove_claude_playbook_block` functions
+- `set_claude_playbook_block` uses `awk` for block injection/replacement (no sed multi-line issues)
+- `remove_claude_playbook_block` uses `awk` for clean marker-aware stripping
+- Same post-install and uninstall call sites as PS installer
+- `bash -n` syntax check: PASS
+
+**`build-release.ps1`** — updated ZIP layout:
+- Agents staged to `agents\` flat (not `.claude\agents\`) — installer decides destinations
+- Added `catalog.json` and `scripts\jit-claude.md` to copy map and preflight checks
+- Removed `CLAUDE.md` from bundle (injected at install time, not shipped as a static file)
+
+### Current state
+JIT system is fully implemented. The end-to-end flow:
+1. User runs installer → 7 generalists land in `~/.claude/agents/`, 98 pack agents in `~/.claude/playbook/agents/`, JIT block in `~/.claude/CLAUDE.md`
+2. User opens Claude Code in a new project → describes their task
+3. Claude reads `catalog.json`, selects relevant agents, copies them to `./.claude/agents/`, presents activation summary
+4. User restarts Claude Code → selected agents loaded, auto-invocation active
+
+### Next possible work
+- Update `Sync-AgentPacks.ps1`/`.sh` to use new `~/.claude/playbook/agents/` source path (currently hardcoded to old prefix)
+- `claude-playbook sync` CLI command: wire dispatcher to call JIT copy flow from command line
+- Integration test: dry-run install on a clean HOME, verify CLAUDE.md injection idempotency
+- Release tag `v0.5.0` with JIT as the headlining feature
+
+---
+
+
 ## Session 12 — 2026-04-19
 
 ### What was done

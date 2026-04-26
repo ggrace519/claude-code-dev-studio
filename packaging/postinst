@@ -1,0 +1,31 @@
+#!/bin/bash
+# postinst -- ccds Debian/RPM post-install script
+# Runs as root. Per-user setup (generalist agents + CLAUDE.md) is handled
+# lazily by 'ccds setup' or automatically on first 'ccds sync/verify'.
+# If SUDO_USER is set (interactive sudo install), we run setup for that user now.
+
+set -e
+
+INSTALL_ROOT="/usr/share/ccds"
+SETUP_SCRIPT="$INSTALL_ROOT/scripts/ccds-user-setup.sh"
+
+# Ensure all shell scripts are world-readable + executable (755).
+# chmod +x alone does not guarantee world-readable; use explicit 755.
+chmod 755 "$INSTALL_ROOT/scripts/"*.sh  2>/dev/null || true
+chmod 755 "$INSTALL_ROOT/bin/ccds.sh"   2>/dev/null || true
+# Agents and data files: world-readable (644)
+chmod -R a+rX "$INSTALL_ROOT"           2>/dev/null || true
+
+# If installed interactively via sudo, set up for the calling user immediately.
+if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
+    echo "==> Running per-user setup for $SUDO_USER..."
+    su - "$SUDO_USER" -c "bash '$SETUP_SCRIPT' '$INSTALL_ROOT'" || true
+else
+    echo ""
+    echo "ccds installed to $INSTALL_ROOT"
+    echo ""
+    echo "Run the following once to set up your Claude Code environment:"
+    echo "  ccds setup"
+    echo ""
+    echo "Or just run 'ccds sync <packs>' — setup runs automatically on first use."
+fi

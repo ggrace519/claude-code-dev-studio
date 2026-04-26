@@ -9,7 +9,7 @@
 
     Layout assumed:
       <install-root>\
-        bin\claude-playbook.ps1     (this script)
+        bin\ccds.ps1     (this script)
         scripts\Sync-AgentPacks.ps1
         scripts\Verify-Agents.ps1
         library\agents\*.md         (the pack library)
@@ -19,13 +19,13 @@
     scripts at repo root) so the same dispatcher works without installation.
 
 .EXAMPLE
-    claude-playbook sync saas,common
-    claude-playbook sync saas,ai,common --write-adr
-    claude-playbook sync game --dry-run
-    claude-playbook verify
-    claude-playbook update
-    claude-playbook version
-    claude-playbook help
+    ccds sync saas,common
+    ccds sync saas,ai,common --write-adr
+    ccds sync game --dry-run
+    ccds verify
+    ccds update
+    ccds version
+    ccds help
 #>
 [CmdletBinding()]
 param(
@@ -82,10 +82,10 @@ function Get-InstalledVersion {
 
 function Show-Help {
     @"
-claude-playbook -- Claude Code agent pack activator
+ccds -- Claude Code Dev Studio
 
 USAGE
-  claude-playbook <command> [arguments]
+  ccds <command> [arguments]
 
 COMMANDS
   sync <packs>         Activate packs in the current directory (default: apply)
@@ -109,11 +109,11 @@ COMMANDS
   help                 Show this help
 
 EXAMPLES
-  claude-playbook sync saas,common
-  claude-playbook sync saas,ai,common --write-adr
-  claude-playbook sync game --dry-run
-  claude-playbook verify
-  claude-playbook --target C:\proj\foo verify
+  ccds sync saas,common
+  ccds sync saas,ai,common --write-adr
+  ccds sync game --dry-run
+  ccds verify
+  ccds --target C:\proj\foo verify
 
 LAYOUT
   Install location : $installRoot
@@ -183,7 +183,7 @@ function Invoke-SyncCommand {
     param([hashtable]$Opts)
 
     if ($Opts.Positional.Count -lt 1) {
-        throw "sync requires a pack list. Example: claude-playbook sync saas,common"
+        throw "sync requires a pack list. Example: ccds sync saas,common"
     }
 
     # Accept packs as a single comma-separated token (saas,common) or as
@@ -245,7 +245,7 @@ function Save-RemoteInstaller {
     param([string]$OutFile)
     [Net.ServicePointManager]::SecurityProtocol = `
         [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-    $headers = @{ 'User-Agent' = 'claude-playbook-dispatcher' }
+    $headers = @{ 'User-Agent' = 'ccds-dispatcher' }
     Invoke-WebRequest -Uri $Script:InstallerUrlPs1 -Headers $headers -OutFile $OutFile -UseBasicParsing
 }
 
@@ -346,7 +346,7 @@ switch ($Command) {
     'update'     { Invoke-UpdateCommand -Opts $opts }
     'uninstall'  { Invoke-UninstallCommand }
     default {
-        Write-Error "Unknown command: $Command. Run 'claude-playbook help' for usage."
+        Write-Error "Unknown command: $Command. Run 'ccds help' for usage."
         exit 2
     }
 }

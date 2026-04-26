@@ -1,0 +1,7 @@
+#!/bin/bash
+# prerm -- ccds Debian/RPM pre-remove script
+# Note: we do NOT remove per-user files (~/.claude/agents, ~/.claude/CLAUDE.md
+# JIT block) on package removal. Those are user data and require explicit
+# 'ccds setup --remove' or manual cleanup.
+set -e
+exit 0

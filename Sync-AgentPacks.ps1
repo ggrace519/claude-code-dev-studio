@@ -3,7 +3,7 @@
     Activate Claude Code agent packs from the dev-studio library into a target project.
 
 .DESCRIPTION
-    The dev-studio at C:\coding-projects\claude-code-dev-studio\.claude\agents acts as
+    The installed playbook library at ~/.claude/playbook/agents/ acts as
     the canonical library of all 105 agents. Most projects only need 1-3 packs.
     This script syncs a subset into a target project's .claude\agents directory, tracks
     what it owns via a manifest (.pack-manifest.json), and supports clean deactivation
@@ -34,7 +34,7 @@
     Append an activation ADR to <TargetProject>\DECISIONS.md.
 
 .PARAMETER LibraryRoot
-    Override the library location. Default: C:\coding-projects\claude-code-dev-studio.
+    Override the library location. Default: %USERPROFILE%\.claude\playbook (set by installer).
 
 .PARAMETER AllowLibraryTarget
     Override the guard that refuses to run when TargetProject resolves to the same
@@ -65,7 +65,7 @@ param(
     [ValidateSet('Copy','Symlink')][string]$Mode = 'Copy',
     [switch]$DryRun,
     [switch]$WriteAdr,
-    [string]$LibraryRoot = 'C:\coding-projects\claude-code-dev-studio',
+    [string]$LibraryRoot = (Join-Path $env:USERPROFILE '.claude\playbook'),
     [switch]$AllowLibraryTarget
 )
 
@@ -76,7 +76,7 @@ if (-not (Test-Path -LiteralPath $TargetProject)) { throw "TargetProject does no
 if (-not (Test-Path -LiteralPath $LibraryRoot))   { throw "LibraryRoot does not exist: $LibraryRoot" }
 
 # --- Paths
-$LibAgents = Join-Path $LibraryRoot '.claude\agents'
+$LibAgents = Join-Path $LibraryRoot 'agents'
 $TgtClaude = Join-Path $TargetProject '.claude'
 $TgtAgents = Join-Path $TgtClaude 'agents'
 $Manifest  = Join-Path $TgtAgents '.pack-manifest.json'
@@ -292,3 +292,4 @@ Sync mechanism: $Mode (managed by ``Sync-AgentPacks.ps1``; see ``.claude\agents\
     [System.IO.File]::WriteAllText($decisions, $existing + $adr, [System.Text.UTF8Encoding]::new($false))
     Write-Host ("OK ADR appended to {0}" -f $decisions) -ForegroundColor Green
 }
+          

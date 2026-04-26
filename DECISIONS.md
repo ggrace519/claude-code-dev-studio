@@ -325,3 +325,66 @@ Alternatives considered and rejected:
 
 ### Supersedes
 None. Complements ADR-0001 through ADR-0004. Establishes the licensing baseline for all artifacts in this repository going forward.
+
+---
+
+## ADR-0006: JIT Agent Loading Architecture
+
+**Date:** 2026-04-24
+**Status:** Accepted
+**Phase:** Architecture
+**Deciders:** Greg Grace
+
+### Context
+
+Loading all 105 agent files at Claude Code session start imposes a confirmed overhead of ~17,000 tokens on every session regardless of the project type. For a project that uses only 2–3 packs, this burns context budget on 90+ irrelevant agent definitions. The goal is to make the correct agents available at runtime without paying the full 17k token cost on unrelated projects.
+
+Two constraints drive the design:
+1. **Claude Code loads agents statically at session start** — there is no mid-session agent injection mechanism. Any "loading" must occur before the next session begins.
+2. **The global `~/.claude/agents/` directory** is the only location Claude Code reads agents from at startup. Per-project `.claude/agents/` directories are also read when Claude Code is opened in that directory.
+
+### Decision
+
+1. **7 generalist agents live permanently in `~/.claude/agents/`** — they are always loaded (~1,500 tokens, acceptable), trigger on all projects, and contain no pack-specific logic.
+
+2. **98 pack agents are stored in `~/.claude/playbook/agents/`** (inside the installer-managed prefix) — they are never loaded automatically and add zero token overhead until explicitly activated.
+
+3. **`~/.claude/playbook/catalog.json`** is a machine-readable index of all 105 agents (name, pack, model, description). Claude reads this during project initialization to select relevant agents without loading the agent files themselves.
+
+4. **JIT selection and copy** — when a user starts a new project or runs `/sync-agents`, Claude:
+   - Reads `catalog.json` and matches agents to the project context
+   - Copies selected pack agent `.md` files from `~/.claude/playbook/agents/` to `./.claude/agents/`
+   - Presents an activation summary and requests a session restart
+   - After restart, only the selected agents are loaded into context
+
+5. **`~/.claude/CLAUDE.md` injection** — the JIT protocol is injected as a marker-bounded block (`# >>> claude-playbook >>>` / `# <<< claude-playbook <<<`) into the user's global CLAUDE.md by the installer. The block is idempotent (safe to re-run on update) and non-destructive (content outside the markers is never touched). Uninstall removes the block cleanly.
+
+6. **`scripts/jit-claude.md`** is the canonical source of the injected block. It is bundled in the release ZIP and read by the installer at install/update time, ensuring the protocol text stays in sync with the agent library version.
+
+### Rationale
+
+**Why not load all 105 agents globally?**
+Empirically confirmed 17,000-token overhead. On a project that only needs `infra` agents, loading `game-`, `media-`, `embed-`, and 10 other packs wastes budget and pollutes auto-invocation matching.
+
+**Why not a dynamic mid-session load?**
+Claude Code's agent system is static-at-startup. There is no API to register an agent mid-session. The pre-session copy-then-restart approach is the only viable path given this constraint.
+
+**Why `~/.claude/playbook/` instead of a separate prefix like `%LOCALAPPDATA%\ClaudePlaybook`?**
+Claude Code's native config directory is `~/.claude/`. Keeping the agent library inside it (`~/.claude/playbook/`) reduces the installation surface: no separate tool-specific directory, no separate PATH-management concern for the library itself. The CLI dispatcher (`~/.claude/playbook/bin/`) still goes on PATH, but the library data lives adjacent to where Claude Code expects config.
+
+**Why a marker block in CLAUDE.md rather than a separate include?**
+Claude Code does not support include directives in CLAUDE.md. A marker block in the single global CLAUDE.md is the only way to inject persistent global instructions. The marker pattern (`# >>> ... >>>` / `# <<< ... <<<`) mirrors the established convention used by the shell-rc PATH management in the same installer.
+
+**Why `catalog.json` rather than reading all 105 agent files?**
+Reading 105 `.md` files during project init would itself consume tokens and incur file I/O. The catalog provides structured metadata (name, pack, model, description) at negligible cost. Descriptions are pre-cleaned: `<example>` blocks and `\\n` escapes are stripped so the catalog is a flat, scannable JSON array.
+
+### Consequences
+
+- **Token cost at startup:** 7 generalists only (~1,500 tokens); pack agents contribute zero until activated per-project.
+- **Per-project restart required on first activation:** users must restart Claude Code after the first `claude-playbook sync` or `/init` run in a new project. This is a one-time friction per project.
+- **Pack agents are project-scoped:** `./.claude/agents/` accumulates pack agent files per project. `claude-playbook sync --clean` removes them; the 7 generalists in `~/.claude/agents/` are never touched by clean.
+- **Installer must manage two destinations:** generalists → `~/.claude/agents/`, pack agents stay in `~/.claude/playbook/agents/`. Build-release must bundle all 105 agents flat in `agents/` and the installer separates them post-extraction.
+- **CLAUDE.md must exist or be creatable:** installer creates `~/.claude/CLAUDE.md` if absent. Uninstall removes the marker block but leaves the file intact.
+
+### Supersedes
+Partial supersession of ADR-0004 (`Sync-AgentPacks.ps1` as canonical activation mechanism): `Sync-AgentPacks.ps1`/`.sh` remain for explicit pack-to-project copying, but the JIT flow (Claude-driven via `catalog.json` + CLAUDE.md instructions) is now the primary activation path. `sync` commands become the explicit fallback.
