@@ -381,7 +381,7 @@ Closed the Session 7 / 8 deferred follow-up list (minus one kept-deferred item).
   - `*.ps1 text` — PowerShell scripts use autocrlf (tolerated by PS 5.1 and 7+)
   - `*.md`, `*.json` — text, autocrlf-handled
   - `*.png`, `*.jpg`, `*.jpeg`, `*.gif`, `*.ico`, `*.pdf` — defensive binary markers (no binaries currently in repo)
-- **`SECURITY.md` added.** Responsible-disclosure channel (`ggrace@519lab.com`), 7-day acknowledgement / 30-day remediation-plan SLA, explicit scope boundaries (playbook + scripts + agent files IN; Claude Code CLI + third-party tools OUT), 30-day coordinated disclosure window, no bug bounty.
+- **`SECURITY.md` added.** Responsible-disclosure channel (`contact@519lab.com`), 7-day acknowledgement / 30-day remediation-plan SLA, explicit scope boundaries (playbook + scripts + agent files IN; Claude Code CLI + third-party tools OUT), 30-day coordinated disclosure window, no bug bounty.
 - **`Sync-AgentPacks.sh` added** — *nix port of `Sync-AgentPacks.ps1`. Feature-complete and manifest-interchangeable with the PS1 version:
   - Long-flag CLI: `--target-project`, `--packs`, `--library-root`, `--mode`, `--no-generalists`, `--dry-run`, `--write-adr`, `--allow-library-target`, `-h`/`--help`
   - Same 15 valid prefixes, same generalists-by-default rule, same manifest schema (`.pack-manifest.json`, `schema: 1`)
@@ -446,7 +446,7 @@ claude-code-dev-studio/
 - **Repository published to GitHub** (`ggrace519/claude-code-dev-studio`) and licensed.
 - **License chosen: PolyForm Noncommercial 1.0.0.** Copyright held by Onward Investment LLC. Full rationale in ADR-0005.
 - **New top-level files:**
-  - `LICENSE` — verbatim PolyForm Noncommercial 1.0.0 text + `Required Notice: Copyright 2026 Onward Investment LLC. All rights reserved.` + commercial-inquiry contact (`ggrace@519lab.com`).
+  - `LICENSE` — verbatim PolyForm Noncommercial 1.0.0 text + `Required Notice: Copyright 2026 Onward Investment LLC. All rights reserved.` + commercial-inquiry contact (`contact@519lab.com`).
   - `README.md` — project overview, quick start (`Sync-AgentPacks.ps1` usage), available packs, conventions, license summary, commercial contact.
   - `CONTRIBUTING.md` — scope of accepted contributions, file-encoding / layout / naming / handoff conventions, inbound-license grant to Onward Investment LLC (enables future relicensing or commercial license offering without re-contacting past contributors), DCO-style affirmation in lieu of a full CLA, security disclosure channel.
   - `.gitignore` — excludes `.pack-manifest.json` (per-consumer project state), OS cruft (Thumbs.db, Desktop.ini, .DS_Store), editor state (.vscode, .idea, swp), logs/temp.
@@ -470,7 +470,7 @@ claude-code-dev-studio/
 
 ### License model (post-Session 8)
 - **Free for noncommercial use.** Individuals, students, hobbyists, nonprofits, educational institutions, public-interest organizations, government institutions — permitted by default per the PolyForm NC definition.
-- **Commercial use requires a separate license.** Contact: `ggrace@519lab.com`. Contracted via Onward Investment LLC.
+- **Commercial use requires a separate license.** Contact: `contact@519lab.com`. Contracted via Onward Investment LLC.
 - **Contributors grant Onward Investment LLC a perpetual, worldwide, relicensing-capable license** over their contributions. Documented in `CONTRIBUTING.md`. DCO-style affirmation; no formal CLA workflow.
 
 ### Where things stand

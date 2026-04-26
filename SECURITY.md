@@ -4,7 +4,7 @@
 
 Do **not** open a public issue for security-related reports.
 
-Email: **ggrace@519lab.com**
+Email: **security@519lab.com**
 
 Include:
 

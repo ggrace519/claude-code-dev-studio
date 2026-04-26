@@ -58,7 +58,7 @@ Non-trivial architectural or process changes go into `DECISIONS.md` as a new ADR
 
 ## Security and responsible disclosure
 
-Do **not** open public issues for security problems. Email ggrace@519lab.com with the details and a reproducer. Expect an acknowledgement within a week.
+Do **not** open public issues for security problems. Email security@519lab.com with the details and a reproducer. Expect an acknowledgement within a week.
 
 ## Code of conduct
 
@@ -66,4 +66,4 @@ Be direct, technical, and respectful. Disagree on the merits; don't attack peopl
 
 ## Questions
 
-Open a discussion or reach out at ggrace@519lab.com.
+Open a discussion or reach out at security@519lab.com.

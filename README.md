@@ -161,6 +161,6 @@ Pack contents, agent counts, and trigger conditions are documented in `CLAUDE.md
 **PolyForm Noncommercial 1.0.0** — see [`LICENSE`](./LICENSE).
 
 - **Free for noncommercial use**: personal projects, research, education, public-interest organizations, hobby work, and nonprofits.
-- **Commercial use requires a separate license.** Contact ggrace@519lab.com.
+- **Commercial use requires a separate license.** Contact contact@519lab.com.
 
 Copyright 2026 Onward Investment LLC. All rights reserved.

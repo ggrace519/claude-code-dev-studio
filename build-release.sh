@@ -93,7 +93,7 @@ FPM_FLAGS=(
     --description "$DESC"
     --url "https://github.com/ggrace519/claude-code-dev-studio"
     --license "PolyForm-Noncommercial-1.0.0"
-    --maintainer "Greg Grace <ggrace@519lab.com>"
+    --maintainer "Onward Investment LLC <contact@519lab.com>"
     --vendor "Onward Investment LLC"
     --after-install  "$REPO_ROOT/packaging/postinst"
     --before-remove  "$REPO_ROOT/packaging/prerm"

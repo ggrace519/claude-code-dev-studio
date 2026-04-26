@@ -293,7 +293,7 @@ Constraints:
 License the repository under **PolyForm Noncommercial 1.0.0** (<https://polyformproject.org/licenses/noncommercial/1.0.0>). Copyright held by **Onward Investment LLC**.
 
 Artifacts added this session:
-- `LICENSE` — verbatim PolyForm Noncommercial 1.0.0 text with `Required Notice: Copyright 2026 Onward Investment LLC. All rights reserved.` and a commercial-inquiry contact line pointing to `ggrace@519lab.com`.
+- `LICENSE` — verbatim PolyForm Noncommercial 1.0.0 text with `Required Notice: Copyright 2026 Onward Investment LLC. All rights reserved.` and a commercial-inquiry contact line pointing to `contact@519lab.com`.
 - `README.md` — project overview, quick start, license summary, commercial contact.
 - `CONTRIBUTING.md` — declares that all contributions grant Onward Investment LLC a perpetual, worldwide, relicense-capable license. DCO-style affirmation in lieu of a full CLA. Preserves the ability to offer a separate commercial license without re-negotiating with past contributors.
 - `.gitignore` — excludes per-consumer `.pack-manifest.json`, OS cruft, editor state.
@@ -317,7 +317,7 @@ Alternatives considered and rejected:
 
 ### Consequences
 - **Repository is source-available, not open source.** This is intentional. Discovery via GitHub's license filter will list it as "Other" or "PolyForm Noncommercial," not as an OSI-approved license. Some OSS directories will exclude it; that's the tradeoff.
-- **Commercial use requires a separate license from Onward Investment LLC.** The inquiry channel is `ggrace@519lab.com` (stated in `LICENSE`, `README.md`, and `CONTRIBUTING.md`).
+- **Commercial use requires a separate license from Onward Investment LLC.** The inquiry channel is `contact@519lab.com` (stated in `LICENSE`, `README.md`, and `CONTRIBUTING.md`).
 - **Contributors grant Onward Investment LLC relicensing rights.** Contribution volume may be lower than for OSI-licensed projects; this is acceptable and expected.
 - **Relicense path remains open.** Onward Investment LLC (sole rights holder, plus contributor inbound grants) can later relicense the repository under a more permissive license (MIT, Apache-2.0) or a different source-available license (BSL, ELv2) without clearing past contributors.
 - **Enforcement falls on the copyright holder.** A license without enforcement is just a polite request. Active enforcement is optional but the right to enforce is preserved.
