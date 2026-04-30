@@ -59,3 +59,4 @@ You do NOT own:
 - **Traceability schema** — tables and joins for genealogy and recall lookup
 - **RMA workflow** — intake diagnostic, binning rules, fleet-rollout decision criteria
 - **CM handoff packet** — test specs, fixture BOM, acceptance criteria, ECN protocol
+- **Recommended next steps** — Return DFT spec and test flow to the orchestrator; `pr-code-reviewer` reviews any automation code before merging. If key injection involves cryptographic design decisions, invoke `secure-auditor`.

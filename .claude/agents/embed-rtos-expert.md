@@ -46,3 +46,4 @@ You do NOT own:
 - **Sync primitives** — where/why each is used
 - **Memory map** — heap, stacks, static regions, guards
 - **Schedulability notes** — WCET, utilization, headroom
+- **Recommended next steps** — Return task table and sync primitives to the orchestrator; `pr-code-reviewer` reviews before proceeding. If task timing changes affect the power budget, coordinate with `embed-power-expert`.
