@@ -5,6 +5,46 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## Session 16 — 2026-04-30
+
+### What was done
+
+**Agent handoff language across all 105 agents:**
+- The agent system had two structural gaps making the orchestrator infer next steps from context: 5 generalists had no scope-delegation language at all, and ~30+ agents had "You do NOT own" sections without a "Recommended next steps" output field naming what to invoke next
+- Decision recorded in `docs/superpowers/specs/2026-04-30-agent-handoff-language-design.md` and execution plan in `docs/superpowers/plans/2026-04-30-agent-handoff-language.md`
+
+**Generalists — new `## Scope Boundaries` sections (7 files):**
+- `plan-architect`, `pr-code-reviewer`, `test-writer-runner`, `api-expert`, `ux-design-critic`, `deploy-checklist`, `secure-auditor` each got a "You own / You do NOT own" block with explicit `→ agent-name` delegations covering both phase-chain handoffs and domain escalations to pack specialists
+- `plan-architect` and `secure-auditor` had pre-existing generic "recommended next step" language replaced with specific agent-named versions
+
+**Pack agents — `Recommended next steps` output field (~98 files):**
+- Every pack agent across `saas`, `ai`, `infra`, `devtool`, `game`, `mobile`, `ecom`, `fintech`, `dataplat`, `desktop`, `ext`, `embed`, `media`, `orch`, `common` got a `- **Recommended next steps** —` bullet appended to their Output Format section
+- Two-part structure: static "what comes next in the phase flow" + conditional "if X surfaces, invoke `agent-name`" + soft cross-pack advisory hints (no agent filename, so they degrade gracefully when the relevant pack isn't installed)
+
+**Global `~/.claude/CLAUDE.md` update:**
+- Added session-restart note to Step 1 of the init protocol — copying agents to `.claude/agents/` requires a session restart before they activate. Forces the orchestrator to surface this to the user before running `ccds sync`
+
+**Process artifacts:**
+- 17 commits on `feat/agent-handoff-language` branch, merged via PR #1 (commit `85e496e`)
+- Worktree-based subagent-driven development: dispatched fresh subagent per pack with full task text, two-stage review (spec compliance + code quality) for the generalists, batch verification for pack tasks
+- One-time spot-check routine scheduled (`trig_0156VLp1NkLtnqavCrpCoPQm`) for 2026-05-14 to verify integrity and surface any drift
+
+### Current state
+- 105/105 agents have the `Recommended next steps` output field; `grep -L "Recommended next steps" .claude/agents/*.md` returns empty
+- 7/7 generalists have `## Scope Boundaries` sections
+- No file has the field duplicated (every agent shows exactly 1 occurrence)
+- `verify-agents.sh` passes 105/105 with zero failures
+- Main branch CI green at commit `85e496e`
+- No code, schema, or interface changes — pure content additions
+
+### Next possible work
+- Tag and ship `v0.6.0` (build pipeline unchanged from v0.5.0; same fpm flow)
+- 2026-05-14 spot-check routine fires — review its drift report
+- If new agents are added in future sessions, ensure they include the handoff fields from creation; consider adding a CONTRIBUTING note or a lint rule
+- Scoop bucket for Windows distribution (designed in Session 14, still not built)
+
+---
+
 ## Session 15 — 2026-04-25
 
 ### What was done
