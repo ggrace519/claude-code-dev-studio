@@ -52,3 +52,4 @@ You do NOT own:
 - **Fix** — the change in input / feedback / camera / audio layer
 - **Accessibility coverage** — color-blind, motor, cognitive, reduced-motion
 - **Playtest note** — what to watch for in the next session
+- **Recommended next steps** — Return findings to the orchestrator; `pr-code-reviewer` reviews implementation before proceeding. If accessibility coverage is insufficient, invoke `common-a11y-expert`.

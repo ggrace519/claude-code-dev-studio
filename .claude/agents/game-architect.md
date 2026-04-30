@@ -57,3 +57,4 @@ You do NOT own:
 - **Save/load** — format, versioning, migration path
 - **Reversibility table** — easy / hard / one-way-door per decision
 - **Draft ADR** — for `DECISIONS.md`
+- **Recommended next steps** — Engage specialists per domain: engine implementation → `game-engine-expert`; multiplayer → `game-netcode-expert`; frame budget → `game-perf-profiler`; audio → `game-audio-expert`; economy/progression → `game-balance-designer`; game feel → `game-feel-critic`; live-ops → `game-liveops-expert`; platform cert → `game-platform-cert-expert`. Route all implementation through `pr-code-reviewer`. If the game UI has complex accessibility requirements, consider whether an accessibility specialist would add value reviewing input and display design.

@@ -47,3 +47,4 @@ You do NOT own:
 - **Experiment design** — hypothesis, arms, metric, MDE, duration
 - **Content calendar** — drops, events, gating, dependencies
 - **Rollback plan** — kill switch, comms, refund posture
+- **Recommended next steps** — Return the live-ops plan to the orchestrator; `pr-code-reviewer` reviews code changes before merging. If A/B test statistical rigor is needed, consider whether a data platform quality specialist would add value reviewing the experiment design. If the telemetry pipeline feeds a warehouse, consider whether a data platform streaming specialist would add value reviewing the ingestion topology.
