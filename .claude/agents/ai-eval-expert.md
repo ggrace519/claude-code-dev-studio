@@ -52,3 +52,4 @@ You do NOT own:
 - **Human-rater protocol** (if applicable) — task, agreement target
 - **Failure taxonomy** — error classes tracked
 - **Baseline** — current metric values across axes
+- **Recommended next steps** — Return the eval harness and baseline metrics to the orchestrator; `pr-code-reviewer` reviews CI wiring before merging. If a perf regression gate is needed alongside quality, invoke `ai-inference-perf-expert`.

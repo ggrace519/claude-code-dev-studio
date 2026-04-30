@@ -55,3 +55,4 @@ You do NOT own:
 - **Quality check** — eval result on the relevant golden set
 - **Post numbers** — after
 - **Regression guard** — monitored metric and threshold
+- **Recommended next steps** — Return the perf change and quality-check result to the orchestrator; `pr-code-reviewer` reviews before deploying. If quality degraded, invoke `ai-eval-expert`. If the serving topology needs restructuring, invoke `ai-architect`. If cost is critical at scale, consider whether a FinOps specialist would add value reviewing the compute commitment strategy.

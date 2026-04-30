@@ -56,3 +56,4 @@ You do NOT own:
 - **Examples** — few-shots with rationale
 - **Eval result** — before/after on the relevant test set
 - **Failure modes** — where the prompt is known to drift
+- **Recommended next steps** — Return the prompt and eval result to the orchestrator. If output quality meets the eval bar, `pr-code-reviewer` reviews integration code before proceeding. If the prompt fails on adversarial inputs, invoke `ai-safety-expert`. If retrieval context is malformed, invoke `ai-rag-expert`.

@@ -47,3 +47,4 @@ You do NOT own:
 - **Dataset spec** — size, sources, filtering, splits
 - **Training config** — hparams, infra, cost estimate
 - **Eval plan** — pre/post comparison, regression gates
+- **Recommended next steps** — Return training config and eval plan to the orchestrator; `ai-eval-expert` verifies quality gates before the model is deployed. If the dataset contains PII or regulated content, invoke `ai-safety-expert` and `common-privacy-expert` before training begins. If inference serving is needed, invoke `ai-inference-perf-expert`.

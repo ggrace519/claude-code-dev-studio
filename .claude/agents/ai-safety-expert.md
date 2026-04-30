@@ -57,3 +57,4 @@ You do NOT own:
 - **Red-team set** — adversarial prompts tested against it
 - **Residual risk** — what the defense does NOT cover
 - **Monitoring** — refusal rate, leak-detection metrics
+- **Recommended next steps** — Return safety controls and red-team results to the orchestrator; `secure-auditor` reviews application-security concerns before proceeding. If sandbox execution is involved, invoke `orch-sandbox-safety-expert`. If the policy touches PII, invoke `common-privacy-expert`.
