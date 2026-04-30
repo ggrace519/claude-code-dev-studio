@@ -70,3 +70,4 @@ You do NOT own:
 - **Audit events** â€” which actions emit audit logs and what they contain
 - **Negative tests** â€” tests that attempt bypass, replay, tampering, missing-claim paths
 - **Draft ADR** â€” for any non-trivial auth topology choice
+- **Recommended next steps** — Return auth implementation to the orchestrator; `pr-code-reviewer` reviews before proceeding. Ensure `secure-auditor` has reviewed any cryptographic or token-handling changes. If multi-tenant SSO affects channel isolation, coordinate with `saas-multitenancy-expert`. If entitlement checks are affected, coordinate with `saas-billing-expert`.

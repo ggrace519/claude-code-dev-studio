@@ -69,3 +69,4 @@ You do NOT own:
 - **Authorization** â€” per-op authorization point, not just per-connection
 - **Adversarial tests** â€” tests covering drop, reorder, duplicate, high-latency, and malformed-op cases
 - **Draft ADR** â€” when a non-trivial sync decision is made
+- **Recommended next steps** — Return sync implementation to the orchestrator; `pr-code-reviewer` reviews before proceeding. If tenant isolation of realtime channels needs verification, invoke `saas-multitenancy-expert`. If the sync protocol must operate over mobile devices with intermittent connectivity, consider whether a mobile offline sync specialist would add value reviewing the reconnection and replay design.

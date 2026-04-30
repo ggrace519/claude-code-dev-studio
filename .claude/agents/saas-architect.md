@@ -69,5 +69,5 @@ Decide the topology. Hand off implementation to the specialists.
 - **Data boundaries** â€” isolation, analytics, export/delete paths
 - **Reversibility table** â€” classify each decision as easy / hard / one-way-door
 - **Compliance spillover** â€” only if any regulated scope applies
-- **Recommended next steps** â€” concrete next actions and which specialists to engage
+- **Recommended next steps** — Name which specialists to engage based on decisions made: schema work → `saas-data-model-expert`; auth topology → `saas-auth-sso-expert`; billing implementation → `saas-billing-expert`; tenant isolation enforcement → `saas-multitenancy-expert`; realtime sync → `saas-collab-sync-expert`. Route all implementation through `pr-code-reviewer` after code is written. If security concerns surface, invoke `secure-auditor`.
 - **Draft ADR** â€” formatted `DECISIONS.md` entry for user approval

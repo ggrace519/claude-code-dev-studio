@@ -65,3 +65,4 @@ You do NOT own:
 - **Background-job audit** â€” if the change affects shared workers, explicitly cover them
 - **Performance impact** â€” measured overhead or a stated plan to measure it
 - **Draft ADR** â€” when a non-trivial isolation pattern is chosen
+- **Recommended next steps** — Return isolation code to the orchestrator; `pr-code-reviewer` reviews before proceeding. Escalate any cryptographic or privilege-escalation concerns to `secure-auditor`. If the schema is also changing, coordinate with `saas-data-model-expert`.

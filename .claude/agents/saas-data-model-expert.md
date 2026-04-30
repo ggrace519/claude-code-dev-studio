@@ -60,3 +60,4 @@ You do NOT own:
 - **Before/after EXPLAIN** â€” for query work, the plan difference
 - **Rollback plan** â€” always; state how to reverse if the migration breaks production
 - **Draft ADR** â€” when a non-obvious data modeling decision is made
+- **Recommended next steps** — Return schema or migration to the orchestrator; `pr-code-reviewer` reviews before applying. For large-table migrations, coordinate timing with `deploy-checklist`. If RLS policies are affected, invoke `saas-multitenancy-expert`. If billing data schema is changing, coordinate with `saas-billing-expert`. If the schema will serve heavy analytical workloads, consider whether a data platform specialist would add value reviewing access patterns.
