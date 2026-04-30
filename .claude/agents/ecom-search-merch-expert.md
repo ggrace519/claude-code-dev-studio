@@ -46,3 +46,4 @@ You do NOT own:
 - **Ranking recipe** — signals, weights, reranking stage
 - **Merchandising rules** — rule types, precedence, owner
 - **Eval plan** — metric, baseline, holdout
+- **Recommended next steps** — Return implementation to the orchestrator; `pr-code-reviewer` reviews before proceeding. If ML ranking is involved, consider whether an AI specialist would add value reviewing the model pipeline. If the search system feeds a personalization experiment, consider whether a product analytics specialist would add value designing the experiment wiring.

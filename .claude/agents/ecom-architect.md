@@ -46,3 +46,4 @@ You do NOT own:
 - **Checkout flow** — sync/async steps, idempotency keys, failure handling
 - **Scale plan** — caching tiers, reservation model, queue buffers
 - **Decisions** — ADR-ready bullets
+- **Recommended next steps** — Engage specialists per domain: payments → `ecom-payments-expert`; inventory → `ecom-inventory-expert`; search/merchandising → `ecom-search-merch-expert`; storefront perf → `ecom-storefront-perf-expert`; tax → `ecom-tax-expert`; promotions → `ecom-promotions-expert`. Route all implementation through `pr-code-reviewer`. If the platform serves regulated financial products, consider whether a fintech compliance specialist would add value reviewing the compliance posture.
