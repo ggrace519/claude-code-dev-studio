@@ -46,3 +46,4 @@ You do NOT own:
 - **Validation contracts** — per message handler
 - **Secret handling** — where, how stored, rotation
 - **CSP policy** — directives and rationale
+- **Recommended next steps** — Return threat model and validation contracts to the orchestrator; `pr-code-reviewer` reviews before proceeding. If dependency auditing reveals supply-chain risk, invoke `secure-auditor`.

@@ -45,3 +45,4 @@ You do NOT own:
 - **Request flow** — when each optional permission is requested
 - **Privacy disclosures** — what data, where, retention
 - **Reviewer notes** — per permission, one paragraph
+- **Recommended next steps** — Return permission list and request flow to the orchestrator; `pr-code-reviewer` reviews before proceeding. If new host permissions broaden the extension's reach, invoke `ext-security-expert` to review the expanded scope.
