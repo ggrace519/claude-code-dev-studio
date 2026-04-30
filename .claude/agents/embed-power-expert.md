@@ -46,3 +46,4 @@ You do NOT own:
 - **Duty cycle model** — events, durations, currents, totals
 - **Battery-life estimate** — with assumptions and sensitivity
 - **Regression test plan** — measurement harness + thresholds
+- **Recommended next steps** — Return sleep state table and battery-life estimate to the orchestrator; `pr-code-reviewer` reviews before proceeding. If sleep modes affect connectivity duty cycle, coordinate with `embed-connectivity-expert`.

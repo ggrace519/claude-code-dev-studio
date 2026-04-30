@@ -45,3 +45,4 @@ You do NOT own:
 - **Security allowlist** — which channels each origin can call
 - **Streaming protocol** — where used, with backpressure and cancel
 - **Bench notes** — measured latency / throughput where relevant
+- **Recommended next steps** — Return channel catalog and implementation to the orchestrator; `pr-code-reviewer` reviews before proceeding. If the security boundary of a channel changes, invoke `secure-auditor`. If IPC communicates with a browser extension content script, consider whether an extension security specialist would add value reviewing the message-validation boundary.

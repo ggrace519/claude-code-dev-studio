@@ -60,3 +60,4 @@ You do NOT own:
 - **DNS architecture** — zones, resolver chain, private-zone bindings, caching policy
 - **Observability wiring** — flow-log enablement, retention, SIEM export, alert rules
 - **Debug playbook** — packet-loss / latency / DNS / MTU / conntrack diagnostic flow with commands
+- **Recommended next steps** — Return network topology and policy config to the orchestrator; `pr-code-reviewer` reviews IaC changes before merging. If Kubernetes network policy is involved, coordinate with `infra-k8s-expert`. If IAM boundary changes accompany the network change, coordinate with `infra-iam-expert`.

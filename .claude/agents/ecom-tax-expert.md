@@ -57,3 +57,4 @@ You do NOT own:
 - **Reversal playbook** — refund, partial refund, chargeback paths and the exact tax-engine calls for each
 - **Invoice template checklist** — required fields per jurisdiction (US receipt vs EU VAT invoice vs Japan qualified invoice)
 - **Reconciliation report** — monthly three-way tie-out with drift explanations and corrective entries
+- **Recommended next steps** — Return integration spec to the orchestrator; `pr-code-reviewer` reviews before proceeding. If a new jurisdiction triggers compliance obligations beyond sales tax, invoke `fintech-compliance-expert`.

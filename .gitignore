@@ -19,3 +19,6 @@ Desktop.ini
 
 # Release build output (produced by build-release.ps1)
 dist/
+
+# Git worktrees
+.worktrees/

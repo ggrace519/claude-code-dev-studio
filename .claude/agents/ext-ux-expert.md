@@ -46,3 +46,4 @@ You do NOT own:
 - **Options IA** — section tree, defaults, reset
 - **Onboarding flow** — steps, skip path, permission asks
 - **In-page UI rules** — isolation, theming, dismissal
+- **Recommended next steps** — Return UX spec to the orchestrator; `pr-code-reviewer` reviews implementation before proceeding. If in-page UI has accessibility issues, invoke `common-a11y-expert`.

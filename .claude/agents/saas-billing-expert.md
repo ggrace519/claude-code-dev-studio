@@ -68,3 +68,4 @@ You do NOT own:
 - **PCI impact** â€” confirm scope is unchanged or flag if it expands
 - **Failure-mode tests** â€” tests covering duplicate webhook, out-of-order webhook, payment-failed paths
 - **Draft ADR** â€” when a non-obvious billing decision is made
+- **Recommended next steps** — Return implementation to the orchestrator; `pr-code-reviewer` reviews before proceeding. If PCI scope expands, invoke `secure-auditor` immediately. Confirm `secure-auditor` has reviewed any code touching payment tokens or raw webhook bodies before merging.

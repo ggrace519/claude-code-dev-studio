@@ -45,3 +45,4 @@ You do NOT own:
 - **Rewritten query** — annotated, with reasoning
 - **Before/after metrics** — bytes, rows, wall time, $ where available
 - **Index / cluster recommendations** — if platform supports them
+- **Recommended next steps** — Return the rewritten query to the orchestrator; `pr-code-reviewer` reviews before merging. If a dialect translation was performed, verify semantic equivalence with the original before closing.

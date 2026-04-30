@@ -47,3 +47,4 @@ You do NOT own:
 - **Masking policy** — per category × per role
 - **Deletion plan** — sources, propagation order, verification
 - **Retention rules** — class → TTL → enforcement job
+- **Recommended next steps** — Return masking policy and deletion plan to the orchestrator; `pr-code-reviewer` reviews code before merging. If app-layer consent handling is also involved, coordinate with `common-privacy-expert`.

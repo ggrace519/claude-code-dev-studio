@@ -46,3 +46,4 @@ You do NOT own:
 - **Timing notes** — clock speeds, setup/hold, constraints
 - **ISR/DMA plan** — interrupt priority, DMA channel, buffers
 - **Error handling** — timeouts, retries, escalation
+- **Recommended next steps** — Return driver implementation to the orchestrator; `pr-code-reviewer` reviews before proceeding. If DMA or interrupt priority changes affect RTOS task scheduling, invoke `embed-rtos-expert`.

@@ -46,3 +46,4 @@ You do NOT own:
 - **Component map** — BG, CS, popup, options, offscreen
 - **Permissions rationale** — each permission, why, when requested
 - **Store plan** — per-store submission notes and expected reviews
+- **Recommended next steps** — Engage specialists per domain: permission strategy → `ext-permissions-expert`; threat model and CSP → `ext-security-expert`; popup/onboarding UX → `ext-ux-expert`; native host bridge → `ext-native-messaging-expert`. Route all implementation through `pr-code-reviewer`. If the extension integrates with a companion desktop app, consider whether a desktop architecture specialist would add value reviewing the IPC boundary.

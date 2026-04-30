@@ -46,3 +46,4 @@ You do NOT own:
 - **Image format** — full/delta, block size, metadata
 - **Rollback mechanism** — watchdog, boot counter, recovery slot
 - **Rollout plan** — stages, gates, comms
+- **Recommended next steps** — Return update protocol and rollback mechanism to the orchestrator; `pr-code-reviewer` reviews before proceeding. If OTA transport uses a radio peripheral, coordinate with `embed-connectivity-expert`. If the fleet OTA feeds a cloud telemetry pipeline, consider whether a data platform streaming specialist would add value reviewing the ingestion design.

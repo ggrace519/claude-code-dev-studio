@@ -56,3 +56,4 @@ You do NOT own:
 - **Disable matrix** — every way to turn it off, precedence order, user-visible confirmation
 - **Enterprise doc** — data inventory, retention, self-host config, air-gap verification
 - **Transport config** — endpoint, TLS pinning policy (if any), timeout, retry, batching, dead-letter
+- **Recommended next steps** — Return the telemetry design to the orchestrator; `pr-code-reviewer` reviews implementation before merging. If PII risks are identified in the event schema, invoke `common-privacy-expert`. If in-product analytics are also needed, consider whether a product analytics specialist would add value designing the event taxonomy.

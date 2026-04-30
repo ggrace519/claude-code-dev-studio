@@ -46,3 +46,4 @@ You do NOT own:
 - **Posting spec** — for each event type, the debits and credits
 - **Invariants** — what must always hold (and how tests verify)
 - **API contract** — idempotency, validation, error behavior
+- **Recommended next steps** — Return implementation to the orchestrator; `pr-code-reviewer` reviews before proceeding. If posting logic affects KYC/AML triggers, coordinate with `fintech-compliance-expert`. If a new posting type requires an immutable audit record, invoke `fintech-audit-trail-expert`.

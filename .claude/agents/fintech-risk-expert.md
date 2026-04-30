@@ -46,3 +46,4 @@ You do NOT own:
 - **Decision policy** — thresholds, hard rules, overrides
 - **Rollout plan** — shadow, champion/challenger, gating
 - **Monitoring** — drift metrics, alerts, response plan
+- **Recommended next steps** — Return model spec and rollout plan to the orchestrator; `pr-code-reviewer` reviews code before proceeding. If the model requires new training data containing PII, invoke `fintech-compliance-expert` before data collection begins. If ML infrastructure for the risk model is needed, consider whether an AI architect or fine-tune specialist would add value reviewing the model pipeline.

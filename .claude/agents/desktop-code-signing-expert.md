@@ -46,3 +46,4 @@ You do NOT own:
 - **CI wiring** — secret storage, scopes, signer step
 - **Notarization flow** — submit, wait, staple, verify
 - **Rotation runbook** — when, who, steps, rollback
+- **Recommended next steps** — Return signing matrix and CI wiring to the orchestrator; `pr-code-reviewer` reviews CI config before merging. If supply-chain risk surfaces during the audit, invoke `secure-auditor`.

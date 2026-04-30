@@ -45,3 +45,4 @@ You do NOT own:
 - **Orchestration plan** — DAG structure, schedule, dependencies, retries
 - **Idempotency notes** — how re-runs and backfills behave
 - **Tests** — dbt tests / expectations required before merge
+- **Recommended next steps** — Return pipeline design to the orchestrator; `pr-code-reviewer` reviews code before merging. If quality contracts need updating to reflect the new pipeline, invoke `dataplat-quality-expert`. If the pipeline feeds an AI/ML feature store, consider whether a feature store specialist would add value reviewing point-in-time correctness.

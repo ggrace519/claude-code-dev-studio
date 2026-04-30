@@ -48,3 +48,4 @@ You do NOT own:
 - **Compliance posture** — KYC/AML scope, license strategy
 - **Reconciliation plan** — cadence, systems, break handling
 - **Decisions** — ADR-ready bullets
+- **Recommended next steps** — Engage specialists per domain: ledger → `fintech-ledger-expert`; KYC/AML → `fintech-compliance-expert`; audit trail → `fintech-audit-trail-expert`; risk modeling → `fintech-risk-expert`. Route all implementation through `pr-code-reviewer`. If the platform also serves e-commerce checkout, consider whether an e-commerce architect would add value reviewing the checkout-to-rail boundary.

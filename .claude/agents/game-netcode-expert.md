@@ -59,3 +59,4 @@ You do NOT own:
 - **Bandwidth budget** — expected bytes/sec per player
 - **Adversarial tests** — packet loss, jitter, reorder coverage
 - **Draft ADR** — for non-obvious topology choices
+- **Recommended next steps** — Return implementation to the orchestrator; `pr-code-reviewer` reviews before proceeding. If matchmaking affects economy balancing, coordinate with `game-balance-designer`. If the game runs on mobile, consider whether a mobile architecture specialist would add value reviewing background execution constraints on the network thread.

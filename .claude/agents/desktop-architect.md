@@ -45,3 +45,4 @@ You do NOT own:
 - **Process/window map** — main, renderer(s), workers; IPC lines
 - **OS integration surface** — per-platform features and fallbacks
 - **Decisions** — ADR-ready bullets
+- **Recommended next steps** — Engage specialists per domain: IPC → `desktop-ipc-expert`; autoupdate → `desktop-autoupdate-expert`; signing/notarization → `desktop-code-signing-expert`; installer → `desktop-installer-expert`; shell integration → `desktop-shell-integration-expert`. Route all implementation through `pr-code-reviewer`. If the app communicates with a companion browser extension, consider whether an extension architecture specialist would add value reviewing the IPC boundary.

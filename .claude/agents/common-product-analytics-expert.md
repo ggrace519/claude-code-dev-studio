@@ -59,3 +59,4 @@ You do NOT own:
 - **Experiment wiring spec** — exposure event, assignment propagation, feature-flag join
 - **Data-quality harness** — schema tests, volume anomaly alerts, daily reconciliation report
 - **Self-serve docs** — naming index, saved queries, dashboard templates, anti-patterns
+- **Recommended next steps** — Return event taxonomy and instrumentation guide to the orchestrator; `pr-code-reviewer` reviews instrumentation code before merging. If consent or privacy governance for the analytics stream is needed, invoke `common-privacy-expert`. If analytics will feed ML model features, consider whether a data platform specialist would add value reviewing the feature pipeline design.

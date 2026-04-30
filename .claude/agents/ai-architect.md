@@ -63,3 +63,4 @@ You do NOT own:
 - **Data policy** — logging, retention, training eligibility
 - **Reversibility table**
 - **Draft ADR**
+- **Recommended next steps** — Engage specialists per domain: prompts → `ai-prompt-engineer`; retrieval → `ai-rag-expert`; evals → `ai-eval-expert`; inference tuning → `ai-inference-perf-expert`; safety/injection → `ai-safety-expert`; fine-tuning → `ai-finetune-expert`. Route all implementation through `pr-code-reviewer`. If the AI system handles regulated data (financial, health), consider whether a compliance or privacy specialist would add value reviewing the data policy.

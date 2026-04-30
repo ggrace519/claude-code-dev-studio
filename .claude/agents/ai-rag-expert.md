@@ -54,3 +54,4 @@ You do NOT own:
 - **Reranker** — model and where it sits in the pipeline
 - **Query pipeline** — rewrite, retrieve, rerank, filter
 - **Eval** — recall@k / MRR / context-precision before and after
+- **Recommended next steps** — Return the retrieval pipeline to the orchestrator; `pr-code-reviewer` reviews integration code before proceeding. If eval metrics are below target, invoke `ai-eval-expert`. If the prompt consuming retrieved context is performing poorly, invoke `ai-prompt-engineer`. If the knowledge base contains PII, consider whether a privacy specialist would add value reviewing retention and access policy.

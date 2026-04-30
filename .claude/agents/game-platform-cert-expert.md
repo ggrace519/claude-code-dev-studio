@@ -46,3 +46,4 @@ You do NOT own:
 - **Ratings plan** — boards, build, questionnaire, expected timing
 - **Submission timeline** — internal cert → vendor → fix windows → release
 - **Risk log** — known fragile requirements and mitigation
+- **Recommended next steps** — Return the cert checklist to the orchestrator. Coordinate with `mobile-release-expert` for mobile platform (App Store / Play Store) submissions. If cert failures require engine changes, invoke `game-engine-expert`.

@@ -57,3 +57,4 @@ You do NOT own:
 - **Loyalty spec** — accrual events, tier transitions, redemption rules, expiration policy, breakage model
 - **Abuse playbook** — detection signals (velocity, code-sharing, multi-account), throttles, response matrix
 - **Testing strategy** — property-based cart-generation tests, regression suite for historical order replay, peak-load validation
+- **Recommended next steps** — Return implementation to the orchestrator; `pr-code-reviewer` reviews before proceeding. If gift-card or loyalty liability involves ledger entries, invoke `fintech-ledger-expert` (if fintech pack active) or `saas-billing-expert`.

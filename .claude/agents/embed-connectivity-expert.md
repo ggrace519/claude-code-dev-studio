@@ -58,3 +58,4 @@ You do NOT own:
 - **Protocol/topic design** — MQTT / CoAP topic tree, QoS per topic, retention, LWT payload
 - **Cost model** — bytes/day projection × plan cost + roaming; sensitivity to payload compaction
 - **Certification roadmap** — required certs, lab choices, estimated timeline and cost, sample-unit requirements
+- **Recommended next steps** — Return radio selection and connection state machine to the orchestrator; `pr-code-reviewer` reviews implementation before proceeding. If cloud-side ingestion needs scaling, coordinate with `infra-architect` or `dataplat-streaming-expert`.

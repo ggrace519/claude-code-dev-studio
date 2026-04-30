@@ -53,3 +53,4 @@ You do NOT own:
 - **Perf implications** — expected cost and where it hits the frame
 - **Platform caveats** — any mobile / console / web-specific concerns
 - **Fallback / alternative** — if the built-in option was rejected, why
+- **Recommended next steps** — Return implementation to the orchestrator; `pr-code-reviewer` reviews before proceeding. If the change affects frame budget, invoke `game-perf-profiler`. If audio integration is involved, invoke `game-audio-expert`. If the implementation exposes player-facing interactions, consider whether a game feel specialist would add value reviewing the responsiveness.

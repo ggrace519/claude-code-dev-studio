@@ -60,3 +60,4 @@ You do NOT own:
 - **Push specifics** — priority / interruption / category per platform, critical-alert criteria
 - **Instrumentation schema** — events per channel, attribution model, dashboards
 - **Compliance matrix** — jurisdiction × channel × consent requirement × retention
+- **Recommended next steps** — Return channel matrix and sending pipeline to the orchestrator; `pr-code-reviewer` reviews implementation before proceeding. If consent and opt-out mechanics are involved, coordinate with `common-privacy-expert`. If mobile push notification platform integration is needed, coordinate with `mobile-platform-expert`.

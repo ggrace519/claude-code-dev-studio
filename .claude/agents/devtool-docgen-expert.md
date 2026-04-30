@@ -46,3 +46,4 @@ You do NOT own:
 - **CI hookup** — doctest / example tests, link check, release publish
 - **Content map** — tutorial / how-to / reference / explanation split
 - **Changelog policy** — format, automation, curation rules
+- **Recommended next steps** — Return the docs architecture to the orchestrator; `pr-code-reviewer` reviews doc-generation code before merging. If the API surface being documented has changed, coordinate with `devtool-library-api-expert` to verify accuracy.

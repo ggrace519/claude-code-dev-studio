@@ -47,3 +47,4 @@ You do NOT own:
 - **Boot chain** — stages, signatures, anti-rollback
 - **Partition map** — A/B, recovery, factory, data
 - **Fleet update topology** — trigger, staging, rollback, telemetry
+- **Recommended next steps** — Engage specialists per domain: drivers → `embed-driver-expert`; RTOS task design → `embed-rtos-expert`; OTA mechanics → `embed-ota-expert`; power budget → `embed-power-expert`; connectivity → `embed-connectivity-expert`; factory/manufacturing → `embed-manufacturing-expert`. Route all implementation through `pr-code-reviewer`. If the device streams telemetry to a cloud backend, consider whether a data platform streaming specialist would add value reviewing the ingestion topology.

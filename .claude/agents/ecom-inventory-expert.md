@@ -45,3 +45,4 @@ You do NOT own:
 - **Reservation flow** — state diagram with TTLs
 - **Allocation rules** — multi-location, split-shipment, backorder
 - **Integration map** — OMS / WMS / ERP sync directions and cadences
+- **Recommended next steps** — Return implementation to the orchestrator; `pr-code-reviewer` reviews before proceeding. If allocation changes affect how stock status surfaces in search, coordinate with `ecom-search-merch-expert`.

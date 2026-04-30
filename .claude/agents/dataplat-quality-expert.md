@@ -45,3 +45,4 @@ You do NOT own:
 - **Test suite** — dbt tests / expectations with severity
 - **Lineage impact** — downstream exposures affected
 - **Incident runbook** — who, what, rollback, comms
+- **Recommended next steps** — Return the contract spec and test suite to the orchestrator; `pr-code-reviewer` reviews test code before merging. If lineage gaps surface upstream, invoke `dataplat-etl-expert`.

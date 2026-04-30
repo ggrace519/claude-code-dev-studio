@@ -47,3 +47,4 @@ You do NOT own:
 - **Topology diagram** — ASCII or Mermaid, showing storage, compute, orchestration, catalog
 - **Key decisions** — ADR-ready bullets for each significant choice
 - **Risks / follow-ups** — what could force a re-architecture
+- **Recommended next steps** — Engage specialists per domain: pipelines → `dataplat-etl-expert`; query optimization → `dataplat-sql-expert`; quality contracts → `dataplat-quality-expert`; dashboards/metrics → `dataplat-viz-expert`; PII/masking → `dataplat-privacy-expert`; feature store → `dataplat-feature-store-expert`; streaming → `dataplat-streaming-expert`. Route all implementation through `pr-code-reviewer`. If the platform serves AI/ML model training, consider whether an AI architecture specialist would add value reviewing the data-to-model boundary.

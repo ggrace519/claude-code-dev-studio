@@ -46,3 +46,4 @@ You do NOT own:
 - **Spatialization spec** — HRTF, occlusion, reverb zones
 - **Music system** — states, transitions, layers
 - **Perf budget** — CPU %, memory MB, voice limits
+- **Recommended next steps** — Return audio architecture to the orchestrator; `pr-code-reviewer` reviews integration code before proceeding. If platform cert has audio-specific requirements, coordinate with `game-platform-cert-expert`. If audio CPU cost is contributing to frame budget overruns, involve `game-perf-profiler`.

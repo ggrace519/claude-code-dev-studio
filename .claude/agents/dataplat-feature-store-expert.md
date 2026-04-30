@@ -47,3 +47,4 @@ You do NOT own:
 - **Storage plan** — offline / online stores and materialization
 - **Serving spec** — APIs, latency targets, caching
 - **Parity test** — sampling, comparison, alert
+- **Recommended next steps** — Return feature registry and serving spec to the orchestrator; `pr-code-reviewer` reviews implementation before proceeding. If training-serving skew is found, invoke `ai-finetune-expert` or `ai-architect` to investigate the model pipeline root cause.

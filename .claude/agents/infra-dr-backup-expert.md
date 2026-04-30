@@ -59,3 +59,4 @@ You do NOT own:
 - **Drill schedule** — cadence, scope progression (tabletop → partial → full), acceptance criteria, evidence capture
 - **Cost model** — backup storage / replication / cross-region egress / standby compute per tier
 - **Coverage dashboard** — services enrolled vs total, last-successful-backup age, last-restore-drill age
+- **Recommended next steps** — Return the DR topology and runbook to the orchestrator; `pr-code-reviewer` reviews automation code before merging. If SLO targets are affected by RPO/RTO decisions, coordinate with `infra-sre-expert`. If financial record backup has regulatory retention requirements, invoke `fintech-audit-trail-expert` (if fintech pack is active).

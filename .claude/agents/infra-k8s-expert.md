@@ -46,3 +46,4 @@ You do NOT own:
 - **Namespace / RBAC model** — isolation, quotas
 - **Workload manifests** — requests/limits, probes, PDB
 - **GitOps topology** — apps, sync waves, environments
+- **Recommended next steps** — Return manifests and GitOps config to the orchestrator; `pr-code-reviewer` reviews before merging. If network policy changes are involved, coordinate with `infra-networking-expert`. If SLO targets are affected, invoke `infra-sre-expert`.

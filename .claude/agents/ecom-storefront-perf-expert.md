@@ -46,3 +46,4 @@ You do NOT own:
 - **Rendering plan** — per route: SSR/ISR/SSG/streaming, cache TTLs
 - **Critical path map** — what blocks LCP, what can defer
 - **Monitoring** — RUM + synthetic setup, alert thresholds
+- **Recommended next steps** — Return implementation to the orchestrator; `pr-code-reviewer` reviews before proceeding. If the storefront uses AI for personalization, consider whether an AI inference performance specialist would add value reviewing the latency impact on Core Web Vitals.

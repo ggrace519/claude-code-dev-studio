@@ -46,3 +46,4 @@ You do NOT own:
 - **Integration checklist** — endpoints, webhooks, retries, idempotency
 - **PCI notes** — what touches your servers, what doesn't
 - **Reconciliation plan** — daily/weekly comparison jobs
+- **Recommended next steps** — Return implementation to the orchestrator; `pr-code-reviewer` reviews before proceeding. If PCI scope expands, invoke `secure-auditor` immediately. If checkout UX needs review, invoke `ux-design-critic`. If subscription billing extends into a SaaS model, consider whether a SaaS billing specialist would add value reviewing the recurring-payment design.

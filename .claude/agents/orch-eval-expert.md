@@ -46,3 +46,4 @@ You do NOT own:
 - **Metrics** — per slice, with targets
 - **Judge spec** — prompt + calibration methodology
 - **CI wiring** — when it runs, what it blocks
+- **Recommended next steps** — Return eval set and CI wiring to the orchestrator; `pr-code-reviewer` reviews before merging. If a human-rater protocol is required, surface the protocol for product review before implementing.

@@ -51,3 +51,4 @@ You do NOT own:
 - **Proposed values** — exact tunables, in the config format used by the game
 - **Exploit surface** — what combinations this opens or closes
 - **Telemetry plan** — the metric that confirms or refutes the tuning post-launch
+- **Recommended next steps** — Return tuning values to the orchestrator; `game-liveops-expert` validates with live telemetry after ship. If economy involves IAP, coordinate with `mobile-iap-expert` (mobile) or `ecom-payments-expert` (web storefront).

@@ -53,3 +53,4 @@ You do NOT own:
 - **Privacy** — App Privacy / Data Safety entries matching the codebase
 - **Rollout plan** — percentages, gates, halt criteria
 - **Review prep** — demo account, notes, known-issue list
+- **Recommended next steps** — After submission, monitor for review feedback. If the review is rejected for permissions, coordinate with `mobile-platform-expert`. If rejected for billing or IAP, coordinate with `mobile-iap-expert`. If rejected for privacy declarations, invoke `common-privacy-expert`.

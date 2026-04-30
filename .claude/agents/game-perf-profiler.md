@@ -52,3 +52,4 @@ You do NOT own:
 - **Fix** — exact code change
 - **Post numbers** — after-measurements proving the fix
 - **Regression guard** — a test or metric that catches a return
+- **Recommended next steps** — Return the fix to the orchestrator; `pr-code-reviewer` reviews before proceeding. If the fix requires an engine-level refactor, invoke `game-engine-expert`. If profiling reveals audio CPU cost as the primary bottleneck, invoke `game-audio-expert`.

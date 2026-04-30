@@ -58,3 +58,4 @@ You do NOT own:
 - **Platform quirk list** — per-platform known issues, workarounds, SDK version floors
 - **A11y checklist** — caption sizing, color, language, chapter markers, audio-description track support
 - **Regression harness** — reference devices, golden-path scenarios, pass/fail thresholds
+- **Recommended next steps** — Return player config and QoE schema to the orchestrator; `pr-code-reviewer` reviews implementation before proceeding. If accessibility requirements surface (captions, audio description), invoke `common-a11y-expert`.

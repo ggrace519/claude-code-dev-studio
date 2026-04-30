@@ -45,3 +45,4 @@ You do NOT own:
 - **Cardinality budget** — label rules, series limits
 - **Retention policy** — per signal type, cost model
 - **Dashboard set** — golden signals + service + on-call views
+- **Recommended next steps** — Return instrumentation plan and dashboards to the orchestrator; `pr-code-reviewer` reviews code before merging. If cardinality cost is high, coordinate with `infra-finops-expert`. If Kubernetes-specific metrics are needed, coordinate with `infra-k8s-expert`.

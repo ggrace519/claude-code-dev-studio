@@ -57,3 +57,4 @@ You do NOT own:
 - **Framing reader spec** — read-length, bounds check, read-payload, JSON parse, error recovery
 - **Installer coordination** — how extension prompts for native-host install, version matching, uninstall cleanup
 - **Test matrix** — malformed-length, oversized-payload, unknown-command, spoofed-origin, version-skew cases
+- **Recommended next steps** — Return message schema and host manifest to the orchestrator; `pr-code-reviewer` reviews before proceeding. If the native host requires installer packaging or code signing, invoke `desktop-installer-expert` and `desktop-code-signing-expert`.

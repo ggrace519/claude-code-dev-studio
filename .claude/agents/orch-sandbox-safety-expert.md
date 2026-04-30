@@ -46,3 +46,4 @@ You do NOT own:
 - **Authority model** — tools × scopes × credentials
 - **Injection defenses** — input tagging, parser rules
 - **Incident response** — what gets revoked when things go wrong
+- **Recommended next steps** — Return sandbox spec and authority model to the orchestrator; `pr-code-reviewer` reviews implementation before proceeding. If application-security concerns surface (beyond agent sandboxing), invoke `secure-auditor`.
