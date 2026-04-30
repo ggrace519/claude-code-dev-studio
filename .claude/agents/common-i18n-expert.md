@@ -58,3 +58,4 @@ You do NOT own:
 - **Translation workflow** — TMS integration, source→translate→review→publish loop, SLA per tier
 - **Testing strategy** — pseudo-locale coverage, layout regression, RTL screenshot suite
 - **Launch-locale checklist** — font coverage, legal content review, QA plan, soft-launch plan
+- **Recommended next steps** — Return i18n architecture to the orchestrator; `pr-code-reviewer` reviews implementation before proceeding. If RTL layout issues surface that affect keyboard navigation or focus order, invoke `common-a11y-expert`. If translations involve regulated content (legal, medical, financial), consider whether a domain compliance specialist would add value reviewing the jurisdiction-specific copy.
