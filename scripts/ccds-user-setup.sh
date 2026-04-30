@@ -99,35 +99,57 @@ set_claude_playbook_block() {
         return
     fi
 
-    local block_content
-    block_content="$(cat "$jit_src")"
-
     mkdir -p "$claude_home"
     [[ -f "$claude_md" ]] || touch "$claude_md"
+
+    # Backup before any mutation. Timestamped so reinstalls keep history.
+    local backup="$claude_md.ccds-backup-$(date +%Y%m%d-%H%M%S)"
+    cp -p "$claude_md" "$backup"
+    log_info "Backed up existing CLAUDE.md to $(basename "$backup")"
 
     local tmp
     tmp="$(mktemp)"
 
-    if grep -qF "$MARKER_BEGIN" "$claude_md"; then
-        # Replace existing block in place
-        awk -v b="$MARKER_BEGIN" -v e="$MARKER_END" -v block="$block_content" '
-            BEGIN { in_block=0; printed=0 }
-            $0 == b { in_block=1; if (!printed) { print block; printed=1 } next }
-            $0 == e { in_block=0; next }
-            in_block { next }
-            { print }
-        ' "$claude_md" > "$tmp"
-        mv "$tmp" "$claude_md"
-        log_ok "Updated JIT block in $claude_md"
-    else
-        # Append block
+    # Strip ALL existing ccds blocks (handles duplicates, CRLF, trailing whitespace
+    # on marker lines). Anything outside the markers is preserved verbatim.
+    awk -v b="$MARKER_BEGIN" -v e="$MARKER_END" '
+        BEGIN { in_block=0 }
         {
-            cat "$claude_md"
-            printf '\n%s\n' "$block_content"
-        } > "$tmp"
-        mv "$tmp" "$claude_md"
-        log_ok "Injected JIT block into $claude_md"
+            check = $0
+            sub(/[[:space:]\r]+$/, "", check)
+            if (check == b) { in_block=1; next }
+            if (check == e) { in_block=0; next }
+            if (!in_block) print
+        }
+    ' "$claude_md" > "$tmp"
+
+    # Trim trailing blank lines from the surviving user content, then append
+    # a single fresh ccds block separated by one blank line.
+    local cleaned
+    cleaned="$(mktemp)"
+    awk 'NF { for (i=1;i<=hold;i++) print ""; hold=0; print; next }
+         { hold++ }' "$tmp" > "$cleaned"
+
+    if [[ -s "$cleaned" ]]; then
+        printf '\n' >> "$cleaned"
     fi
+    cat "$jit_src" >> "$cleaned"
+    # Ensure file ends with a single newline.
+    if [[ "$(tail -c1 "$cleaned" | od -An -c | tr -d ' ')" != '\n' ]]; then
+        printf '\n' >> "$cleaned"
+    fi
+
+    # Canary: legacy installs (pre-marker era, or hand-edited) may have left
+    # JIT content in CLAUDE.md without markers. We can't safely auto-strip it,
+    # but we can warn so the user can clean up by hand or restore the backup.
+    if grep -qF "## Playbook JIT Agent Loading" "$tmp"; then
+        log_warn "Detected legacy 'Playbook JIT Agent Loading' content outside markers."
+        log_warn "Inspect $claude_md and (if duplicated) restore from $(basename "$backup")."
+    fi
+
+    mv "$cleaned" "$claude_md"
+    rm -f "$tmp"
+    log_ok "Refreshed JIT block in $claude_md"
 }
 
 # ---------------------------------------------------------------------------
