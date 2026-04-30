@@ -47,3 +47,4 @@ You do NOT own:
 - **Environment model** — dev / stage / prod / ephemeral
 - **IaC layout** — repos, modules, state
 - **Decisions** — ADR-ready bullets
+- **Recommended next steps** — Engage specialists per domain: Kubernetes → `infra-k8s-expert`; observability → `infra-observability-expert`; SLOs → `infra-sre-expert`; IAM → `infra-iam-expert`; cost → `infra-finops-expert`; DR/backup → `infra-dr-backup-expert`; networking → `infra-networking-expert`. Route all implementation through `pr-code-reviewer`. If deploying an AI serving workload, consider whether an AI inference performance specialist would add value sizing GPU topology.

@@ -59,3 +59,4 @@ You do NOT own:
 - **Break-glass procedure** — account setup, elevation flow, session recording, post-use review
 - **Access-review cadence** — scope, owner map, dormant-identity policy, audit evidence
 - **Drift-detection rules** — daily checks, finding taxonomy, SLA per severity, remediation path
+- **Recommended next steps** — Return IAM policies and access-review plan to the orchestrator; `pr-code-reviewer` reviews policy code before merging. If application-layer RBAC is affected, coordinate with `saas-auth-sso-expert`. If pod-level Kubernetes RBAC is involved, coordinate with `infra-k8s-expert`.
