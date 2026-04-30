@@ -46,3 +46,4 @@ You do NOT own:
 - **Schema policy** — compat rules, registry, evolution workflow
 - **Processing job spec** — engine, parallelism, state, checkpoints
 - **Delivery semantics** — exactly-once / at-least-once choice + enforcement
+- **Recommended next steps** — Return topology and job spec to the orchestrator; `pr-code-reviewer` reviews job code before merging. If schema evolution breaks downstream consumers, invoke `dataplat-quality-expert`. If the stream feeds an embedded device fleet, consider whether an embedded connectivity specialist would add value reviewing the device-to-cloud protocol design.

@@ -45,3 +45,4 @@ You do NOT own:
 - **Dashboard layout** — tiles, filters, drilldowns, access
 - **Performance plan** — caching / aggregate strategy
 - **Governance notes** — certification tier, review cadence
+- **Recommended next steps** — Return the metric spec and dashboard design to the orchestrator; `pr-code-reviewer` reviews semantic layer code before merging. If metric definitions change, surface the change for product review before merging to prevent dashboard drift.
