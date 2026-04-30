@@ -46,3 +46,4 @@ You do NOT own:
 - **Error catalog** — each error with message template and suggested action
 - **TTY vs non-TTY behavior** — what changes, what stays the same
 - **Completion** — bash/zsh/fish, dynamic completion triggers
+- **Recommended next steps** — Return CLI spec to the orchestrator; `pr-code-reviewer` reviews implementation before proceeding. If the change also affects the public API surface, coordinate with `devtool-library-api-expert`. If shell completion or packaging is affected, coordinate with `devtool-packaging-expert`.

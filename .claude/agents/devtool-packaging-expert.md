@@ -46,3 +46,4 @@ You do NOT own:
 - **Release pipeline** — stages, gates, artifacts
 - **Signing plan** — keys, certs, rotation, storage
 - **Provenance / SBOM** — generation, publication, verification
+- **Recommended next steps** — Return the build and release pipeline to the orchestrator; `pr-code-reviewer` reviews CI config before merging. If supply-chain or signing concerns surface, invoke `secure-auditor`.

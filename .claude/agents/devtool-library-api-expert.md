@@ -46,3 +46,4 @@ You do NOT own:
 - **Error contract** — types, codes, when each is thrown
 - **Usage examples** — happy path, cancellation, error handling
 - **Compat notes** — what this changes for existing consumers
+- **Recommended next steps** — Return the API spec to the orchestrator; `pr-code-reviewer` reviews implementation before proceeding. If the change is a breaking surface change, invoke `devtool-architect` to evaluate versioning impact. If documentation needs updating, invoke `devtool-docgen-expert`.

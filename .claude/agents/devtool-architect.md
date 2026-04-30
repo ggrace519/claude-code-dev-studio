@@ -46,3 +46,4 @@ You do NOT own:
 - **Versioning policy** — SemVer rules, LTS lanes, deprecation window
 - **Extensibility model** — plugin contract, lifecycle, sandboxing
 - **Compat matrix** — supported runtimes / platforms / previous major
+- **Recommended next steps** — Engage specialists per domain: CLI ergonomics → `devtool-cli-ux-expert`; library API surface → `devtool-library-api-expert`; build and distribution → `devtool-packaging-expert`; documentation → `devtool-docgen-expert`; usage telemetry → `devtool-telemetry-expert`. Route all implementation through `pr-code-reviewer`.
