@@ -46,3 +46,4 @@ You do NOT own:
 - **Workflow** — alert → review → decision → filing
 - **Vendor integration** — IDV, sanctions, monitoring provider details
 - **Regulator mapping** — which rule addresses which requirement
+- **Recommended next steps** — Return rule spec and workflow to the orchestrator; `pr-code-reviewer` reviews implementation before proceeding. If vendor integration changes data boundaries, invoke `secure-auditor` for a data-boundary review. If compliance rules involve international tax obligations, consider whether a tax specialist would add value reviewing jurisdiction-specific requirements.

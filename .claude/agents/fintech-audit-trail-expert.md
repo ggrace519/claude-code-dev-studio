@@ -45,3 +45,4 @@ You do NOT own:
 - **Storage design** — backing store, append semantics, retention
 - **Tamper-evidence scheme** — hash chain / anchoring
 - **Export spec** — query, integrity proof, delivery format
+- **Recommended next steps** — Return implementation to the orchestrator; `pr-code-reviewer` reviews before proceeding. If storage topology changes, coordinate with `fintech-architect`.
