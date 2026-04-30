@@ -45,3 +45,4 @@ You do NOT own:
 - **Key policy** — rotation, grouping, revocation
 - **CDN plan** — providers, routing, failover, cache rules
 - **QoE dashboard** — metrics, targets, alerts
+- **Recommended next steps** — Return DRM flow and CDN plan to the orchestrator; `pr-code-reviewer` reviews implementation before proceeding. If playback quality issues surface after the change, invoke `media-player-expert`.

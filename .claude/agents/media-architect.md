@@ -46,3 +46,4 @@ You do NOT own:
 - **Codec ladder** — resolutions, bitrates, codecs
 - **DRM plan** — systems, license flow, device support
 - **CDN plan** — topology, cost model, failover
+- **Recommended next steps** — Engage specialists per domain: transcode pipeline → `media-transcode-expert`; DRM/CDN delivery → `media-drm-cdn-expert`; CMS/editorial → `media-cms-workflow-expert`; client playback → `media-player-expert`; ad insertion → `media-ad-insertion-expert`; live streaming → `media-live-expert`. Route all implementation through `pr-code-reviewer`. If the platform serves regulated content (children's programming, financial education), consider whether a compliance specialist would add value reviewing licensing and consent posture.

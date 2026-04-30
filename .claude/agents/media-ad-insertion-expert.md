@@ -58,3 +58,4 @@ You do NOT own:
 - **Verification wiring** — OMID integration, viewability / completion events, IVT filtering path
 - **Consent flow** — TCF / GPP handling, personalized / contextual / no-ad branching per region
 - **Instrumentation** — ad-fill rate, ad-start rate, completion rate, revenue per viewer hour, per-device QoE
+- **Recommended next steps** — Return ad pipeline architecture to the orchestrator; `pr-code-reviewer` reviews implementation before proceeding. If consent handling involves TCF/GPP signal propagation, invoke `common-privacy-expert`.

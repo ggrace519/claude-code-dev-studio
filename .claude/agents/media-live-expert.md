@@ -59,3 +59,4 @@ You do NOT own:
 - **Rehearsal protocol** — dry-run checklist, fault-injection scenarios, acceptance criteria
 - **Post-event template** — metrics captured, incident timeline, action items format
 - **DVR / clip-out spec** — window size, origin storage policy, clip-out pipeline
+- **Recommended next steps** — Return pipeline architecture and failover runbook to the orchestrator; `pr-code-reviewer` reviews implementation before proceeding. If cloud capacity needs scaling for a tentpole event, coordinate with `infra-architect` and `infra-sre-expert`.

@@ -45,3 +45,4 @@ You do NOT own:
 - **Metadata schema** — required vs optional, validation
 - **Rights model** — fields, enforcement points
 - **Workflow UX** — editor views, bulk ops, permissions
+- **Recommended next steps** — Return asset state machine and metadata schema to the orchestrator; `pr-code-reviewer` reviews implementation before proceeding. If editorial workflow touches rights windows with regulatory implications, invoke `fintech-compliance-expert` (if fintech pack is active). If the CMS serves live content scheduling, consider whether a live streaming specialist would add value reviewing the scheduling and failover design.

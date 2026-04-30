@@ -46,3 +46,4 @@ You do NOT own:
 - **Ladder** — rungs with resolution, bitrate, VMAF target
 - **Packaging spec** — CMAF segments, manifest variants
 - **QC checklist** — automated checks per asset
+- **Recommended next steps** — Return encode profile and ladder to the orchestrator; `pr-code-reviewer` reviews pipeline code before merging. If DRM packaging is involved in the same workflow, coordinate with `media-drm-cdn-expert`. If the encode workload is ML-driven (content-aware per-title encoding), consider whether an AI inference performance specialist would add value reviewing the compute cost.
