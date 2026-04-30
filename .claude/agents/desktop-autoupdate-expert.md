@@ -46,3 +46,4 @@ You do NOT own:
 - **Channels** — definitions, promotion rules, user opt-in
 - **Rollout policy** — stages, metrics, gates
 - **Rollback plan** — trigger, mechanism, comms
+- **Recommended next steps** — Return update flow and channel config to the orchestrator; `pr-code-reviewer` reviews before proceeding. If signing or certificate changes accompany the update mechanism, invoke `desktop-code-signing-expert`.

@@ -56,3 +56,4 @@ You do NOT own:
 - **Defaults policy** — prompt wording, persistence, re-prompt rules
 - **Uninstall checklist** — every artifact created and the verification command for its absence
 - **OS-tool verification commands** — exact CLI invocations that confirm registration worked
+- **Recommended next steps** — Return registration matrix and verification commands to the orchestrator; `pr-code-reviewer` reviews implementation before proceeding. If registration triggers OS security prompts or entitlement changes, invoke `secure-auditor`.

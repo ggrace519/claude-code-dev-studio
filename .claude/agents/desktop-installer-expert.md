@@ -56,3 +56,4 @@ You do NOT own:
 - **Uninstall spec** — file list, registry keys, services, data-preservation prompt
 - **First-run flow** — license, telemetry, auto-start, protocol handlers, permissions prompts
 - **Enterprise doc** — SCCM / Intune / JAMF deployment snippets, transform files, MDM profile samples
+- **Recommended next steps** — Return installer spec to the orchestrator; `pr-code-reviewer` reviews scripts before merging. If shell integration registrations are being added (file types, protocol handlers), invoke `desktop-shell-integration-expert`.
