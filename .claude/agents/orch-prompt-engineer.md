@@ -46,3 +46,4 @@ You do NOT own:
 - **Few-shot set** — chosen examples + rationale
 - **Output contract** — schema, parser, fallback
 - **Regression cases** — test prompts + expected behavior
+- **Recommended next steps** — Return the system prompt and few-shot set to the orchestrator; `pr-code-reviewer` reviews integration code before proceeding. If eval regression surfaces after the prompt change, invoke `orch-eval-expert`. If adversarial injection attempts succeed, invoke `orch-sandbox-safety-expert` or `ai-safety-expert`.

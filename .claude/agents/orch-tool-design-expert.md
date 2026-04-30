@@ -45,3 +45,4 @@ You do NOT own:
 - **Error catalog** — error codes + coach messages
 - **Idempotency** — keys, safe-to-retry behavior
 - **Overlap notes** — sibling tools and when to pick which
+- **Recommended next steps** — Return tool spec to the orchestrator; `pr-code-reviewer` reviews before proceeding. If tool execution is sandboxed, coordinate with `orch-sandbox-safety-expert` to verify the authority model.

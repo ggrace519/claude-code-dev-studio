@@ -47,3 +47,4 @@ You do NOT own:
 - **Control loop** — step limits, termination criteria, guards
 - **Memory model** — stores, TTL, eviction
 - **Decisions** — ADR-ready bullets
+- **Recommended next steps** — Engage specialists per domain: tool specs → `orch-tool-design-expert`; system prompts → `orch-prompt-engineer`; eval harness → `orch-eval-expert`; sandbox and safety → `orch-sandbox-safety-expert`. Route all implementation through `pr-code-reviewer`. If the agent handles regulated data or makes decisions with compliance implications, consider whether a fintech or privacy specialist would add value reviewing the authority model.
