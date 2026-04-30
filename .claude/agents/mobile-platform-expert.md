@@ -53,3 +53,4 @@ You do NOT own:
 - **Integration surface** — intents / shortcuts / widgets touched
 - **Theme & accessibility** — dark mode + dynamic type verified
 - **Both-platform parity** — explicit diff of iOS vs Android behavior if applicable
+- **Recommended next steps** — Return implementation to the orchestrator; `pr-code-reviewer` reviews before proceeding. If new permissions are being requested, coordinate with `mobile-release-expert` to update privacy declarations. If the integration involves notifications, consider whether a notification design specialist would add value reviewing the permission request timing.

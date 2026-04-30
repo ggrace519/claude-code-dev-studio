@@ -58,3 +58,4 @@ You do NOT own:
 - **Privacy** — ATT / tracking posture
 - **Reversibility table**
 - **Draft ADR**
+- **Recommended next steps** — Engage specialists per domain: platform APIs → `mobile-platform-expert`; offline sync → `mobile-offline-sync-expert`; perf → `mobile-perf-expert`; IAP → `mobile-iap-expert`; crashes → `mobile-crash-expert`; store submission → `mobile-release-expert`. Route all implementation through `pr-code-reviewer`. If the app handles payments beyond IAP, consider whether a SaaS billing or fintech specialist would add value reviewing the money-movement design.

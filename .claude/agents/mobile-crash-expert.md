@@ -46,3 +46,4 @@ You do NOT own:
 - **SLO** — crash-free user / session targets, alert routing
 - **Triage workflow** — assignment rules, severity, hotfix criteria
 - **Symbolication checklist** — per-platform pipeline
+- **Recommended next steps** — Return SDK setup and triage workflow to the orchestrator; `pr-code-reviewer` reviews pipeline changes before merging. If the crash is caused by a platform API misuse, invoke `mobile-platform-expert`. If crashes correlate with IAP or subscription state transitions, invoke `mobile-iap-expert`.

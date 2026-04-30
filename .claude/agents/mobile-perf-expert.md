@@ -54,3 +54,4 @@ You do NOT own:
 - **Fix** — exact code change
 - **Post numbers** — after-measurements
 - **Regression guard** — CI check or dashboard entry
+- **Recommended next steps** — Return the fix to the orchestrator; `pr-code-reviewer` reviews before proceeding. If the regression guard subsequently triggers a crash spike, invoke `mobile-crash-expert`.

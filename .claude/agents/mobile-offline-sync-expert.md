@@ -54,3 +54,4 @@ You do NOT own:
 - **Outbox design** — queue, retry, dedupe key
 - **Conflict resolution** — policy and examples
 - **Adversarial tests** — device-offline-mid-edit, duplicate-retry, schema-rollback
+- **Recommended next steps** — Return implementation to the orchestrator; `pr-code-reviewer` reviews before proceeding. If the server-side sync protocol also needs changes, invoke `saas-collab-sync-expert` (if active) or `api-expert`.

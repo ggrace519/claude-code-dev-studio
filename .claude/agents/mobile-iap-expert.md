@@ -47,3 +47,4 @@ You do NOT own:
 - **State machine** — subscription states + transitions + triggers
 - **Validation flow** — client → server → store → entitlement
 - **Reconciliation job** — schedule, comparison, alerting
+- **Recommended next steps** — Return implementation to the orchestrator; `pr-code-reviewer` reviews before proceeding. If subscription state needs to reconcile with a SaaS billing system, coordinate with `saas-billing-expert`.
