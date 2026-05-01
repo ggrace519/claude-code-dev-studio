@@ -17,8 +17,10 @@ Desktop.ini
 *.tmp
 *.bak
 
-# Release build output (produced by build-release.ps1)
+# Release build output (produced by build-release.ps1 / build-release.sh)
 dist/
+*.deb
+*.rpm
 
 # Git worktrees
 .worktrees/
