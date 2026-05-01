@@ -413,7 +413,7 @@ function Remove-ClaudePlaybookBlock {
     $claudeMd = Join-Path $env:USERPROFILE '.claude\CLAUDE.md'
 
     if (-not (Test-Path $claudeMd)) {
-        Write-Info "No CLAUDE.md at $claudeMd — nothing to remove."
+        Write-Info "No CLAUDE.md at $claudeMd - nothing to remove."
         return
     }
 
@@ -421,7 +421,7 @@ function Remove-ClaudePlaybookBlock {
     $markerStart = '# >>> ccds >>>'
 
     if (-not ($existing -match [regex]::Escape($markerStart))) {
-        Write-Info "No playbook block found in CLAUDE.md — nothing to remove."
+        Write-Info "No playbook block found in CLAUDE.md - nothing to remove."
         return
     }
 
@@ -645,7 +645,7 @@ try {
         Write-Host "Future shells : PATH update persists automatically." -ForegroundColor Yellow
     }
     Write-Host ""
-    Write-Host "Library : $(Join-Path $env:USERPROFILE '.claude\playbook\agents') ($($Script:GeneralistAgents.Count) generalists → .claude\agents; 98 pack agents here)"
+    Write-Host "Library : $(Join-Path $env:USERPROFILE '.claude\playbook\agents') ($($Script:GeneralistAgents.Count) generalists -> .claude\agents; 98 pack agents here)"
     Write-Host "CLAUDE  : $(Join-Path $env:USERPROFILE '.claude\CLAUDE.md') (JIT block injected)"
     Write-Host ""
     Write-Host "Smoke test:" -ForegroundColor Yellow
