@@ -292,4 +292,3 @@ Sync mechanism: $Mode (managed by ``Sync-AgentPacks.ps1``; see ``.claude\agents\
     [System.IO.File]::WriteAllText($decisions, $existing + $adr, [System.Text.UTF8Encoding]::new($false))
     Write-Host ("OK ADR appended to {0}" -f $decisions) -ForegroundColor Green
 }
-          

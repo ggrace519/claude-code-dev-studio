@@ -125,6 +125,28 @@ foreach ($file in $agentFiles) {
 Write-Step "Staged $($agentFiles.Count) agent files to agents\"
 
 # ---------------------------------------------------------------------------
+# Preflight: reject staged scripts containing null bytes (U+0000)
+#
+# A trailing line of null bytes is invisible in most editors and survives
+# Copy-Item unchanged, but causes PowerShell to throw CommandNotFoundException
+# at the end of every script run — even after a successful execution.
+# Catching this here prevents a corrupt release from shipping.
+# ---------------------------------------------------------------------------
+Write-Step "Checking staged scripts for null bytes"
+$scriptFiles = Get-ChildItem -LiteralPath $stageDir -Recurse -File -Include '*.ps1', '*.sh'
+$nullByteFiles = @()
+foreach ($f in $scriptFiles) {
+    $bytes = [System.IO.File]::ReadAllBytes($f.FullName)
+    if ([System.Array]::IndexOf($bytes, [byte]0) -ge 0) {
+        $nullByteFiles += $f.FullName.Substring($stageDir.Length).TrimStart('\', '/')
+    }
+}
+if ($nullByteFiles.Count -gt 0) {
+    throw "Null bytes (U+0000) found in staged script(s) — fix source files before releasing:`n  $($nullByteFiles -join "`n  ")"
+}
+Write-Step "OK — no null bytes in $($scriptFiles.Count) staged script(s)"
+
+# ---------------------------------------------------------------------------
 # Write version.txt (no BOM, trimmed)
 # ---------------------------------------------------------------------------
 $versionFile = Join-Path $stageDir 'version.txt'
