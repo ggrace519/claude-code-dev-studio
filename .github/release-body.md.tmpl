@@ -1,0 +1,68 @@
+## Install
+
+### Linux — Debian / Ubuntu (`.deb`)
+
+```bash
+curl -fsSLO https://github.com/__REPO__/releases/download/__VERSION__/ccds___VERSION_BARE___all.deb
+sudo dpkg -i ccds___VERSION_BARE___all.deb
+ccds verify
+```
+
+### Linux — Fedora / RHEL / openSUSE (`.rpm`)
+
+```bash
+curl -fsSLO https://github.com/__REPO__/releases/download/__VERSION__/ccds-__VERSION_BARE__-1.noarch.rpm
+sudo rpm -i ccds-__VERSION_BARE__-1.noarch.rpm   # or: sudo dnf install ./ccds-__VERSION_BARE__-1.noarch.rpm
+ccds verify
+```
+
+### Windows — PowerShell 5.1 or 7+ (online installer)
+
+```powershell
+iwr -UseBasicParsing https://raw.githubusercontent.com/__REPO__/main/Install-Playbook.ps1 | iex
+```
+
+Pin this release: append `-Version __VERSION__`. Default prefix: `%USERPROFILE%\.claude\playbook`.
+
+### Linux / macOS — bash (online installer)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/__REPO__/main/install-playbook.sh | bash
+```
+
+Pin this release: append `-s -- --version __VERSION__`. Default prefix: `$HOME/.claude/playbook`.
+
+### Manual ZIP install
+
+Download `ccds-__VERSION__.zip` and `ccds-__VERSION__.zip.sha256`, then:
+
+```powershell
+Install-Playbook.ps1 -LocalZip .\ccds-__VERSION__.zip      # Windows
+```
+
+```bash
+./install-playbook.sh --local-zip ./ccds-__VERSION__.zip   # Linux/macOS
+```
+
+The installer verifies the ZIP against the sidecar SHA256 before staging.
+
+## Update / uninstall
+
+```bash
+ccds update                  # latest stable
+ccds update __VERSION__           # pin a tag
+ccds update --rollback       # restore previous install
+ccds uninstall
+```
+
+## Verify the download
+
+```bash
+sha256sum -c ccds-__VERSION__.zip.sha256
+# Or compare against the asset digests:
+# .deb  __DEB_SHA__
+# .rpm  __RPM_SHA__
+# .zip  __ZIP_SHA__
+```
+
+---

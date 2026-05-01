@@ -108,6 +108,13 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build-zip, build-packages]
     steps:
+      - name: Checkout (for release body template)
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            .github/release-body.md.tmpl
+          sparse-checkout-cone-mode: false
+
       - name: Download ZIP artifacts
         uses: actions/download-artifact@v4
         with:
@@ -123,12 +130,48 @@ jobs:
       - name: List release artifacts
         run: ls -lh dist/
 
+      - name: Render release body from template
+        id: body
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.build-zip.outputs.version }}"
+          VERSION_BARE="${VERSION#v}"
+          DEB="dist/ccds_${VERSION_BARE}_all.deb"
+          RPM="dist/ccds-${VERSION_BARE}-1.noarch.rpm"
+          ZIP="dist/ccds-${VERSION}.zip"
+          for f in "$DEB" "$RPM" "$ZIP"; do
+            [[ -f "$f" ]] || { echo "Asset missing: $f" >&2; exit 1; }
+          done
+          DEB_SHA=$(sha256sum "$DEB" | awk '{print $1}')
+          RPM_SHA=$(sha256sum "$RPM" | awk '{print $1}')
+          ZIP_SHA=$(sha256sum "$ZIP" | awk '{print $1}')
+          REPO_ESCAPED="${{ github.repository }}"
+          cp .github/release-body.md.tmpl release-body.md
+          sed -i \
+            -e "s|__VERSION__|${VERSION}|g" \
+            -e "s|__VERSION_BARE__|${VERSION_BARE}|g" \
+            -e "s|__REPO__|${REPO_ESCAPED}|g" \
+            -e "s|__DEB_SHA__|${DEB_SHA}|g" \
+            -e "s|__RPM_SHA__|${RPM_SHA}|g" \
+            -e "s|__ZIP_SHA__|${ZIP_SHA}|g" \
+            release-body.md
+          # Sanity: every placeholder must be resolved.
+          if grep -nE '__[A-Z_]+__' release-body.md; then
+            echo "Unresolved placeholders in release-body.md" >&2
+            exit 1
+          fi
+          echo "--- rendered release body ---"
+          cat release-body.md
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name:               ${{ needs.build-zip.outputs.version }}
           name:                   ${{ needs.build-zip.outputs.version }}
           prerelease:             ${{ needs.build-zip.outputs.prerelease }}
+          # body_path is prepended to the auto-generated "What's Changed" section.
+          body_path:              release-body.md
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
