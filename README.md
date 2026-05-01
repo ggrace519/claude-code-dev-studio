@@ -143,6 +143,22 @@ See `Get-Help .\Sync-AgentPacks.ps1 -Full` or `./Sync-AgentPacks.sh --help`.
 
 Pack contents, agent counts, and trigger conditions are documented in `CLAUDE.md`.
 
+## Extras
+
+### Shell completion for the `claude` CLI
+
+Optional, opt-in tab-completion for the Claude Code CLI itself — independent of the playbook. See [`claude_auto_completion/README.md`](./claude_auto_completion/README.md) for per-OS install instructions.
+
+```bash
+# Linux / macOS / WSL (per-user)
+./claude_auto_completion/Linux/claude-autocomplete.sh
+```
+
+```powershell
+# Windows (PowerShell 5.1 / 7+)
+. .\claude_auto_completion\Windows\install-claude-completion.ps1
+```
+
 ## Requirements
 
 - Claude Code CLI (v2.1.113+ recommended — flat agent discovery)
