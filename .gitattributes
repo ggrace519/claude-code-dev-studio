@@ -11,6 +11,12 @@
 *.md text
 *.json text
 
+# The JIT block injected into ~/.claude/CLAUDE.md must always be LF — the
+# bash installer's awk-based marker matcher is CR-tolerant since v0.6.1, but
+# planting CRLF in users' CLAUDE.md leaves a mixed-ending file and trips
+# any third-party tool that assumes a single line terminator.
+scripts/jit-claude.md text eol=lf
+
 # Binary defensive markers (no binaries currently in repo).
 *.png binary
 *.jpg binary
