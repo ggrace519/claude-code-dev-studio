@@ -39,6 +39,10 @@ jobs:
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
           prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          # Allow runs initiated by claude[bot] (e.g. when an in-PR fix is pushed
+          # by the bot and triggers `synchronize`). Without this the action errors
+          # with: "Workflow initiated by non-human actor: claude (type: Bot)".
+          allowed_bots: 'claude[bot]'
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 
