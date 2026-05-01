@@ -388,4 +388,3 @@ if (( WRITE_ADR == 1 )); then
     } >> "$DECISIONS"
     printf 'OK ADR appended to %s\n' "$DECISIONS"
 fi
-                                                        

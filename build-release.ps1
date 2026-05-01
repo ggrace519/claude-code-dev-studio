@@ -142,9 +142,9 @@ foreach ($f in $scriptFiles) {
     }
 }
 if ($nullByteFiles.Count -gt 0) {
-    throw "Null bytes (U+0000) found in staged script(s) — fix source files before releasing:`n  $($nullByteFiles -join "`n  ")"
+    throw "Null bytes (U+0000) found in staged script(s) - fix source files before releasing:`n  $($nullByteFiles -join "`n  ")"
 }
-Write-Step "OK — no null bytes in $($scriptFiles.Count) staged script(s)"
+Write-Step "OK - no null bytes in $($scriptFiles.Count) staged script(s)"
 
 # ---------------------------------------------------------------------------
 # Write version.txt (no BOM, trimmed)
