@@ -407,6 +407,83 @@ function Set-ClaudePlaybookBlock {
     Write-OkMsg "Refreshed playbook JIT block in $claudeMd"
 }
 
+# Install shell completions for ccds and claude into the current user's PS profile
+function Install-Completions {
+    param(
+        [string]$Prefix,
+        [switch]$DryRun
+    )
+
+    $ccdsCmpl   = Join-Path $Prefix 'scripts\ccds-completion.ps1'
+    $claudeCmpl = Join-Path $Prefix 'scripts\claude-completion.ps1'
+    $profilePath = $PROFILE.CurrentUserAllHosts
+    $marker      = '# >>> ccds-completion >>>'
+    $endMarker   = '# <<< ccds-completion <<<'
+
+    if ($DryRun) {
+        Write-Info "DRY RUN -- would add completion loader block to $profilePath"
+        return
+    }
+
+    $profileDir = Split-Path -Parent $profilePath
+    if (-not (Test-Path -LiteralPath $profileDir)) {
+        New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
+    }
+    if (-not (Test-Path -LiteralPath $profilePath)) {
+        New-Item -ItemType File -Path $profilePath -Force | Out-Null
+    }
+
+    $block = @"
+
+$marker
+if (Test-Path '$ccdsCmpl')   { . '$ccdsCmpl' }
+if (Test-Path '$claudeCmpl') { . '$claudeCmpl' }
+$endMarker
+"@
+
+    $existing = Get-Content -LiteralPath $profilePath -Raw -ErrorAction SilentlyContinue
+
+    # Strip any existing block (idempotent; handles path change on reinstall)
+    if ($existing -and $existing.Contains($marker)) {
+        $stripPat = "(?s)\r?\n?[ \t]*$([regex]::Escape($marker))[ \t\r]*\r?\n.*?[ \t]*$([regex]::Escape($endMarker))[ \t\r]*\r?\n?"
+        $existing = [regex]::Replace($existing, $stripPat, '')
+        Write-Info "Updating existing completion loader in: $profilePath"
+    } else {
+        Write-Info "Adding completion loader to: $profilePath"
+    }
+
+    [System.IO.File]::WriteAllText($profilePath, $existing.TrimEnd() + $block,
+        [System.Text.UTF8Encoding]::new($false))
+
+    # Activate for the current session immediately
+    if (Test-Path -LiteralPath $ccdsCmpl)   { . $ccdsCmpl }
+    if (Test-Path -LiteralPath $claudeCmpl) { . $claudeCmpl }
+    Write-OkMsg "Completions active - try: ccds <TAB>"
+}
+
+# Remove the completion loader block from the PS profile (used by uninstall)
+function Remove-CompletionBlock {
+    param([switch]$DryRun)
+
+    $profilePath = $PROFILE.CurrentUserAllHosts
+    if (-not (Test-Path -LiteralPath $profilePath)) { return }
+
+    $existing = Get-Content -LiteralPath $profilePath -Raw -ErrorAction SilentlyContinue
+    $marker   = '# >>> ccds-completion >>>'
+    if (-not ($existing -and $existing.Contains($marker))) { return }
+
+    if ($DryRun) {
+        Write-Info "DRY RUN -- would remove completion loader from $profilePath"
+        return
+    }
+
+    $endMarker = '# <<< ccds-completion <<<'
+    $stripPat  = "(?s)\r?\n?[ \t]*$([regex]::Escape($marker))[ \t\r]*\r?\n.*?[ \t]*$([regex]::Escape($endMarker))[ \t\r]*\r?\n?"
+    $updated   = [regex]::Replace($existing, $stripPat, '')
+    [System.IO.File]::WriteAllText($profilePath, $updated, [System.Text.UTF8Encoding]::new($false))
+    Write-OkMsg "Removed completion loader from $profilePath"
+}
+
 # Remove the playbook JIT block from ~/.claude/CLAUDE.md (used by uninstall)
 function Remove-ClaudePlaybookBlock {
     param([switch]$DryRun)
@@ -552,6 +629,10 @@ function Invoke-Uninstall {
     Write-Step "Removing playbook JIT block from CLAUDE.md"
     Remove-ClaudePlaybookBlock -DryRun:$DryRun
 
+    # Remove the completion loader from the PS profile
+    Write-Step "Removing shell completion loader from profile"
+    Remove-CompletionBlock -DryRun:$DryRun
+
     Write-WarnMsg "Generalist agents in $(Join-Path $env:USERPROFILE '.claude\agents') were NOT removed."
     Write-WarnMsg "Delete them manually if desired."
 }
@@ -633,6 +714,10 @@ try {
         $binDir = Join-Path $Prefix 'bin'
         [void](Add-ToUserPath -Entry $binDir)
     }
+
+    # Install tab completions for ccds and claude into PS profile
+    Write-Step "Installing shell completions"
+    Install-Completions -Prefix $Prefix -DryRun:$DryRun
 
     Write-Host ""
     Write-Host "=== Claude Code Dev Studio installed ===" -ForegroundColor Green

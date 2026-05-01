@@ -59,6 +59,10 @@ $required = @(
     'catalog.json'
     'scripts\jit-claude.md'
     'scripts\ccds-user-setup.sh'
+    'scripts\ccds-completion.ps1'
+    'scripts\ccds-completion.bash'
+    'claude_auto_completion\Windows\claude-completion.ps1'
+    'claude_auto_completion\Linux\claude-completion.bash'
     'README.md'
     '.claude\agents'
 )
@@ -97,8 +101,12 @@ $copyMap = @(
     @{ Src = 'Verify-Agents.ps1'       ; Dst = 'scripts\Verify-Agents.ps1' }
     @{ Src = 'Sync-AgentPacks.sh'      ; Dst = 'scripts\Sync-AgentPacks.sh' }
     @{ Src = 'verify-agents.sh'        ; Dst = 'scripts\verify-agents.sh' }
-    @{ Src = 'scripts\jit-claude.md'        ; Dst = 'scripts\jit-claude.md' }
-    @{ Src = 'scripts\ccds-user-setup.sh'  ; Dst = 'scripts\ccds-user-setup.sh' }
+    @{ Src = 'scripts\jit-claude.md'              ; Dst = 'scripts\jit-claude.md' }
+    @{ Src = 'scripts\ccds-user-setup.sh'         ; Dst = 'scripts\ccds-user-setup.sh' }
+    @{ Src = 'scripts\ccds-completion.ps1'         ; Dst = 'scripts\ccds-completion.ps1' }
+    @{ Src = 'scripts\ccds-completion.bash'        ; Dst = 'scripts\ccds-completion.bash' }
+    @{ Src = 'claude_auto_completion\Windows\claude-completion.ps1' ; Dst = 'scripts\claude-completion.ps1' }
+    @{ Src = 'claude_auto_completion\Linux\claude-completion.bash'  ; Dst = 'scripts\claude-completion.bash' }
     @{ Src = 'catalog.json'            ; Dst = 'catalog.json' }
     @{ Src = 'README.md'               ; Dst = 'README.md' }
 )
