@@ -456,10 +456,7 @@ $endMarker
     [System.IO.File]::WriteAllText($profilePath, $base + $block,
         [System.Text.UTF8Encoding]::new($false))
 
-    # Activate for the current session immediately
-    if (Test-Path -LiteralPath $ccdsCmpl)   { . $ccdsCmpl }
-    if (Test-Path -LiteralPath $claudeCmpl) { . $claudeCmpl }
-    Write-OkMsg "Completions active - try: ccds <TAB>"
+    Write-OkMsg "Completions installed - try: ccds <TAB>  (restart shell or reload profile)"
 }
 
 # Remove the completion loader block from the PS profile (used by uninstall)
@@ -716,9 +713,14 @@ try {
         [void](Add-ToUserPath -Entry $binDir)
     }
 
-    # Install tab completions for ccds and claude into PS profile
+    # Install tab completions for ccds and claude into PS profile (non-fatal)
     Write-Step "Installing shell completions"
-    Install-Completions -Prefix $Prefix -DryRun:$DryRun
+    try {
+        Install-Completions -Prefix $Prefix -DryRun:$DryRun
+    } catch {
+        Write-WarnMsg "Shell completion install failed: $_"
+        Write-Info "Install manually: . '$Prefix\scripts\ccds-completion.ps1'"
+    }
 
     Write-Host ""
     Write-Host "=== Claude Code Dev Studio installed ===" -ForegroundColor Green
