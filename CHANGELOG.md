@@ -5,6 +5,49 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## Session 17 — 2026-04-30 — v0.6.1
+
+### What was done
+
+**Issue #2 — CLAUDE.md duplication on reinstall (PR #4):**
+- Re-running the installer could leave the playbook block stale or duplicated in `~/.claude/CLAUDE.md`. Two underlying defects:
+  - **Bash:** `awk` used strict `$0 == marker` matching, which silently no-ops when the marker line carries a trailing `\r` (mixed CRLF/LF files written by an earlier Windows install — confirmed against the live `~/.claude/CLAUDE.md`)
+  - **PowerShell:** the regex stripped only the first marker pair, so any pre-existing duplicate block survived the update
+- Both installers now back up `CLAUDE.md` to `CLAUDE.md.ccds-backup-<timestamp>`, strip *all* marker-bounded ccds blocks (whitespace/CR-tolerant on the marker lines, multi-block safe), normalize trailing blank lines, and append a single fresh JIT block
+- One-shot canary: warns the user if `## Playbook JIT Agent Loading` is detected outside markers (legacy pre-marker installs), pointing at the backup for manual cleanup
+- Manually verified against 5 scenarios: clean home, single-block re-run, two-block dedup, CRLF-only marker file, legacy unmarked content
+
+**CI / tooling cleanup (PRs #5, #6, #7):**
+- `ci: allow claude[bot] to trigger Claude Code Review` (#7) — `claude-code-review.yml` defaulted to rejecting bot-initiated runs, so a `synchronize` event from `claude[bot]` (e.g. an in-PR ShellCheck remediation) failed the workflow with `Workflow initiated by non-human actor`. Added `allowed_bots: 'claude[bot]'` (not `*`) to whitelist exactly that identity
+- `chore: ignore .deb / .rpm build artifacts` (#6) — `build-release.sh` produces packages at the repo root via fpm; existing `dist/` rule didn't catch them
+- `docs(extras): claude CLI shell completion + per-OS install instructions` (#5) — committed the previously-orphaned `claude_auto_completion/` tree under git at its final path and added per-OS install/activate/uninstall docs. Independent of the playbook — opt-in extras, not bundled in the release ZIP
+
+### Release contents
+
+`build-release.sh` curates the ZIP from a fixed manifest. v0.6.1 vs v0.6.0:
+
+| File in ZIP | Changed? |
+|---|---|
+| `scripts/ccds-user-setup.sh` | **yes** — issue #2 fix |
+| `Install-Playbook.ps1` | not in ZIP — fetched from `main` at install time, fix already live |
+| `claude_auto_completion/` | not in ZIP by design — clone-and-run extras |
+| Workflow files / `.gitignore` | not in ZIP — dev-only |
+
+Single user-impacting change. Patch bump.
+
+### Current state
+- `main` at the v0.6.1 tag; `~/.claude/CLAUDE.md` JIT injection is now idempotent and CRLF-safe on both bash and PowerShell installers
+- Issue #2 closed
+- All four PRs (#4, #5, #6, #7) merged
+- CI green on `main`
+
+### Next possible work
+- Verify the v0.6.1 release artifacts download and SHA256-verify cleanly via `ccds update`
+- Normalize line endings in the dev-repo's working-tree `~/.claude/CLAUDE.md` files (the bug is fixed but pre-existing CRLF tainting remains until next install — backup + rewrite happens on next `ccds setup`)
+- Scoop bucket for Windows distribution (designed in Session 14, still not built)
+
+---
+
 ## Session 16 — 2026-04-30
 
 ### What was done
