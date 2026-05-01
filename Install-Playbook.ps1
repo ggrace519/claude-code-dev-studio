@@ -452,7 +452,8 @@ $endMarker
         Write-Info "Adding completion loader to: $profilePath"
     }
 
-    [System.IO.File]::WriteAllText($profilePath, $existing.TrimEnd() + $block,
+    $base = if ($existing) { $existing.TrimEnd() } else { '' }
+    [System.IO.File]::WriteAllText($profilePath, $base + $block,
         [System.Text.UTF8Encoding]::new($false))
 
     # Activate for the current session immediately
