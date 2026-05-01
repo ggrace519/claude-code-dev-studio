@@ -368,24 +368,43 @@ function Set-ClaudePlaybookBlock {
         New-Item -ItemType Directory -Path $claudeHome -Force | Out-Null
     }
 
-    $blockContent = Get-Content -LiteralPath $JitBlockPath -Raw
-    $existing     = if (Test-Path $claudeMd) { Get-Content $claudeMd -Raw } else { '' }
+    $blockContent = (Get-Content -LiteralPath $JitBlockPath -Raw).TrimEnd("`r","`n")
+    $existing     = if (Test-Path $claudeMd) { Get-Content -LiteralPath $claudeMd -Raw } else { '' }
+
+    # Backup before any mutation. Timestamped so reinstalls keep history.
+    if (Test-Path $claudeMd) {
+        $stamp  = Get-Date -Format 'yyyyMMdd-HHmmss'
+        $backup = "$claudeMd.ccds-backup-$stamp"
+        Copy-Item -LiteralPath $claudeMd -Destination $backup -Force
+        Write-Info "Backed up existing CLAUDE.md to $(Split-Path -Leaf $backup)"
+    }
 
     $markerStart = '# >>> ccds >>>'
     $markerEnd   = '# <<< ccds <<<'
 
-    if ($existing -match [regex]::Escape($markerStart)) {
-        # Replace existing block (preserves everything outside the markers)
-        $pattern = "(?s)$([regex]::Escape($markerStart)).*?$([regex]::Escape($markerEnd))`r?`n?"
-        $updated = [regex]::Replace($existing, $pattern, "$blockContent`n")
-        [System.IO.File]::WriteAllText($claudeMd, $updated, [System.Text.UTF8Encoding]::new($false))
-        Write-OkMsg "Updated playbook JIT block in $claudeMd"
-    } else {
-        # Append block; ensure there is a blank line separator if file has content
-        $sep = if ($existing -and -not $existing.EndsWith("`n")) { "`n`n" } elseif ($existing) { "`n" } else { '' }
-        [System.IO.File]::WriteAllText($claudeMd, $existing + $sep + $blockContent + "`n", [System.Text.UTF8Encoding]::new($false))
-        Write-OkMsg "Appended playbook JIT block to $claudeMd"
+    # Strip ALL existing ccds blocks (handles duplicates from prior buggy
+    # installs and tolerates trailing whitespace on the marker lines).
+    $stripPattern = "(?s)\r?\n?[ \t]*$([regex]::Escape($markerStart))[ \t\r]*\r?\n.*?[ \t]*$([regex]::Escape($markerEnd))[ \t\r]*\r?\n?"
+    $cleaned = [regex]::Replace($existing, $stripPattern, '')
+    $cleaned = $cleaned.TrimEnd("`r","`n")
+
+    # Canary: legacy installs (pre-marker era, or hand-edited) may have left
+    # JIT content in CLAUDE.md without markers. We can't safely auto-strip it,
+    # but we can warn so the user can clean up by hand or restore the backup.
+    if ($cleaned -match '##\s+Playbook JIT Agent Loading') {
+        Write-WarnMsg "Detected legacy 'Playbook JIT Agent Loading' content outside markers."
+        if ($backup) {
+            Write-WarnMsg "Inspect $claudeMd and (if duplicated) restore from $(Split-Path -Leaf $backup)."
+        }
     }
+
+    if ($cleaned.Length -gt 0) {
+        $updated = $cleaned + "`n`n" + $blockContent + "`n"
+    } else {
+        $updated = $blockContent + "`n"
+    }
+    [System.IO.File]::WriteAllText($claudeMd, $updated, [System.Text.UTF8Encoding]::new($false))
+    Write-OkMsg "Refreshed playbook JIT block in $claudeMd"
 }
 
 # Remove the playbook JIT block from ~/.claude/CLAUDE.md (used by uninstall)
