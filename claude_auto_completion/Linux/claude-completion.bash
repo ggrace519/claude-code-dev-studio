@@ -66,32 +66,32 @@ remote-control|setup-token|ultrareview)
     # ---- Value completion: previous token expects an argument ----
     case "$prev" in
         --model|--fallback-model)
-            COMPREPLY=( $(compgen -W "$models" -- "$cur") )
+            mapfile -t COMPREPLY < <(compgen -W "$models" -- "$cur")
             return 0
             ;;
         --permission-mode)
-            COMPREPLY=( $(compgen -W "$permission_modes" -- "$cur") )
+            mapfile -t COMPREPLY < <(compgen -W "$permission_modes" -- "$cur")
             return 0
             ;;
         --effort)
-            COMPREPLY=( $(compgen -W "$effort_levels" -- "$cur") )
+            mapfile -t COMPREPLY < <(compgen -W "$effort_levels" -- "$cur")
             return 0
             ;;
         --output-format)
-            COMPREPLY=( $(compgen -W "$output_formats" -- "$cur") )
+            mapfile -t COMPREPLY < <(compgen -W "$output_formats" -- "$cur")
             return 0
             ;;
         --input-format)
-            COMPREPLY=( $(compgen -W "$input_formats" -- "$cur") )
+            mapfile -t COMPREPLY < <(compgen -W "$input_formats" -- "$cur")
             return 0
             ;;
         --teammate-mode)
-            COMPREPLY=( $(compgen -W "$teammate_modes" -- "$cur") )
+            mapfile -t COMPREPLY < <(compgen -W "$teammate_modes" -- "$cur")
             return 0
             ;;
         --setting-sources)
             # Comma-separated; offer the three values, user post-processes
-            COMPREPLY=( $(compgen -W "$setting_sources" -- "$cur") )
+            mapfile -t COMPREPLY < <(compgen -W "$setting_sources" -- "$cur")
             return 0
             ;;
         --add-dir|--plugin-dir|--worktree|-w)
@@ -123,14 +123,14 @@ remote-control|setup-token|ultrareview)
                 esac
             done
             if [[ -z "$auth_sub" ]]; then
-                COMPREPLY=( $(compgen -W "$auth_subs" -- "$cur") )
+                mapfile -t COMPREPLY < <(compgen -W "$auth_subs" -- "$cur")
             else
-                COMPREPLY=( $(compgen -W "$auth_flags" -- "$cur") )
+                mapfile -t COMPREPLY < <(compgen -W "$auth_flags" -- "$cur")
             fi
             return 0
             ;;
         auto-mode)
-            COMPREPLY=( $(compgen -W "$auto_mode_subs" -- "$cur") )
+            mapfile -t COMPREPLY < <(compgen -W "$auto_mode_subs" -- "$cur")
             return 0
             ;;
         mcp)
@@ -142,7 +142,7 @@ remote-control|setup-token|ultrareview)
                 esac
             done
             if [[ -z "$mcp_sub" ]]; then
-                COMPREPLY=( $(compgen -W "$mcp_subs" -- "$cur") )
+                mapfile -t COMPREPLY < <(compgen -W "$mcp_subs" -- "$cur")
             fi
             return 0
             ;;
@@ -155,35 +155,35 @@ remote-control|setup-token|ultrareview)
                 esac
             done
             if [[ -z "$plug_sub" ]]; then
-                COMPREPLY=( $(compgen -W "$plugin_subs" -- "$cur") )
+                mapfile -t COMPREPLY < <(compgen -W "$plugin_subs" -- "$cur")
             fi
             return 0
             ;;
         install)
             # Only complete version once
             if [[ "$cur" != -* ]]; then
-                COMPREPLY=( $(compgen -W "$install_versions" -- "$cur") )
+                mapfile -t COMPREPLY < <(compgen -W "$install_versions" -- "$cur")
             fi
             return 0
             ;;
         ultrareview)
             local ur_flags="--json --timeout"
             if [[ "$cur" == -* ]]; then
-                COMPREPLY=( $(compgen -W "$ur_flags" -- "$cur") )
+                mapfile -t COMPREPLY < <(compgen -W "$ur_flags" -- "$cur")
             fi
             return 0
             ;;
         remote-control)
             local rc_flags="--name --remote-control-session-name-prefix"
             if [[ "$cur" == -* ]]; then
-                COMPREPLY=( $(compgen -W "$rc_flags $global_flags" -- "$cur") )
+                mapfile -t COMPREPLY < <(compgen -W "$rc_flags $global_flags" -- "$cur")
             fi
             return 0
             ;;
         update|agents|setup-token)
             # No subcommand args; allow flags only
             if [[ "$cur" == -* ]]; then
-                COMPREPLY=( $(compgen -W "$global_flags" -- "$cur") )
+                mapfile -t COMPREPLY < <(compgen -W "$global_flags" -- "$cur")
             fi
             return 0
             ;;
@@ -191,9 +191,9 @@ remote-control|setup-token|ultrareview)
 
     # ---- No active subcommand: complete subcommands + flags ----
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=( $(compgen -W "$global_flags" -- "$cur") )
+        mapfile -t COMPREPLY < <(compgen -W "$global_flags" -- "$cur")
     elif [[ $cword -eq 1 ]]; then
-        COMPREPLY=( $(compgen -W "$subcommands" -- "$cur") )
+        mapfile -t COMPREPLY < <(compgen -W "$subcommands" -- "$cur")
     fi
     return 0
 }
