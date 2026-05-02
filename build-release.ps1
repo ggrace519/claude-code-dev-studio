@@ -140,8 +140,8 @@ Write-Step "Staged $($agentFiles.Count) agent files to agents\"
 # at the end of every script run — even after a successful execution.
 # Catching this here prevents a corrupt release from shipping.
 # ---------------------------------------------------------------------------
-Write-Step "Checking staged scripts for null bytes"
-$scriptFiles = Get-ChildItem -LiteralPath $stageDir -Recurse -File -Include '*.ps1', '*.sh'
+Write-Step "Checking staged files for null bytes"
+$scriptFiles = Get-ChildItem -LiteralPath $stageDir -Recurse -File -Include '*.ps1', '*.sh', '*.md', '*.json'
 $nullByteFiles = @()
 foreach ($f in $scriptFiles) {
     $bytes = [System.IO.File]::ReadAllBytes($f.FullName)
