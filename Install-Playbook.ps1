@@ -368,8 +368,8 @@ function Set-ClaudePlaybookBlock {
         New-Item -ItemType Directory -Path $claudeHome -Force | Out-Null
     }
 
-    $blockContent = (Get-Content -LiteralPath $JitBlockPath -Raw).TrimEnd("`r","`n")
-    $existing     = if (Test-Path $claudeMd) { Get-Content -LiteralPath $claudeMd -Raw } else { '' }
+    $blockContent = ([System.IO.File]::ReadAllText($JitBlockPath, [System.Text.Encoding]::UTF8)).TrimEnd("`r","`n")
+    $existing     = if (Test-Path $claudeMd) { [System.IO.File]::ReadAllText($claudeMd, [System.Text.Encoding]::UTF8) } else { '' }
 
     # Backup before any mutation. Timestamped so reinstalls keep history.
     if (Test-Path $claudeMd) {
@@ -441,7 +441,7 @@ if (Test-Path '$claudeCmpl') { . '$claudeCmpl' }
 $endMarker
 "@
 
-    $existing = Get-Content -LiteralPath $profilePath -Raw -ErrorAction SilentlyContinue
+    $existing = if (Test-Path $profilePath) { [System.IO.File]::ReadAllText($profilePath, [System.Text.Encoding]::UTF8) } else { $null }
 
     # Strip any existing block (idempotent; handles path change on reinstall)
     if ($existing -and $existing.Contains($marker)) {
@@ -466,7 +466,7 @@ function Remove-CompletionBlock {
     $profilePath = $PROFILE.CurrentUserAllHosts
     if (-not (Test-Path -LiteralPath $profilePath)) { return }
 
-    $existing = Get-Content -LiteralPath $profilePath -Raw -ErrorAction SilentlyContinue
+    $existing = [System.IO.File]::ReadAllText($profilePath, [System.Text.Encoding]::UTF8)
     $marker   = '# >>> ccds-completion >>>'
     if (-not ($existing -and $existing.Contains($marker))) { return }
 
@@ -492,7 +492,7 @@ function Remove-ClaudePlaybookBlock {
         return
     }
 
-    $existing    = Get-Content $claudeMd -Raw
+    $existing    = [System.IO.File]::ReadAllText($claudeMd, [System.Text.Encoding]::UTF8)
     $markerStart = '# >>> ccds >>>'
 
     if (-not ($existing -match [regex]::Escape($markerStart))) {

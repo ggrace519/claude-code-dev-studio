@@ -48,7 +48,7 @@ _ccds_completion() {
             return 0
             ;;
         --target)
-            _filedir -d 2>/dev/null || COMPREPLY=( $(compgen -d -- "$cur") )
+            _filedir -d 2>/dev/null || mapfile -t COMPREPLY < <(compgen -d -- "$cur")
             return 0
             ;;
     esac
