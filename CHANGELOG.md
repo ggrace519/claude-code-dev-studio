@@ -5,6 +5,18 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## v0.7.3 — 2026-05-02
+
+### Bug fixes
+
+**Issue #9 — CLAUDE.md corrupted with hundreds of KB of garbled characters (PR #10):**
+- `Install-Playbook.ps1` used `Get-Content -Raw` without an explicit encoding to read `jit-claude.md`, the user's `CLAUDE.md`, and the PowerShell profile. In PowerShell 5.1, `Get-Content` without `-Encoding` reads BOM-less UTF-8 files via the system ANSI codepage (CP1252). The 3-byte UTF-8 sequence for characters such as `–` (en-dash) was decoded as multiple CP1252 characters, which `WriteAllText` then re-encoded as expanded UTF-8 sequences. Every reinstall compounded the corruption.
+- All four `Get-Content -Raw` calls on text-content files are replaced with `[System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8)`, which is BOM-aware and handles both UTF-8 with BOM and UTF-8 without BOM — matching the write path already used throughout the installer.
+- `build-release.ps1` null-byte preflight extended to cover `.md` and `.json` files in addition to `.ps1` and `.sh`, so binary-corrupt agent or config files are caught before they ship.
+- ShellCheck SC2207: `ccds-completion.bash` word-split `COMPREPLY=( $(compgen ...) )` replaced with `mapfile -t COMPREPLY < <(compgen ...)` — the idiomatic bash 4+ pattern used elsewhere in the file.
+
+---
+
 ## Session 17 — 2026-04-30 — v0.6.1
 
 ### What was done
