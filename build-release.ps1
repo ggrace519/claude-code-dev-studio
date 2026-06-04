@@ -11,14 +11,15 @@
     Installed layout (inside the ZIP):
       bin/                 -- dispatcher scripts (ccds.{ps1,sh})
       scripts/             -- Sync-AgentPacks, Verify-Agents, jit-claude.md
-      agents/              -- 105 agent .md files (all generalists + pack agents flat)
-      catalog.json         -- agent index with name/pack/model/description
+      agents/              -- agent .md files (all always-on agents, flat)
+      skills/              -- skills tree (skills/<name>/SKILL.md, one dir per skill)
+      catalog.json         -- agent + skill index (name/pack/kind/scope/model/description)
       README.md            -- installer reference
       version.txt          -- the release version tag
 
     After extraction to ~/.claude/playbook/ the installer:
-      - Copies 7 generalist agents to ~/.claude/agents/
-      - Injects the JIT protocol block into ~/.claude/CLAUDE.md (marker-based, idempotent)
+      - Copies the 19 always-on agents to ~/.claude/agents/ and the cross-cutting skills to ~/.claude/skills/
+      - Injects the ccds pointer block into ~/.claude/CLAUDE.md (marker-based, idempotent)
 
 .PARAMETER Version
     Release version tag. Required. Example: 'v0.4.0-rc1'.
@@ -65,6 +66,7 @@ $required = @(
     'claude_auto_completion\Linux\claude-completion.bash'
     'README.md'
     '.claude\agents'
+    'skills'
 )
 $missing = @()
 foreach ($rel in $required) {
@@ -122,7 +124,7 @@ foreach ($entry in $copyMap) {
     Copy-Item -LiteralPath $srcFull -Destination $dstFull -Force
 }
 
-# Copy the agents library flat to agents/ (all 105 .md files; installer decides what goes where)
+# Copy the agents library flat to agents/ (all always-on .md files; installer decides what goes where)
 $agentsSrc = Join-Path $repoRoot '.claude\agents'
 $agentsDst = Join-Path $stageDir 'agents'
 New-Item -ItemType Directory -Path $agentsDst -Force | Out-Null
@@ -131,6 +133,19 @@ foreach ($file in $agentFiles) {
     Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $agentsDst $file.Name) -Force
 }
 Write-Step "Staged $($agentFiles.Count) agent files to agents\"
+
+# Copy the skills tree to skills/ (skills/<name>/SKILL.md, one dir per skill;
+# mirrors build-release.sh: mkdir skills + cp -r skills/* into the package).
+$skillsSrc = Join-Path $repoRoot 'skills'
+$skillsDst = Join-Path $stageDir 'skills'
+New-Item -ItemType Directory -Path $skillsDst -Force | Out-Null
+# Copy each skill directory explicitly. (-LiteralPath does NOT expand a '*'
+# wildcard, so the previous `Join-Path $skillsSrc '*'` copied nothing.)
+foreach ($skillDir in Get-ChildItem -LiteralPath $skillsSrc -Directory) {
+    Copy-Item -LiteralPath $skillDir.FullName -Destination (Join-Path $skillsDst $skillDir.Name) -Recurse -Force
+}
+$skillCount = (Get-ChildItem -LiteralPath $skillsDst -Recurse -File -Filter 'SKILL.md').Count
+Write-Step "Staged $skillCount skill files to skills\"
 
 # ---------------------------------------------------------------------------
 # Preflight: reject staged scripts containing null bytes (U+0000)

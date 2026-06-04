@@ -19,8 +19,8 @@ This lightweight model avoids a full CLA workflow while still giving the project
 
 | Welcome | Not accepted without prior discussion |
 |---|---|
-| New pack agents that fill documented gaps | New archetype packs (open an issue first — scope needs alignment) |
-| Fixes to existing agent prompts, triggers, or handoffs | Renames or reorganization of existing prefixes |
+| New domain skills that fill documented gaps | New archetype packs / domain agents (open an issue first — scope needs alignment) |
+| Fixes to existing agent/skill prompts, triggers, or handoffs | Renames or reorganization of existing prefixes |
 | Cross-platform port of `Sync-AgentPacks.ps1` (e.g., `Sync-AgentPacks.sh`) | Breaking changes to the manifest format |
 | README / docs improvements, typo fixes | Changes to licensing, copyright, or attribution notices |
 | Bug reports with reproducers | |

@@ -2,20 +2,7 @@
 name: test-writer-runner
 model: claude-sonnet-4-6
 color: "#057a55"
-description: |
-  Test writing and execution specialist. Auto-invoked after implementation is\\n
-  complete, after a PR review resolves issues, or when the user needs to improve\\n
-  test coverage for a module or feature.\\n
-  \\n
-  <example>\\n
-  Implementation of a feature is finished and tests need to be written.\\n
-  </example>\\n
-  <example>\\n
-  PR review identified missing test cases that need to be added.\\n
-  </example>\\n
-  <example>\\n
-  User asks to audit or improve test coverage for a specific module.\\n
-  </example>
+description: Test writing and execution specialist. Use proactively after implementation is complete, after a PR review resolves issues, or when test coverage for a module or feature needs improving.
 ---
 
 # Test Writer & Runner
@@ -28,7 +15,7 @@ You own: writing and running tests — unit, integration, API, smoke, and edge-c
 
 You do NOT own:
 - Security vulnerability analysis → `secure-auditor`
-- API contract design and review → `api-expert`
+- API contract design and review → `api-design`
 - Architecture decisions → `plan-architect`
 - Production deployment validation → `deploy-checklist`
 - Domain-specific test strategy (ML evals, game telemetry, financial invariant testing) → the relevant pack specialist

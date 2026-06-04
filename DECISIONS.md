@@ -388,3 +388,143 @@ Reading 105 `.md` files during project init would itself consume tokens and incu
 
 ### Supersedes
 Partial supersession of ADR-0004 (`Sync-AgentPacks.ps1` as canonical activation mechanism): `Sync-AgentPacks.ps1`/`.sh` remain for explicit pack-to-project copying, but the JIT flow (Claude-driven via `catalog.json` + CLAUDE.md instructions) is now the primary activation path. `sync` commands become the explicit fallback.
+
+---
+
+## ADR-0007: Domain-Agent + Skills Architecture
+
+**Date:** 2026-06-03
+**Status:** Accepted
+**Phase:** Architecture
+**Deciders:** Greg Grace
+
+### Context
+
+ADR-0001 through ADR-0006 grew the system to **105 agents** (7 generalists + 98 pack
+specialists), with ADR-0006 introducing JIT activation to avoid the ~17,000-token cost
+of loading all of them. JIT reduced the token bill, but three structural problems remained
+once the goal was stated as **"Claude can access and use the playbook efficiently,"** not
+just "minimize tokens":
+
+1. **Subagents cannot reach other subagents.** Claude Code forbids subagent nesting
+   (subagents cannot spawn subagents) but **permits subagents to invoke skills via the
+   Skill tool**. Every `*-expert` was an agent, so a running specialist (e.g.
+   `saas-billing-expert`) could not consult a sibling (`saas-auth-sso-expert`) directly —
+   it had to return to the orchestrator and ask. Cross-specialty work bounced through the
+   main loop on every handoff.
+
+2. **The routing surface was 98 near-identical expert descriptions.** Auto-invocation
+   routing degrades when the choices overlap finely ("billing vs entitlement vs
+   multitenancy") instead of being distinct ("is this a SaaS task?"). Descriptions also
+   carried literal `\n` escapes and 2–3 `<example>` blocks each — noise that buried the
+   routing signal (the `catalog.json` descriptions were pre-cleaned per ADR-0006, but the
+   agent **files** were not).
+
+3. **JIT activation required a session restart** for the selected agents to load, after
+   the orchestrator had already spent effort selecting them.
+
+The enabling facts (verified against Claude Code docs, v2.1.153+): agent **descriptions**
+load at session start for routing; agent **bodies** load only inside the spawned subagent;
+**skills** load only `name`+`description` at start (project-scoped skills load only in that
+project) with the body fetched JIT on invocation; subagents inherit all tools (including
+`Skill`) when `tools:` is omitted, and can invoke project/user/plugin skills during a run.
+
+### Decision
+
+Collapse the per-pack architect+experts bundle into **one domain agent per pack, backed by
+skills it composes on demand.**
+
+1. **19 agents, always installed in `~/.claude/agents/`** (no per-project agent
+   activation):
+   - **14 domain agents** — one per archetype pack (`saas`, `ai`, `infra`, `game`,
+     `mobile`, `dataplat`, `ecom`, `fintech`, `devtool`, `desktop`, `ext`, `embed`,
+     `media`, `orch`). Each body = the former `*-architect` persona + a **skill manifest**
+     listing the domain skills it pulls and when.
+   - **5 core agents** — `plan-architect`, `pr-code-reviewer`, `secure-auditor`,
+     `test-writer-runner`, `deploy-checklist` (genuine delegated workers that run isolated
+     and return a result).
+
+2. **Skills (visible, project-scoped, JIT-activated into `.claude/skills/`):**
+   - **~84 domain skills** — every former `*-expert` becomes a `SKILL.md` grouped under
+     its domain (`saas-billing`, `saas-auth-sso`, …). The expert body moves over near
+     verbatim.
+   - **5 cross-cutting skills** — the former `common-*` agents (a11y, i18n, privacy,
+     notifications, analytics), reachable by **any** domain agent mid-task.
+   - **2 former core → skills** — `api-design` (from `api-expert`) and `ux-design` (from
+     `ux-design-critic`), so a domain agent can reach API/UX guidance in place.
+   - **2 checklist skills** — `security-checklist` and `code-review-checklist`, the
+     **reference half** of `secure-auditor` / `pr-code-reviewer`. The agents keep the
+     **action half** (isolated audit/review returning findings) and themselves pull the
+     checklist skill; a domain agent can pull the checklist directly without a round-trip.
+   - **`playbook-conventions`** — the output-format skeleton, handoff protocol, and ADR
+     format formerly hand-copied into all 98 bodies, now a single source of truth.
+   - **`sync-agents`** — the JIT activation protocol, lifted out of the global `CLAUDE.md`
+     marker block (which shrinks to a ~5-line pointer).
+
+3. **Skills are "visible," not hidden.** Project-scoped skill descriptions load only in a
+   project where that domain is activated; both the main loop and the domain agent may
+   invoke them. `disable-model-invocation` is **not** used — direct main-loop access to a
+   skill is itself efficient access, and the per-project description cost is small and
+   relevant.
+
+4. **Activation inverts.** The always-on layer becomes the cheap 19 trimmed agents
+   (~850 tokens total — *less* than the 7 verbose generalists cost today). The JIT layer
+   becomes the **skills**: `sync-agents` copies the relevant domain's skills from the
+   playbook library into `.claude/skills/`. `catalog.json` indexes agents and skills
+   separately.
+
+### Rationale
+
+- **Skills compose downward; agents do not.** This is the decisive fact. Making each
+  domain a single agent that pulls skills lets one spawned worker handle a billing+auth
+  task in one coherent context, instead of bouncing between isolated expert subagents via
+  the orchestrator.
+- **Routing surface drops 98 → ~21.** The orchestrator chooses among distinct domains plus
+  the core workers — higher routing accuracy, lower noise.
+- **The "mega-agent" objection from ADR-0001 is answered, not ignored.** ADR-0001 rejected
+  "single mega-agent per archetype" because it would erase specialist depth. Here the depth
+  is **preserved as skills** — the expert bodies survive intact and load JIT; only their
+  packaging changes from "sibling agent the worker can't reach" to "skill the worker
+  pulls."
+- **Always-on agents are now cheaper than the status quo.** 19 trimmed descriptions
+  (~850 tokens) undercut today's 7 verbose generalists (~1,500 tokens), so the per-project
+  agent-activation/restart dance disappears for the agent layer entirely.
+- **One source of truth for conventions.** `playbook-conventions` replaces 98 drifting
+  copies of the output/handoff/ADR boilerplate.
+
+Alternatives considered and rejected:
+- **Keep 98 expert agents, only trim descriptions.** Fixes routing noise but not the
+  no-nesting composability problem; experts still can't reach each other.
+- **Convert experts to *global* skills.** Would load all ~95 skill descriptions in every
+  session everywhere — strictly worse than project-scoped JIT.
+- **Hide domain skills behind `disable-model-invocation`.** Rejected — removes the option
+  of cheap direct main-loop access for no meaningful saving.
+- **Fold the architect into the domain agent but keep experts as agents.** Half-measure;
+  retains the routing bloat and the handoff round-trips.
+
+### Consequences
+
+- **Migration surface is large and one-shot:** 98 agent files → 14 domain agents +
+  ~95 skills; `catalog.json` + `build-catalog.*` reworked to index two artifact types;
+  `jit-claude.md` slimmed; `install-playbook.*`, `Sync-AgentPacks.*`, `verify-agents.*` /
+  `Verify-Agents.ps1`, `build-release.*`, and `bin/ccds.*` updated to manage an
+  agents-always-on + skills-library layout; both `CLAUDE.md` files rewritten.
+- **Restart friction reduced, not eliminated:** agents never need activation; newly
+  copied skills still need a session refresh to be discovered (same as any skill install).
+- **Skill scoping mechanics:** domain skills live in `~/.claude/playbook/skills/` and are
+  JIT-copied to `.claude/skills/`; `sync --clean` removes project skills, never the 19
+  global agents.
+- **`common-` becomes skills-only** — it is no longer an agent pack; existing references in
+  docs/CLAUDE.md are updated.
+- **Backward compatibility:** projects with old per-project `.claude/agents/*-expert.md`
+  files keep working until re-synced; `sync --clean` plus a fresh `sync` migrates them.
+- **Versioning:** ships as a minor/major release with a CHANGELOG entry; the installer
+  remains idempotent and BOM-less per ADR-0001.
+
+### Supersedes
+- **ADR-0006 (JIT Agent Loading Architecture)** — superseded in substance: the JIT unit
+  becomes skills, not agents; the 19 agents are always-on. The catalog and `sync` flow
+  carry forward in restructured form.
+- **Partial supersession of ADR-0001 and ADR-0003** — the flat per-pack `*-expert` *agent*
+  layout and the `common-` *agent* pack are replaced by the domain-agent + skills layout;
+  the prefix registry and "compose, don't replace" invariant are retained.

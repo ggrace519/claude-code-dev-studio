@@ -1,7 +1,7 @@
 #!/bin/bash
 # postinst -- ccds Debian/RPM post-install script
-# Runs as root. Per-user setup (generalist agents + CLAUDE.md) is handled
-# lazily by 'ccds setup' or automatically on first 'ccds sync/verify'.
+# Runs as root. Per-user setup (the 19 always-on agents + cross-cutting skills +
+# CLAUDE.md block) is handled lazily by 'ccds setup' or on first 'ccds sync/verify'.
 # If SUDO_USER is set (interactive sudo install), we run setup for that user now.
 
 set -e
