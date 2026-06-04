@@ -5,6 +5,41 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## v0.8.0 — 2026-06-03 — Domain-agent + skills architecture (ADR-0007)
+
+### What changed
+
+Restructured the playbook from **105 flat agents** into **19 always-on agents + ~90 skills**. Rationale: subagents can invoke skills but cannot spawn other subagents, so packaging each archetype as one *domain agent* that composes its `<pack>-*` *skills* lets a single spawned worker handle a multi-specialty task in one coherent context, shrinks the routing surface from 98 near-identical expert descriptions to ~21 distinct ones, and makes the always-on layer cheaper (~850 tokens of trimmed descriptions) than the old 7 verbose generalists. See `DECISIONS.md` ADR-0007.
+
+### Agents (19, always installed in `~/.claude/agents/`)
+
+- **14 domain agents** — `saas-architect`, `ai-architect`, `infra-architect`, `game-architect`, `mobile-architect`, `dataplat-architect`, `ecom-architect`, `fintech-architect`, `devtool-architect`, `desktop-architect`, `ext-architect`, `embed-architect`, `media-architect`, `orch-architect`. Each body carries a skill manifest and pulls its skills via the Skill tool.
+- **5 core agents** — `plan-architect`, `pr-code-reviewer`, `secure-auditor`, `test-writer-runner`, `deploy-checklist`. `secure-auditor` and `pr-code-reviewer` now pull `security-checklist` / `code-review-checklist` skills (checklist→skill, action→agent split).
+
+### Skills (`skills/<name>/SKILL.md`)
+
+- **~79 domain skills** (former `*-expert` agents), JIT-staged per project into `.claude/skills/`.
+- **Cross-cutting (global, installed to `~/.claude/skills/`):** `playbook-conventions` (shared output/handoff/ADR format, replacing 98 hand-copied copies), `sync-agents` (the activation protocol lifted out of the global CLAUDE.md), `api-design` (from `api-expert`), `ux-design` (from `ux-design-critic`), `security-checklist`, `code-review-checklist`, and the `common-*` set.
+
+### Correctness fixes
+
+- Removed literal `\n` escapes and `<example>` blocks from every description; rewrote each to a single "use proactively" trigger sentence.
+- Fixed three baked-in mojibake byte-sequences (`—`, `→`, `–`) across all files.
+- Slimmed the global `~/.claude/CLAUDE.md` ccds block from 118 lines to a ~16-line pointer to the `sync-agents` skill.
+
+### Machinery
+
+- `catalog.json` + `build-catalog.py` now index agents and skills separately with `kind` (agent|skill) and `scope` (global|project) fields (19 agents + 90 skills).
+- `ccds-user-setup.sh` installs all 19 agents + the cross-cutting skills; `install-playbook.sh` / `build-release.sh` bundle and place `skills/`.
+- `Sync-AgentPacks.sh` rewritten to stage domain skills (with `--clean`); `bin/ccds.sh` gains `ccds sync --clean` and drops the obsolete `--mode` / `--no-generalists`; `verify-agents.sh` validates both agent and skill layouts.
+- Project `CLAUDE.md` and `README.md` rewritten to the new model.
+
+### Migration
+
+Projects with old per-project `.claude/agents/*-expert.md` keep working until re-synced; `ccds sync --clean` then `ccds sync <packs>` migrates them to `.claude/skills/`.
+
+---
+
 ## v0.7.3 — 2026-05-02
 
 ### Bug fixes

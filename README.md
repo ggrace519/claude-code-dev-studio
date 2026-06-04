@@ -1,23 +1,24 @@
 # Claude Code Dev Studio
 
-A universal, stack-agnostic Claude Code playbook with a library of 105 archetype-aware agents (7 generalists + 14 archetype packs + 1 cross-archetype pack). Aligned with NIST SSDF (SP 800-218) and phase-gated Agile delivery.
+A universal, stack-agnostic Claude Code playbook: **19 always-on agents** (14 domain agents + 5 core generalists) plus a library of **~90 skills** the agents compose on demand. Aligned with NIST SSDF (SP 800-218) and phase-gated Agile delivery. See `DECISIONS.md` ADR-0007 for the architecture.
 
 ## What's here
 
 | File | Purpose |
 |---|---|
-| `CLAUDE.md` | The playbook — phases, agent triggers, archetype pack registry |
-| `.claude/agents/` | 105 agent definitions (canonical dev-repo library) |
-| `catalog.json` | Agent index (name, pack, model, description) — used for JIT selection without loading all 105 files |
+| `CLAUDE.md` | The playbook — phases, the agent/skill model, prefix registry |
+| `.claude/agents/` | The 19 always-on agent definitions (14 domain + 5 core) |
+| `skills/` | The skill library (`<name>/SKILL.md`) — domain + cross-cutting |
+| `catalog.json` | Index of agents and skills (`name, pack, kind, scope, model, description`) for JIT selection |
 | `bin/ccds.{ps1,sh}` | Dispatcher — `sync`, `verify`, `update`, `uninstall`, `version` |
-| `Install-Playbook.ps1` | Windows installer (stage/promote, SHA256-verified, PATH-aware, JIT block injection) |
+| `Install-Playbook.ps1` | Windows installer (stage/promote, SHA256-verified, PATH-aware, CLAUDE.md block) |
 | `install-playbook.sh` | Linux/macOS installer (same behavior, shell-rc PATH block) |
-| `Sync-AgentPacks.{ps1,sh}` | Activate a subset of packs into a target project (invoked by `ccds sync`) |
-| `Verify-Agents.ps1` / `verify-agents.sh` | Validate `.claude/agents/` against ADR-0001 invariants |
+| `Sync-AgentPacks.{ps1,sh}` | Stage a pack's domain skills into a project (invoked by `ccds sync`) |
+| `Verify-Agents.ps1` / `verify-agents.sh` | Validate agents and skills against ADR-0001 invariants |
 | `build-release.ps1` | Build reproducible release ZIP + sidecar SHA256 |
-| `scripts/jit-claude.md` | Canonical source for the JIT protocol block injected into `~/.claude/CLAUDE.md` |
+| `scripts/jit-claude.md` | Canonical source for the ccds pointer block injected into `~/.claude/CLAUDE.md` |
 | `.github/workflows/release.yml` | Tag-driven release build + GitHub Release publication |
-| `DECISIONS.md` | Architecture decision records (ADR-0001 … ADR-0006) |
+| `DECISIONS.md` | Architecture decision records (ADR-0001 … ADR-0007) |
 | `CHANGELOG.md` | Session-by-session history |
 | `CONTRIBUTING.md` | Contribution terms |
 | `LICENSE` | PolyForm Noncommercial 1.0.0 |
@@ -28,32 +29,36 @@ A universal, stack-agnostic Claude Code playbook with a library of 105 archetype
 
 ```
 ~/.claude/
-  agents/          ← 7 generalist agents (always loaded by Claude Code)
+  agents/          ← 19 always-on agents (14 domain + 5 core; always loaded)
+  skills/          ← cross-cutting skills (always available)
   playbook/        ← managed by installer
     bin/           ← ccds dispatcher (ccds.ps1 / ccds.sh / ccds symlink)
     scripts/       ← Sync-AgentPacks, Verify-Agents, jit-claude.md
-    agents/        ← 98 pack agents (copied to projects on demand)
-    catalog.json   ← agent index for JIT selection
+    agents/        ← source copy of the 19 agents
+    skills/        ← full skill library (domain skills copied to projects on demand)
+    catalog.json   ← agent + skill index for JIT selection
     version.txt
     README.md
-  CLAUDE.md        ← your global Claude instructions; installer appends JIT block
+  CLAUDE.md        ← your global Claude instructions; installer injects the ccds pointer block
 ```
 
-### JIT agent loading
+### Always-on agents, JIT skills (ADR-0007)
 
-The installer injects a protocol block into `~/.claude/CLAUDE.md`. At the start of each new Claude Code session the protocol:
+The 19 agents are cheap enough (~850 tokens of trimmed descriptions) to load every session, so there is no agent-activation step. Each **domain agent** composes its `<pack>-*` **skills** via the Skill tool — and because subagents can invoke skills but cannot spawn other subagents, one domain agent handles a multi-specialty task in a single coherent context.
 
-1. Reads `~/.claude/playbook/catalog.json` — 105 entries, lightweight metadata only
+Skills are the just-in-time layer. The `sync-agents` skill (or `ccds sync`):
+
+1. Reads `~/.claude/playbook/catalog.json` — agents + skills, lightweight metadata only
 2. Assesses the project (stack signals in files and conversation)
-3. Selects agents from matching packs
-4. Copies them to `./.claude/agents/` in the project
-5. Summarises what was activated and asks you to restart the session
+3. Selects the matching packs' domain skills
+4. Copies them to `./.claude/skills/` in the project
+5. Summarises what was staged; new skills are discovered on the next session refresh
 
-This keeps the global `~/.claude/agents/` directory to exactly 7 generalists (always present) while giving each project only the specialists it needs.
+Cross-cutting skills (`playbook-conventions`, `api-design`, `ux-design`, `security-checklist`, `code-review-checklist`, `common-*`) install once to `~/.claude/skills/` and are always available.
 
 ## Install
 
-The installer downloads a GitHub Release ZIP, verifies its SHA256 against the sidecar, stages to `<prefix>.new`, snapshots the existing install to `<prefix>.previous`, and atomically promotes. It copies the 7 generalist agents to `~/.claude/agents/`, injects the JIT block into `~/.claude/CLAUDE.md`, and updates `PATH` so `ccds` resolves in new shells.
+The installer downloads a GitHub Release ZIP, verifies its SHA256 against the sidecar, stages to `<prefix>.new`, snapshots the existing install to `<prefix>.previous`, and atomically promotes. It copies the 19 agents to `~/.claude/agents/`, the cross-cutting skills to `~/.claude/skills/`, injects the ccds block into `~/.claude/CLAUDE.md`, and updates `PATH` so `ccds` resolves in new shells.
 
 **Windows (PowerShell 5.1 or 7+):**
 
@@ -88,17 +93,17 @@ ccds version                         # print installed version
 
 ## Quick start
 
-Activate the SaaS pack + generalists into a project:
+Stage the SaaS domain skills into a project (the `saas-architect` agent is already loaded):
 
 ```bash
 cd /path/to/my-saas-app
-ccds sync saas,common --write-adr
+ccds sync saas --write-adr
 ```
 
-Activate multiple packs (e.g., an LLM-enabled SaaS product):
+Stage multiple packs (e.g., an LLM-enabled SaaS product):
 
 ```bash
-ccds sync saas,ai,common
+ccds sync saas,ai
 ```
 
 Preview without writing:
@@ -107,41 +112,42 @@ Preview without writing:
 ccds sync saas --dry-run
 ```
 
-Remove a pack by re-running with a narrower list — the manifest tracks what the dispatcher owns:
+Re-run with a narrower list to drop skills, or clear all staged skills — the manifest tracks what the dispatcher owns:
 
 ```bash
-ccds sync saas    # drops 'ai' if previously activated
+ccds sync saas    # drops 'ai' skills if previously staged
+ccds sync --clean # removes all staged skills
 ```
 
-Validate a project's `.claude/agents/`:
+Validate the agents and a project's skills:
 
 ```bash
 ccds verify
 ```
 
-Run `ccds help` for full flag reference (`--mode copy|symlink`, `--no-generalists`, `--target <path>`, `--write-adr`).
+Run `ccds help` for the full flag reference (`--clean`, `--target <path>`, `--write-adr`).
 
 ## Script invocation (without installing)
 
 The dispatcher wraps `Sync-AgentPacks.{ps1,sh}` and `Verify-Agents.{ps1,sh}`. You can invoke those scripts directly from a clone:
 
 ```powershell
-.\Sync-AgentPacks.ps1 -TargetProject D:\code\my-app -Packs saas,common -WriteAdr
+.\Sync-AgentPacks.ps1 -TargetProject D:\code\my-app -Packs saas -WriteAdr
 ```
 
 ```bash
-./Sync-AgentPacks.sh --target-project ~/code/my-app --packs saas,common --write-adr
+./Sync-AgentPacks.sh --target-project ~/code/my-app --packs saas --write-adr
 ```
 
-By default both scripts look for the pack library at `~/.claude/playbook/agents/`. Override with `-LibraryRoot` (PS) or `--library-root` / `$CCDS_LIBRARY_ROOT` (bash).
+By default both scripts look for the skill library at `~/.claude/playbook/skills/`. Override with `-LibraryRoot` (PS) or `--library-root` / `$CCDS_LIBRARY_ROOT` (bash).
 
 See `Get-Help .\Sync-AgentPacks.ps1 -Full` or `./Sync-AgentPacks.sh --help`.
 
 ## Available packs
 
-`game`, `saas`, `mobile`, `ai`, `dataplat`, `ecom`, `fintech`, `devtool`, `desktop`, `ext`, `embed`, `media`, `orch`, `infra`, `common`.
+`game`, `saas`, `mobile`, `ai`, `dataplat`, `ecom`, `fintech`, `devtool`, `desktop`, `ext`, `embed`, `media`, `orch`, `infra` (each is one domain agent + its skills), plus `common` (cross-cutting skills only — no domain agent).
 
-Pack contents, agent counts, and trigger conditions are documented in `CLAUDE.md`.
+Pack skills and trigger conditions are the source-of-truth in `catalog.json`; the model is documented in `CLAUDE.md`.
 
 ## Extras
 
@@ -167,10 +173,10 @@ Optional, opt-in tab-completion for the Claude Code CLI itself — independent o
 
 ## Conventions
 
-- Agent files are **BOM-less UTF-8**. PS 5.1's `Set-Content -Encoding UTF8` writes a BOM that Claude Code's YAML frontmatter parser silently rejects. The sync script uses `[System.IO.File]::WriteAllText` with `UTF8Encoding($false)`. See ADR-0001.
-- Agents live in a **flat** `.claude/agents/` directory (no subfolders — Claude Code does not recurse). See ADR-0001.
+- Agent and skill files are **BOM-less UTF-8**. PS 5.1's `Set-Content -Encoding UTF8` writes a BOM that Claude Code's YAML frontmatter parser silently rejects. Writes use `[System.IO.File]::WriteAllText` with `UTF8Encoding($false)`. See ADR-0001.
+- Agents live in a **flat** `.claude/agents/` directory; skills are `skills/<name>/SKILL.md` (one dir per skill). Claude Code does not recurse `.claude/agents/`. See ADR-0001 / ADR-0007.
 - Release ZIPs are named `ccds-<tag>.zip` with a matching `ccds-<tag>.zip.sha256` sidecar. Installers verify SHA256 before extracting.
-- The `~/.claude/CLAUDE.md` JIT block is delimited by `# >>> ccds >>>` / `# <<< ccds <<<` markers. The installer is idempotent — re-running updates the block in place. See ADR-0006.
+- The `~/.claude/CLAUDE.md` ccds block is delimited by `# >>> ccds >>>` / `# <<< ccds <<<` markers. The installer is idempotent — re-running updates the block in place. See ADR-0006 / ADR-0007.
 
 ## License
 

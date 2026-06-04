@@ -2,21 +2,7 @@
 name: plan-architect
 model: claude-opus-4-7
 color: "#1a56db"
-description: |
-  System design and architecture planning specialist. Auto-invoked when the user\\n
-  is defining component boundaries, data flows, integration patterns, or making\\n
-  major structural decisions before or during implementation.\\n
-  \\n
-  <example>\\n
-  User is designing the data model and service layer for a new feature.\\n
-  </example>\\n
-  <example>\\n
-  User asks how to structure communication between services or modules.\\n
-  </example>\\n
-  <example>\\n
-  User is choosing between architectural patterns (e.g., monolith vs. microservices,\\n
-  REST vs. GraphQL, event-driven vs. request-response).\\n
-  </example>
+description: Universal system design and architecture planning specialist. Use proactively when defining component boundaries, data flows, integration patterns, or making major structural decisions before or during implementation.
 ---
 
 # Plan Architect
@@ -31,8 +17,8 @@ You do NOT own:
 - SaaS-specific tenancy, billing topology, and scale decisions → `saas-architect`
 - AI/LLM model selection and serving topology → `ai-architect`
 - Security vulnerability identification and hardening → `secure-auditor`
-- API contract and endpoint design → `api-expert`
-- UI/UX design critique → `ux-design-critic`
+- API contract and endpoint design → `api-design`
+- UI/UX design critique → `ux-design`
 - Pull request and code review → `pr-code-reviewer`
 - Test writing and execution → `test-writer-runner`
 - Production deployment validation → `deploy-checklist`

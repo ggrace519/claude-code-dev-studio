@@ -1,27 +1,31 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Claude Playbook dispatcher — project-level agent pack activation from a global install.
+    Claude Code Dev Studio dispatcher — project-level domain skill staging from a global install.
 
 .DESCRIPTION
     Resolves paths (library, scripts, target project) from its own location, then
-    delegates to the appropriate underlying script.
+    delegates to the appropriate underlying script. The 19 always-on agents and the
+    cross-cutting skills are installed globally by the installer; 'sync' stages the
+    per-pack domain skills into a project's .claude\skills\.
 
     Layout assumed:
       <install-root>\
         bin\ccds.ps1     (this script)
         scripts\Sync-AgentPacks.ps1
         scripts\Verify-Agents.ps1
-        library\agents\*.md         (the pack library)
+        agents\*.md          (the 19 always-on agents)
+        skills\<name>\SKILL.md (all skills; domain skills staged per project)
         version.txt
 
-    Dev-repo layout is auto-detected (library at <repo>\.claude\agents,
-    scripts at repo root) so the same dispatcher works without installation.
+    Dev-repo layout is auto-detected (scripts at repo root) so the same dispatcher
+    works without installation.
 
 .EXAMPLE
-    ccds sync saas,common
-    ccds sync saas,ai,common --write-adr
+    ccds sync saas
+    ccds sync saas,ai --write-adr
     ccds sync game --dry-run
+    ccds sync --clean
     ccds verify
     ccds update
     ccds version
@@ -88,14 +92,13 @@ USAGE
   ccds <command> [arguments]
 
 COMMANDS
-  sync <packs>         Activate packs in the current directory (default: apply)
+  sync <packs>         Stage domain skills for the packs into .\.claude\skills\
+      --clean               Remove all skills staged by a previous sync
       --dry-run             Preview changes without writing
       --write-adr           Record activation as an ADR in DECISIONS.md
-      --no-generalists      Exclude the 7 generalist agents
-      --mode <copy|symlink> Sync mode (default: copy)
       --target <path>       Target project path (default: current directory)
 
-  verify               Validate .claude\agents\ in the current directory
+  verify               Validate global agents and project skills
       --target <path>       Target path (default: current directory)
 
   update [tag]         Download and install a release (default: latest stable)
@@ -109,11 +112,11 @@ COMMANDS
   help                 Show this help
 
 EXAMPLES
-  ccds sync saas,common
-  ccds sync saas,ai,common --write-adr
+  ccds sync saas
+  ccds sync saas,ai --write-adr
   ccds sync game --dry-run
+  ccds sync --clean
   ccds verify
-  ccds --target C:\proj\foo verify
 
 LAYOUT
   Install location : $installRoot
@@ -135,8 +138,7 @@ function ConvertTo-Hashtable {
         Positional        = @()
         DryRun            = $false
         WriteAdr          = $false
-        NoGeneralists     = $false
-        Mode              = 'Copy'
+        Clean             = $false
         Target            = $null
         Rollback          = $false
         IncludePrerelease = $false
@@ -148,14 +150,9 @@ function ConvertTo-Hashtable {
         switch -Regex ($a) {
             '^--dry-run$'             { $result.DryRun = $true; $i++; continue }
             '^--write-adr$'           { $result.WriteAdr = $true; $i++; continue }
-            '^--no-generalists$'      { $result.NoGeneralists = $true; $i++; continue }
+            '^--clean$'               { $result.Clean = $true; $i++; continue }
             '^--rollback$'            { $result.Rollback = $true; $i++; continue }
             '^--include-prerelease$'  { $result.IncludePrerelease = $true; $i++; continue }
-            '^--mode$' {
-                if ($i + 1 -ge $Arguments.Count) { throw "--mode requires a value (copy|symlink)" }
-                $result.Mode = $Arguments[$i + 1]
-                $i += 2; continue
-            }
             '^--target$' {
                 if ($i + 1 -ge $Arguments.Count) { throw "--target requires a path" }
                 $result.Target = $Arguments[$i + 1]
@@ -182,12 +179,25 @@ function ConvertTo-Hashtable {
 function Invoke-SyncCommand {
     param([hashtable]$Opts)
 
-    if ($Opts.Positional.Count -lt 1) {
-        throw "sync requires a pack list. Example: ccds sync saas,common"
+    $target = if ($Opts.Target) { $Opts.Target } else { (Get-Location).Path }
+
+    # --clean removes previously-staged skills and ignores any pack list.
+    if ($Opts.Clean) {
+        & $syncScript `
+            -TargetProject $target `
+            -LibraryRoot   $libraryRoot `
+            -Clean `
+            -DryRun:$Opts.DryRun `
+            -WriteAdr:$Opts.WriteAdr
+        exit $LASTEXITCODE
     }
 
-    # Accept packs as a single comma-separated token (saas,common) or as
-    # multiple positional tokens (saas common). Join then re-split to normalize.
+    if ($Opts.Positional.Count -lt 1) {
+        throw "sync requires a pack list (or --clean). Example: ccds sync saas"
+    }
+
+    # Accept packs as a single comma-separated token (saas,ai) or as
+    # multiple positional tokens (saas ai). Join then re-split to normalize.
     # The @(...) wrapper forces array context even when the pipeline yields a scalar.
     $packsCsv  = ($Opts.Positional -join ',')
     $packList  = @($packsCsv -split ',' | Where-Object { $_ -ne '' } | ForEach-Object { $_.Trim() })
@@ -198,18 +208,14 @@ function Invoke-SyncCommand {
         Write-Host "DEBUG packList count=$($packList.Count) items=[$($packList -join '|')]" -ForegroundColor Cyan
     }
 
-    $target = if ($Opts.Target) { $Opts.Target } else { (Get-Location).Path }
-
     # Force [string[]] at the call site so the parameter binder sees a real array
     # even if upstream pipelines returned a scalar.
     & $syncScript `
         -TargetProject $target `
         -Packs         ([string[]]$packList) `
         -LibraryRoot   $libraryRoot `
-        -Mode          $Opts.Mode `
         -DryRun:$Opts.DryRun `
-        -WriteAdr:$Opts.WriteAdr `
-        -NoGeneralists:$Opts.NoGeneralists
+        -WriteAdr:$Opts.WriteAdr
 
     exit $LASTEXITCODE
 }

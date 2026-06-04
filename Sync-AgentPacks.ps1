@@ -1,31 +1,35 @@
 <#
 .SYNOPSIS
-    Activate Claude Code agent packs from the dev-studio library into a target project.
+    Stage Claude Code Dev Studio domain skills from the library into a target project.
 
 .DESCRIPTION
-    The installed playbook library at ~/.claude/playbook/agents/ acts as
-    the canonical library of all 105 agents. Most projects only need 1-3 packs.
-    This script syncs a subset into a target project's .claude\agents directory, tracks
-    what it owns via a manifest (.pack-manifest.json), and supports clean deactivation
-    by re-running with a smaller pack list.
+    Under ADR-0007 the 19 agents (14 <pack>-architect domain agents + 5 core) are
+    always-on and installed globally in ~/.claude/agents/. This script no longer copies
+    agents -- it stages the per-project, JIT skill layer.
 
-    Idempotent. Files managed by this script are tracked in the manifest; files not in
-    the manifest are left untouched so manual additions are preserved.
+    The library at ~/.claude/playbook/skills/ holds one directory per skill, each with a
+    SKILL.md. This script copies the project-scoped domain skills (directories named
+    <pack>-*) for the requested packs into a target project's .claude\skills\ directory,
+    tracks what it owns via a manifest (.skill-manifest.json), and supports clean
+    deactivation by re-running with a smaller pack list or with -Clean.
+
+    Cross-cutting skills (common-*, playbook-conventions, sync-agents, api-design,
+    ux-design, security-checklist, code-review-checklist) are GLOBAL (~/.claude/skills)
+    and are never staged per project. Selecting by <pack>- prefix naturally excludes them.
+
+    Idempotent. Skills managed by this script are tracked in the manifest; directories not
+    in the manifest are left untouched so manual additions are preserved.
 
 .PARAMETER TargetProject
     Absolute path to the project root (the directory that contains or will contain .claude\).
 
 .PARAMETER Packs
-    Pack prefixes to activate (without trailing hyphen). E.g., 'saas','common'.
+    Domain pack prefixes to activate (without trailing hyphen). E.g., 'saas','ai'.
     Valid prefixes: game, saas, mobile, ai, dataplat, ecom, fintech, devtool, desktop,
-    ext, embed, media, orch, infra, common.
+    ext, embed, media, orch, infra. (No 'common' -- common is cross-cutting/global only.)
 
-.PARAMETER NoGeneralists
-    Skip the 7 generalist agents. Default behavior includes them.
-
-.PARAMETER Mode
-    Copy   - write file copies (default; portable, no admin needed).
-    Symlink - create symbolic links (requires Developer Mode or admin on Windows).
+.PARAMETER Clean
+    Remove all skills staged by a previous sync (per the manifest) and delete the manifest.
 
 .PARAMETER DryRun
     Show what would happen without changing anything.
@@ -38,31 +42,39 @@
 
 .PARAMETER AllowLibraryTarget
     Override the guard that refuses to run when TargetProject resolves to the same
-    path as LibraryRoot. Not recommended — re-running later with a narrower -Packs
-    list would remove files from the library itself based on the manifest created
+    path as LibraryRoot. Not recommended -- re-running later with a narrower -Packs
+    list would remove skills from the library itself based on the manifest created
     in the first run. See DECISIONS.md ADR-0004.
 
 .EXAMPLE
-    .\Sync-AgentPacks.ps1 -TargetProject D:\code\acme-saas -Packs saas,common -WriteAdr
+    .\Sync-AgentPacks.ps1 -TargetProject D:\code\acme-saas -Packs saas -WriteAdr
+
+.EXAMPLE
+    # Activate more than one pack:
+    .\Sync-AgentPacks.ps1 -TargetProject D:\code\app -Packs ai,saas
 
 .EXAMPLE
     # Re-run with a smaller list to deactivate a pack:
     .\Sync-AgentPacks.ps1 -TargetProject D:\code\acme-saas -Packs saas
 
 .EXAMPLE
+    # Remove all staged skills:
+    .\Sync-AgentPacks.ps1 -TargetProject D:\code\app -Clean
+
+.EXAMPLE
     # Preview only:
-    .\Sync-AgentPacks.ps1 -TargetProject D:\code\game -Packs game,common -DryRun
+    .\Sync-AgentPacks.ps1 -TargetProject D:\code\game -Packs game -DryRun
 
 .NOTES
     Writes BOM-less UTF-8 (manifest + ADR) to satisfy Claude Code's YAML parser
-    convention codified in ADR-0001.
+    convention codified in ADR-0001. Canonical rationale: ADR-0004 (mechanism) +
+    ADR-0007 (skills model).
 #>
-[CmdletBinding()]
+[CmdletBinding(DefaultParameterSetName = 'Activate')]
 param(
     [Parameter(Mandatory)][string]$TargetProject,
-    [Parameter(Mandatory)][string[]]$Packs,
-    [switch]$NoGeneralists,
-    [ValidateSet('Copy','Symlink')][string]$Mode = 'Copy',
+    [Parameter(Mandatory, ParameterSetName = 'Activate')][string[]]$Packs,
+    [Parameter(Mandatory, ParameterSetName = 'Clean')][switch]$Clean,
     [switch]$DryRun,
     [switch]$WriteAdr,
     [string]$LibraryRoot = (Join-Path $env:USERPROFILE '.claude\playbook'),
@@ -71,21 +83,55 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# --- Validate existence first (before Join-Path, which fails hard on missing drives)
+$SchemaVersion = 2
+
+# --- Validate target existence first (before Join-Path, which fails hard on missing drives)
 if (-not (Test-Path -LiteralPath $TargetProject)) { throw "TargetProject does not exist: $TargetProject" }
-if (-not (Test-Path -LiteralPath $LibraryRoot))   { throw "LibraryRoot does not exist: $LibraryRoot" }
 
 # --- Paths
-$LibAgents = Join-Path $LibraryRoot 'agents'
 $TgtClaude = Join-Path $TargetProject '.claude'
-$TgtAgents = Join-Path $TgtClaude 'agents'
-$Manifest  = Join-Path $TgtAgents '.pack-manifest.json'
+$TgtSkills = Join-Path $TgtClaude 'skills'
+$Manifest  = Join-Path $TgtSkills '.skill-manifest.json'
 
-if (-not (Test-Path -LiteralPath $LibAgents)) { throw "Library agents folder not found: $LibAgents" }
+# --- Load existing manifest (managedSkills)
+$prevSet = New-Object 'System.Collections.Generic.HashSet[string]'
+if (Test-Path -LiteralPath $Manifest) {
+    try {
+        $prev = Get-Content -LiteralPath $Manifest -Raw | ConvertFrom-Json
+        foreach ($n in $prev.managedSkills) { [void]$prevSet.Add($n) }
+    } catch {
+        Write-Warning "Manifest unreadable; treating as empty: $_"
+    }
+}
+
+# --- Clean mode -------------------------------------------------------------
+if ($Clean) {
+    if ($prevSet.Count -eq 0) { Write-Host "Nothing to clean (no manifest)."; return }
+    Write-Host ""
+    Write-Host "=== Clean plan" -ForegroundColor Cyan
+    foreach ($n in ($prevSet | Sort-Object)) { Write-Host ("    - {0}" -f $n) -ForegroundColor Yellow }
+    if ($DryRun) {
+        Write-Host ""
+        Write-Host "DRY RUN - no changes made." -ForegroundColor Magenta
+        return
+    }
+    foreach ($n in $prevSet) {
+        $tgt = Join-Path $TgtSkills $n
+        if (Test-Path -LiteralPath $tgt) { Remove-Item -LiteralPath $tgt -Recurse -Force }
+    }
+    if (Test-Path -LiteralPath $Manifest) { Remove-Item -LiteralPath $Manifest -Force }
+    Write-Host ("OK Removed {0} staged skills from {1}" -f $prevSet.Count, $TgtSkills) -ForegroundColor Green
+    return
+}
+
+# --- Library validation (activate path only)
+if (-not (Test-Path -LiteralPath $LibraryRoot)) { throw "LibraryRoot does not exist: $LibraryRoot" }
+$LibSkills = Join-Path $LibraryRoot 'skills'
+if (-not (Test-Path -LiteralPath $LibSkills)) { throw "Library skills folder not found: $LibSkills" }
 
 # --- Self-target guard (ADR-0004)
 # Refuse to sync the library onto itself: a later re-run with a narrower -Packs
-# list would remove files from the library based on the manifest created here.
+# list would remove skills from the library based on the manifest created here.
 $resolvedTarget  = (Resolve-Path -LiteralPath $TargetProject).Path.TrimEnd('\','/')
 $resolvedLibrary = (Resolve-Path -LiteralPath $LibraryRoot).Path.TrimEnd('\','/')
 if ($resolvedTarget -ieq $resolvedLibrary) {
@@ -93,7 +139,7 @@ if ($resolvedTarget -ieq $resolvedLibrary) {
         throw @"
 TargetProject resolves to LibraryRoot ($resolvedTarget).
 Refusing to sync the library onto itself -- a later re-run with a narrower
--Packs list would delete library files based on the manifest written here.
+-Packs list would delete library skills based on the manifest written here.
 
 If you really need this (e.g., the library IS your working project),
 pass -AllowLibraryTarget. Not recommended.
@@ -105,7 +151,7 @@ pass -AllowLibraryTarget. Not recommended.
 
 $KnownPrefixes = @(
     'game','saas','mobile','ai','dataplat','ecom','fintech','devtool',
-    'desktop','ext','embed','media','orch','infra','common'
+    'desktop','ext','embed','media','orch','infra'
 )
 
 $invalid = @($Packs | Where-Object { $_ -notin $KnownPrefixes })
@@ -113,79 +159,17 @@ if ($invalid.Count -gt 0) {
     throw "Unknown pack(s): $($invalid -join ', '). Valid: $($KnownPrefixes -join ', ')"
 }
 
-$LibFiles = Get-ChildItem $LibAgents -Filter *.md -File | Sort-Object Name
+# --- Desired set: project-scoped skill dirs for the selected packs
+# A library skill is project-scoped if its dir name starts with <pack>- and the pack is
+# a valid domain prefix AND it has a SKILL.md. This excludes common-* and the global
+# meta skills by design.
+$LibDirs = Get-ChildItem -LiteralPath $LibSkills -Directory | Sort-Object Name
 
-# Generalists = library files not starting with any known pack prefix
-$Generalists = @(
-    $LibFiles | Where-Object {
-        $base = $_.BaseName
-        -not ($KnownPrefixes | Where-Object { $base.StartsWith("$_-") })
-    } | ForEach-Object { $_.Name }
-)
-
-# --- Compute desired set
 $desired = New-Object 'System.Collections.Generic.HashSet[string]'
-if (-not $NoGeneralists) { foreach ($g in $Generalists) { [void]$desired.Add($g) } }
-foreach ($p in $Packs) {
-    $LibFiles | Where-Object { $_.BaseName -like "$p-*" } | ForEach-Object {
-        [void]$desired.Add($_.Name)
-    }
-}
-
-# --- Symlink-mode pre-flight (Windows only; *nix can symlink without elevation)
-if ($Mode -eq 'Symlink') {
-    $onWindows = ($PSVersionTable.Platform -eq $null) -or ($IsWindows -eq $true)
-    if ($onWindows) {
-        $devMode = $null
-        try {
-            $devMode = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -ErrorAction Stop).AllowDevelopmentWithoutDevLicense
-        } catch { $devMode = $null }
-        $isAdmin = $false
-        try {
-            $id = [Security.Principal.WindowsIdentity]::GetCurrent()
-            $principal = New-Object Security.Principal.WindowsPrincipal($id)
-            $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-        } catch { $isAdmin = $false }
-
-        if ($devMode -ne 1 -and -not $isAdmin) {
-            $msg = @"
--Mode Symlink requires Developer Mode OR elevated (admin) PowerShell on Windows.
-Neither was detected on this host.
-
-Options:
-  1. Enable Developer Mode (recommended, non-admin):
-     Settings -> Privacy & security -> For developers -> Developer Mode = ON
-     Re-run this command afterward.
-
-  2. Relaunch PowerShell as Administrator, then re-run.
-
-  3. Use -Mode Copy (default). Copy mode is portable across all Windows hosts
-     and has no functional disadvantage for agent files -- they are small,
-     rarely changed, and re-synced on library updates.
-"@
-            if ($DryRun) {
-                Write-Warning ("DRY RUN: -Mode Symlink would fail on this host. " + ($msg -split "`n")[0])
-            } else {
-                throw $msg
-            }
-        }
-    }
-}
-
-# --- Ensure target dirs (unless dry run)
-if (-not $DryRun) {
-    if (-not (Test-Path $TgtClaude)) { New-Item -ItemType Directory -Path $TgtClaude | Out-Null }
-    if (-not (Test-Path $TgtAgents)) { New-Item -ItemType Directory -Path $TgtAgents | Out-Null }
-}
-
-# --- Load existing manifest
-$prevSet = New-Object 'System.Collections.Generic.HashSet[string]'
-if (Test-Path $Manifest) {
-    try {
-        $prev = Get-Content $Manifest -Raw | ConvertFrom-Json
-        foreach ($f in $prev.managedFiles) { [void]$prevSet.Add($f) }
-    } catch {
-        Write-Warning "Manifest unreadable; treating as empty: $_"
+foreach ($d in $LibDirs) {
+    if (-not (Test-Path -LiteralPath (Join-Path $d.FullName 'SKILL.md'))) { continue }
+    foreach ($p in $Packs) {
+        if ($d.Name -like "$p-*") { [void]$desired.Add($d.Name); break }
     }
 }
 
@@ -196,12 +180,11 @@ $toKeep   = @($desired | Where-Object {      $prevSet.Contains($_) })
 
 # --- Plan output
 Write-Host ""
-$header = "=== Sync plan  [Mode=$Mode$(if ($DryRun) { ', DRY RUN' })]"
+$header = "=== Sync plan  [Mode=copy$(if ($DryRun) { ', DRY RUN' })]"
 Write-Host $header -ForegroundColor Cyan
-Write-Host ("Library : {0}" -f $LibAgents)
-Write-Host ("Target  : {0}" -f $TgtAgents)
-Write-Host ("Packs   : {0}{1}" -f ($Packs -join ', '),
-                                  $(if ($NoGeneralists) { ' (no generalists)' } else { ' + generalists' }))
+Write-Host ("Library : {0}" -f $LibSkills)
+Write-Host ("Target  : {0}" -f $TgtSkills)
+Write-Host ("Packs   : {0}" -f ($Packs -join ', '))
 Write-Host ""
 Write-Host ("  + Add    : {0}" -f $toAdd.Count)    -ForegroundColor Green
 Write-Host ("  - Remove : {0}" -f $toRemove.Count) -ForegroundColor Yellow
@@ -216,79 +199,68 @@ if ($DryRun) {
     return
 }
 
-# --- Apply removes (only files previously managed by this script)
-foreach ($f in $toRemove) {
-    $tgt = Join-Path $TgtAgents $f
-    if (Test-Path $tgt) { Remove-Item $tgt -Force }
+# --- Ensure target dir
+if (-not (Test-Path -LiteralPath $TgtClaude)) { New-Item -ItemType Directory -Path $TgtClaude | Out-Null }
+if (-not (Test-Path -LiteralPath $TgtSkills)) { New-Item -ItemType Directory -Path $TgtSkills | Out-Null }
+
+# --- Apply removes (only skill dirs previously managed by this script)
+foreach ($n in $toRemove) {
+    $tgt = Join-Path $TgtSkills $n
+    if (Test-Path -LiteralPath $tgt) { Remove-Item -LiteralPath $tgt -Recurse -Force }
 }
 
-# --- Apply adds
-foreach ($f in $toAdd) {
-    $src = Join-Path $LibAgents $f
-    $tgt = Join-Path $TgtAgents $f
-    if (Test-Path $tgt) { Remove-Item $tgt -Force }  # replace shadowing copy if present
-    switch ($Mode) {
-        'Copy' {
-            Copy-Item -Path $src -Destination $tgt -Force
-        }
-        'Symlink' {
-            try {
-                New-Item -ItemType SymbolicLink -Path $tgt -Target $src -ErrorAction Stop | Out-Null
-            } catch {
-                throw "Symlink failed for $f. On Windows, enable Developer Mode (Settings > Privacy & security > For developers) or run elevated. Underlying: $_"
-            }
-        }
-    }
+# --- Apply adds (copy whole skill directories, recursive)
+foreach ($n in $toAdd) {
+    $src = Join-Path $LibSkills $n
+    $tgt = Join-Path $TgtSkills $n
+    if (Test-Path -LiteralPath $tgt) { Remove-Item -LiteralPath $tgt -Recurse -Force }  # replace shadowing copy if present
+    Copy-Item -LiteralPath $src -Destination $tgt -Recurse -Force
 }
 
 # --- Write manifest (BOM-less UTF-8)
 $manifestObj = [pscustomobject]@{
-    schema       = 1
-    updated      = (Get-Date).ToString('o')
-    libraryRoot  = $LibraryRoot
-    mode         = $Mode
-    packs        = $Packs
-    generalists  = -not $NoGeneralists
-    managedFiles = @($desired | Sort-Object)
+    schema        = $SchemaVersion
+    updated       = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.000Z")
+    libraryRoot   = $LibraryRoot
+    packs         = $Packs
+    managedSkills = @($desired | Sort-Object)
 }
 $json = $manifestObj | ConvertTo-Json -Depth 5
 [System.IO.File]::WriteAllText($Manifest, $json, [System.Text.UTF8Encoding]::new($false))
 
 Write-Host ""
-Write-Host ("OK Sync complete. {0} agents installed; manifest: {1}" -f $desired.Count, $Manifest) -ForegroundColor Green
+Write-Host ("OK Sync complete. {0} skills staged; manifest: {1}" -f $desired.Count, $Manifest) -ForegroundColor Green
+Write-Host "   (cross-cutting skills are global in ~/.claude/skills; the 19 agents are always-on)" -ForegroundColor DarkGray
+Write-Host "   Restart or refresh the session so the new skills are discovered." -ForegroundColor DarkGray
 
 # --- Optional ADR (BOM-less append)
 if ($WriteAdr) {
     $decisions = Join-Path $TargetProject 'DECISIONS.md'
     $today     = (Get-Date).ToString('yyyy-MM-dd')
-    $packList  = ($Packs | ForEach-Object { "``$_-``" }) -join ', '
-    $genNote   = if ($NoGeneralists) { '' } else { ' (plus generalists)' }
+    $packList  = ($Packs | ForEach-Object { "``$_``" }) -join ', '
 
     $adr = @"
 
 ---
 
-## ADR - Activate agent packs ($today)
+## ADR - Activate domain skills ($today)
 
 **Date:** $today
 **Status:** Accepted
 **Phase:** Initialize
 
 ### Context
-Project requires archetype-specific agent specialists in addition to the seven generalists shipped by the playbook. Library at ``$LibraryRoot`` provides 105 reusable agents; this project does not need all of them.
+The 19 always-on agents are present globally; this project needs the domain skills for: $packList.
 
 ### Decision
-Activate the following packs: $packList$genNote.
-
-Sync mechanism: $Mode (managed by ``Sync-AgentPacks.ps1``; see ``.claude\agents\.pack-manifest.json``).
+Stage the $packList domain skills into ``.claude\skills\`` (managed by ``Sync-AgentPacks.ps1``; see ``.claude\skills\.skill-manifest.json``).
 
 ### Consequences
-- $($desired.Count) agent files installed under ``.claude\agents\``.
-- Re-running the script with a different pack list adds/removes agents accordingly; files not listed in the manifest are left untouched.
-- Library updates are picked up by re-running the sync (Copy mode) or automatically (Symlink mode).
+- $($desired.Count) skill folders staged under ``.claude\skills\``.
+- Re-running with a different pack list adds/removes skills per the manifest; ``-Clean`` removes all staged skills.
 "@
 
-    $existing = if (Test-Path $decisions) { [System.IO.File]::ReadAllText($decisions) } else { '' }
+    $existing = if (Test-Path -LiteralPath $decisions) { [System.IO.File]::ReadAllText($decisions) } else { '' }
     [System.IO.File]::WriteAllText($decisions, $existing + $adr, [System.Text.UTF8Encoding]::new($false))
     Write-Host ("OK ADR appended to {0}" -f $decisions) -ForegroundColor Green
 }

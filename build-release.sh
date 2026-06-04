@@ -34,7 +34,7 @@ if (( SKIP_RPM == 0 )); then
     }
 fi
 
-REQUIRED_SOURCES=( ".claude/agents" "catalog.json" "scripts/jit-claude.md"
+REQUIRED_SOURCES=( ".claude/agents" "skills" "catalog.json" "scripts/jit-claude.md"
     "scripts/ccds-user-setup.sh" "Sync-AgentPacks.sh" "verify-agents.sh"
     "bin/ccds.sh" "bin/ccds.ps1" "README.md" "packaging/postinst" "packaging/prerm" )
 missing=()
@@ -42,7 +42,8 @@ for src in "${REQUIRED_SOURCES[@]}"; do [[ -e "$REPO_ROOT/$src" ]] || missing+=(
 (( ${#missing[@]} == 0 )) || { echo "ERROR: Missing: ${missing[*]}" >&2; exit 1; }
 
 AGENT_COUNT=$(find "$REPO_ROOT/.claude/agents" -maxdepth 1 -name '*.md' | wc -l)
-echo "    Found $AGENT_COUNT agent files"
+SKILL_COUNT=$(find "$REPO_ROOT/skills" -name 'SKILL.md' | wc -l)
+echo "    Found $AGENT_COUNT agent files and $SKILL_COUNT skill files"
 
 # ---------------------------------------------------------------------------
 # Stage
@@ -52,10 +53,11 @@ STAGE_DIR="$(mktemp -d -t ccds-pkg-stage.XXXXXXXX)"
 
 PKG_ROOT="$STAGE_DIR/usr/share/ccds"
 BIN_ROOT="$STAGE_DIR/usr/bin"
-mkdir -p "$PKG_ROOT/agents" "$PKG_ROOT/scripts" "$PKG_ROOT/bin" "$BIN_ROOT"
+mkdir -p "$PKG_ROOT/agents" "$PKG_ROOT/skills" "$PKG_ROOT/scripts" "$PKG_ROOT/bin" "$BIN_ROOT"
 
 echo "==> Staging files to $PKG_ROOT"
 cp "$REPO_ROOT/.claude/agents/"*.md       "$PKG_ROOT/agents/"
+cp -r "$REPO_ROOT/skills/"*                 "$PKG_ROOT/skills/"
 cp "$REPO_ROOT/scripts/jit-claude.md"      "$PKG_ROOT/scripts/"
 cp "$REPO_ROOT/scripts/ccds-user-setup.sh" "$PKG_ROOT/scripts/"
 cp "$REPO_ROOT/Sync-AgentPacks.sh"         "$PKG_ROOT/scripts/Sync-AgentPacks.sh"

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # ccds-user-setup.sh
 # ------------------
-# Performs per-user Claude Code Dev Studio setup:
-#   1. Copies the 7 generalist agents to ~/.claude/agents/
-#   2. Injects / updates the JIT protocol block in ~/.claude/CLAUDE.md
+# Performs per-user Claude Code Dev Studio setup (ADR-0007):
+#   1. Copies all 19 always-on agents to ~/.claude/agents/
+#   2. Copies the cross-cutting (global) skills to ~/.claude/skills/
+#   3. Injects / updates the ccds pointer block in ~/.claude/CLAUDE.md
 #
 # Called by:
 #   - install-playbook.sh  (after promoting the install tree)
@@ -12,7 +13,8 @@
 # Usage: ccds-user-setup.sh <install_root> [--dry-run]
 #
 # <install_root> must contain:
-#   agents/<name>.md   for each generalist
+#   agents/<name>.md           for each always-on agent
+#   skills/<name>/SKILL.md      for each skill (global ones are copied to ~/.claude/skills)
 #   scripts/jit-claude.md
 
 set -euo pipefail
@@ -39,43 +41,72 @@ log_warn() { printf "${C_YELLOW}!!  %s${C_RESET}\n" "$1" >&2; }
 log_info() { printf '    %s\n' "$1"; }
 
 # ---------------------------------------------------------------------------
-# Generalist agent list (must match Install-Playbook.ps1 $Script:GeneralistAgents)
+# Cross-cutting skills installed globally to ~/.claude/skills/
+# (must match Install-Playbook.ps1 $Script:GlobalSkills and catalog scope=global)
 # ---------------------------------------------------------------------------
-GENERALIST_AGENTS=(
-    api-expert
-    deploy-checklist
-    plan-architect
-    pr-code-reviewer
-    secure-auditor
-    test-writer-runner
-    ux-design-critic
+GLOBAL_SKILLS=(
+    playbook-conventions
+    sync-agents
+    api-design
+    ux-design
+    security-checklist
+    code-review-checklist
+    common-a11y
+    common-i18n
+    common-privacy
+    common-notifications
+    common-product-analytics
 )
 
 # ---------------------------------------------------------------------------
-# Step 1 — Copy generalist agents to ~/.claude/agents/
+# Step 1 — Copy all always-on agents to ~/.claude/agents/
 # ---------------------------------------------------------------------------
-install_generalist_agents() {
+install_agents() {
     local src_dir="$INSTALL_ROOT/agents"
     local dst_dir="$HOME/.claude/agents"
+    local total
+    total=$(find "$src_dir" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
 
     if (( DRY_RUN )); then
-        log_info "DRY RUN -- would copy ${#GENERALIST_AGENTS[@]} generalist agents to $dst_dir"
+        log_info "DRY RUN -- would copy $total always-on agents to $dst_dir"
         return
     fi
 
     mkdir -p "$dst_dir"
     local copied=0
-    for name in "${GENERALIST_AGENTS[@]}"; do
-        local src="$src_dir/${name}.md"
-        local dst="$dst_dir/${name}.md"
-        if [[ -f "$src" ]]; then
-            cp -f "$src" "$dst"
+    for src in "$src_dir"/*.md; do
+        [[ -f "$src" ]] || continue
+        cp -f "$src" "$dst_dir/$(basename "$src")"
+        copied=$(( copied + 1 ))
+    done
+    log_ok "Copied $copied always-on agents to $dst_dir"
+}
+
+# ---------------------------------------------------------------------------
+# Step 1b — Copy cross-cutting (global) skills to ~/.claude/skills/
+# ---------------------------------------------------------------------------
+install_global_skills() {
+    local src_dir="$INSTALL_ROOT/skills"
+    local dst_dir="$HOME/.claude/skills"
+
+    if (( DRY_RUN )); then
+        log_info "DRY RUN -- would copy ${#GLOBAL_SKILLS[@]} cross-cutting skills to $dst_dir"
+        return
+    fi
+
+    mkdir -p "$dst_dir"
+    local copied=0
+    for name in "${GLOBAL_SKILLS[@]}"; do
+        local src="$src_dir/${name}"
+        if [[ -d "$src" && -f "$src/SKILL.md" ]]; then
+            rm -rf "${dst_dir:?}/${name}"
+            cp -rf "$src" "$dst_dir/${name}"
             copied=$(( copied + 1 ))
         else
-            log_warn "Generalist agent not found in package: agents/${name}.md"
+            log_warn "Global skill not found in package: skills/${name}/SKILL.md"
         fi
     done
-    log_ok "Copied $copied/${#GENERALIST_AGENTS[@]} generalist agents to $dst_dir"
+    log_ok "Copied $copied/${#GLOBAL_SKILLS[@]} cross-cutting skills to $dst_dir"
 }
 
 # ---------------------------------------------------------------------------
@@ -155,16 +186,20 @@ set_claude_playbook_block() {
 # ---------------------------------------------------------------------------
 # Run
 # ---------------------------------------------------------------------------
-log_step "Installing generalist agents to $HOME/.claude/agents"
-install_generalist_agents
+log_step "Installing always-on agents to $HOME/.claude/agents"
+install_agents
 
-log_step "Updating JIT block in $HOME/.claude/CLAUDE.md"
+log_step "Installing cross-cutting skills to $HOME/.claude/skills"
+install_global_skills
+
+log_step "Updating ccds block in $HOME/.claude/CLAUDE.md"
 set_claude_playbook_block
 
 if (( DRY_RUN )); then
     printf '\n%sDRY RUN -- no changes made.%s\n' "$C_YELLOW" "$C_RESET"
 else
     printf '\n%sUser setup complete.%s\n' "$C_GREEN" "$C_RESET"
-    printf 'Generalists : %s/.claude/agents/ (%d agents)\n' "$HOME" "${#GENERALIST_AGENTS[@]}"
-    printf 'JIT block   : %s/.claude/CLAUDE.md\n' "$HOME"
+    printf 'Agents      : %s/.claude/agents/ (19 always-on)\n' "$HOME"
+    printf 'Skills      : %s/.claude/skills/ (%d cross-cutting)\n' "$HOME" "${#GLOBAL_SKILLS[@]}"
+    printf 'ccds block  : %s/.claude/CLAUDE.md\n' "$HOME"
 fi

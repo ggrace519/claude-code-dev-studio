@@ -9,17 +9,19 @@
     (i.e. %USERPROFILE%\.claude\playbook). Prepends <prefix>\bin to the User PATH
     so 'ccds <cmd>' is resolvable from any shell.
 
-    Installed layout:
+    Installed layout (ADR-0007):
       %USERPROFILE%\.claude\
-        agents\              (7 generalist agents — always loaded by Claude Code)
+        agents\              (19 always-on agents — always loaded by Claude Code)
+        skills\              (cross-cutting skills — always available)
         playbook\            (<prefix> — this is what the installer manages)
           bin\               (dispatcher: ccds.ps1 / .sh)
           scripts\           (Sync-AgentPacks, Verify-Agents, jit-claude.md)
-          agents\            (98 pack agents — copied to project on demand)
-          catalog.json       (agent index for JIT selection)
+          agents\            (the 19 agents — source for .claude\agents)
+          skills\            (all skills; domain skills copied to projects on demand)
+          catalog.json       (agent + skill index for JIT selection)
           version.txt
           README.md
-        CLAUDE.md            (user's global Claude instructions; playbook appends JIT block)
+        CLAUDE.md            (ccds pointer block injected between markers)
 
     Atomic upgrade:
       1. Stage to <prefix>.new
@@ -125,15 +127,20 @@ $ErrorActionPreference = 'Stop'
 $Script:Owner = 'ggrace519'
 $Script:Repo  = 'claude-code-dev-studio'
 
-# The 7 generalist agents that live permanently in ~/.claude/agents/
-$Script:GeneralistAgents = @(
-    'api-expert'
-    'deploy-checklist'
-    'plan-architect'
-    'pr-code-reviewer'
-    'secure-auditor'
-    'test-writer-runner'
-    'ux-design-critic'
+# Cross-cutting (global) skills installed once to ~/.claude/skills/ (ADR-0007).
+# Must match scripts/ccds-user-setup.sh GLOBAL_SKILLS and catalog scope=global.
+$Script:GlobalSkills = @(
+    'playbook-conventions'
+    'sync-agents'
+    'api-design'
+    'ux-design'
+    'security-checklist'
+    'code-review-checklist'
+    'common-a11y'
+    'common-i18n'
+    'common-privacy'
+    'common-notifications'
+    'common-product-analytics'
 )
 
 # ---------------------------------------------------------------------------
@@ -319,16 +326,22 @@ function Remove-FromUserPath {
 # ~/.claude/ post-install helpers
 # ---------------------------------------------------------------------------
 
-# Copy the 7 generalist agents from <prefix>\agents\ to ~/.claude/agents/
-function Install-GeneralistAgents {
+# Copy all always-on agents (the 19) from <prefix>\agents\ to ~/.claude/agents/
+function Install-AlwaysOnAgents {
     param(
         [string]$Prefix,
         [switch]$DryRun
     )
+    $srcDir          = Join-Path $Prefix 'agents'
     $claudeAgentsDir = Join-Path $env:USERPROFILE '.claude\agents'
 
+    $srcFiles = @()
+    if (Test-Path $srcDir) {
+        $srcFiles = @(Get-ChildItem -LiteralPath $srcDir -Filter *.md -File -ErrorAction SilentlyContinue)
+    }
+
     if ($DryRun) {
-        Write-Info "DRY RUN --would copy $($Script:GeneralistAgents.Count) generalist agents to $claudeAgentsDir"
+        Write-Info "DRY RUN --would copy $($srcFiles.Count) always-on agents to $claudeAgentsDir"
         return
     }
 
@@ -337,20 +350,49 @@ function Install-GeneralistAgents {
     }
 
     $copied = 0
-    foreach ($name in $Script:GeneralistAgents) {
-        $src = Join-Path $Prefix "agents\$name.md"
-        $dst = Join-Path $claudeAgentsDir "$name.md"
-        if (Test-Path $src) {
-            Copy-Item -LiteralPath $src -Destination $dst -Force
-            $copied++
-        } else {
-            Write-WarnMsg "Generalist agent not found in package: agents\$name.md"
-        }
+    foreach ($f in $srcFiles) {
+        $dst = Join-Path $claudeAgentsDir $f.Name
+        Copy-Item -LiteralPath $f.FullName -Destination $dst -Force
+        $copied++
     }
-    Write-OkMsg "Copied $copied generalist agents to $claudeAgentsDir"
+    Write-OkMsg "Copied $copied always-on agents to $claudeAgentsDir"
 }
 
-# Inject or update the playbook JIT block in ~/.claude/CLAUDE.md (idempotent)
+# Copy the cross-cutting (global) skills from <prefix>\skills\<name>\ to ~/.claude/skills/
+function Install-GlobalSkills {
+    param(
+        [string]$Prefix,
+        [switch]$DryRun
+    )
+    $srcDir          = Join-Path $Prefix 'skills'
+    $claudeSkillsDir = Join-Path $env:USERPROFILE '.claude\skills'
+
+    if ($DryRun) {
+        Write-Info "DRY RUN --would copy $($Script:GlobalSkills.Count) cross-cutting skills to $claudeSkillsDir"
+        return
+    }
+
+    if (-not (Test-Path $claudeSkillsDir)) {
+        New-Item -ItemType Directory -Path $claudeSkillsDir -Force | Out-Null
+    }
+
+    $copied = 0
+    foreach ($name in $Script:GlobalSkills) {
+        $src      = Join-Path $srcDir $name
+        $skillMd  = Join-Path $src 'SKILL.md'
+        if ((Test-Path $src) -and (Test-Path $skillMd)) {
+            $dst = Join-Path $claudeSkillsDir $name
+            if (Test-Path $dst) { Remove-Item -LiteralPath $dst -Recurse -Force }
+            Copy-Item -LiteralPath $src -Destination $dst -Recurse -Force
+            $copied++
+        } else {
+            Write-WarnMsg "Global skill not found in package: skills\$name\SKILL.md"
+        }
+    }
+    Write-OkMsg "Copied $copied/$($Script:GlobalSkills.Count) cross-cutting skills to $claudeSkillsDir"
+}
+
+# Inject or update the ccds pointer block in ~/.claude/CLAUDE.md (idempotent)
 function Set-ClaudePlaybookBlock {
     param(
         [string]$JitBlockPath,
@@ -360,7 +402,7 @@ function Set-ClaudePlaybookBlock {
     $claudeMd   = Join-Path $claudeHome 'CLAUDE.md'
 
     if ($DryRun) {
-        Write-Info "DRY RUN --would inject/update playbook JIT block in $claudeMd"
+        Write-Info "DRY RUN --would inject/update ccds pointer block in $claudeMd"
         return
     }
 
@@ -404,7 +446,7 @@ function Set-ClaudePlaybookBlock {
         $updated = $blockContent + "`n"
     }
     [System.IO.File]::WriteAllText($claudeMd, $updated, [System.Text.UTF8Encoding]::new($false))
-    Write-OkMsg "Refreshed playbook JIT block in $claudeMd"
+    Write-OkMsg "Refreshed ccds pointer block in $claudeMd"
 }
 
 # Install shell completions for ccds and claude into the current user's PS profile
@@ -482,7 +524,7 @@ function Remove-CompletionBlock {
     Write-OkMsg "Removed completion loader from $profilePath"
 }
 
-# Remove the playbook JIT block from ~/.claude/CLAUDE.md (used by uninstall)
+# Remove the ccds pointer block from ~/.claude/CLAUDE.md (used by uninstall)
 function Remove-ClaudePlaybookBlock {
     param([switch]$DryRun)
     $claudeMd = Join-Path $env:USERPROFILE '.claude\CLAUDE.md'
@@ -501,7 +543,7 @@ function Remove-ClaudePlaybookBlock {
     }
 
     if ($DryRun) {
-        Write-Info "DRY RUN --would remove playbook JIT block from $claudeMd"
+        Write-Info "DRY RUN --would remove ccds pointer block from $claudeMd"
         return
     }
 
@@ -509,7 +551,7 @@ function Remove-ClaudePlaybookBlock {
     $pattern   = "(?s)`r?`n?$([regex]::Escape($markerStart)).*?$([regex]::Escape($markerEnd))`r?`n?"
     $updated   = [regex]::Replace($existing, $pattern, '')
     [System.IO.File]::WriteAllText($claudeMd, $updated, [System.Text.UTF8Encoding]::new($false))
-    Write-OkMsg "Removed playbook JIT block from $claudeMd"
+    Write-OkMsg "Removed ccds pointer block from $claudeMd"
 }
 
 # ---------------------------------------------------------------------------
@@ -545,7 +587,7 @@ function Install-FromZip {
     Expand-Archive -LiteralPath $ZipPath -DestinationPath $newDir -Force
 
     # Sanity: key files must exist in the extracted tree
-    foreach ($sentinel in @('bin\ccds.ps1', 'catalog.json', 'agents')) {
+    foreach ($sentinel in @('bin\ccds.ps1', 'catalog.json', 'agents', 'skills')) {
         if (-not (Test-Path (Join-Path $newDir $sentinel))) {
             Remove-Item -LiteralPath $newDir -Recurse -Force
             throw "Extraction did not produce '$sentinel' -- archive layout is unexpected."
@@ -606,8 +648,8 @@ function Invoke-Uninstall {
     if ($DryRun) {
         if (Test-Path $Prefix) { Write-Info "DRY RUN --would remove $Prefix" }
         if (-not $NoPath)      { Write-Info "DRY RUN --would remove $binDir from User PATH" }
-        Write-Info "DRY RUN --would remove playbook JIT block from $(Join-Path $env:USERPROFILE '.claude\CLAUDE.md')"
-        Write-Info "DRY RUN --note: generalist agents in $(Join-Path $env:USERPROFILE '.claude\agents') are NOT removed"
+        Write-Info "DRY RUN --would remove ccds block from $(Join-Path $env:USERPROFILE '.claude\CLAUDE.md')"
+        Write-Info "DRY RUN --note: always-on agents in $(Join-Path $env:USERPROFILE '.claude\agents') and skills in $(Join-Path $env:USERPROFILE '.claude\skills') are NOT removed"
         return
     }
 
@@ -623,15 +665,15 @@ function Invoke-Uninstall {
         [void](Remove-FromUserPath -Entry $binDir)
     }
 
-    # Remove the JIT block from ~/.claude/CLAUDE.md
-    Write-Step "Removing playbook JIT block from CLAUDE.md"
+    # Remove the ccds pointer block from ~/.claude/CLAUDE.md
+    Write-Step "Removing ccds pointer block from CLAUDE.md"
     Remove-ClaudePlaybookBlock -DryRun:$DryRun
 
     # Remove the completion loader from the PS profile
     Write-Step "Removing shell completion loader from profile"
     Remove-CompletionBlock -DryRun:$DryRun
 
-    Write-WarnMsg "Generalist agents in $(Join-Path $env:USERPROFILE '.claude\agents') were NOT removed."
+    Write-WarnMsg "Always-on agents in $(Join-Path $env:USERPROFILE '.claude\agents') and cross-cutting skills in $(Join-Path $env:USERPROFILE '.claude\skills') were NOT removed."
     Write-WarnMsg "Delete them manually if desired."
 }
 
@@ -699,12 +741,16 @@ try {
         (Get-Content $installedVersionFile -Raw).Trim()
     } else { $resolvedTag }
 
-    # Copy 7 generalist agents to ~/.claude/agents/ (always-loaded by Claude Code)
-    Write-Step "Installing generalist agents to $(Join-Path $env:USERPROFILE '.claude\agents')"
-    Install-GeneralistAgents -Prefix $Prefix -DryRun:$DryRun
+    # Copy all 19 always-on agents to ~/.claude/agents/ (always-loaded by Claude Code)
+    Write-Step "Installing always-on agents to $(Join-Path $env:USERPROFILE '.claude\agents')"
+    Install-AlwaysOnAgents -Prefix $Prefix -DryRun:$DryRun
 
-    # Inject/update JIT protocol block in ~/.claude/CLAUDE.md
-    Write-Step "Updating JIT block in $(Join-Path $env:USERPROFILE '.claude\CLAUDE.md')"
+    # Copy cross-cutting (global) skills to ~/.claude/skills/
+    Write-Step "Installing cross-cutting skills to $(Join-Path $env:USERPROFILE '.claude\skills')"
+    Install-GlobalSkills -Prefix $Prefix -DryRun:$DryRun
+
+    # Inject/update ccds pointer block in ~/.claude/CLAUDE.md
+    Write-Step "Updating ccds block in $(Join-Path $env:USERPROFILE '.claude\CLAUDE.md')"
     $jitBlock = Join-Path $Prefix 'scripts\jit-claude.md'
     Set-ClaudePlaybookBlock -JitBlockPath $jitBlock -DryRun:$DryRun
 
@@ -733,15 +779,16 @@ try {
         Write-Host "Future shells : PATH update persists automatically." -ForegroundColor Yellow
     }
     Write-Host ""
-    Write-Host "Library : $(Join-Path $env:USERPROFILE '.claude\playbook\agents') ($($Script:GeneralistAgents.Count) generalists -> .claude\agents; 98 pack agents here)"
-    Write-Host "CLAUDE  : $(Join-Path $env:USERPROFILE '.claude\CLAUDE.md') (JIT block injected)"
+    Write-Host "Agents  : 19 always-on -> $(Join-Path $env:USERPROFILE '.claude\agents') (14 domain + 5 core)"
+    Write-Host "Skills  : $(Join-Path $Prefix 'skills') (domain skills, JIT per project; cross-cutting -> $(Join-Path $env:USERPROFILE '.claude\skills'))"
+    Write-Host "CLAUDE  : $(Join-Path $env:USERPROFILE '.claude\CLAUDE.md') (ccds pointer block injected)"
     Write-Host ""
     Write-Host "Smoke test:" -ForegroundColor Yellow
     Write-Host "  ccds version"
     Write-Host "  cd <your-project>"
-    Write-Host "  ccds sync saas,common --dry-run"
+    Write-Host "  ccds sync saas --dry-run"
     Write-Host ""
-    Write-Host "Then restart Claude Code to activate the generalist agents." -ForegroundColor Yellow
+    Write-Host "The 19 agents load on next Claude Code start; per-project skills appear after sync." -ForegroundColor Yellow
 } finally {
     if ($tempDir -and (Test-Path $tempDir.FullName)) {
         Remove-Item -LiteralPath $tempDir.FullName -Recurse -Force -ErrorAction SilentlyContinue

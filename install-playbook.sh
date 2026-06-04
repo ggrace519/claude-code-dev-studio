@@ -2,17 +2,19 @@
 # install-playbook.sh -- Install / update / rollback / uninstall Claude Code Dev Studio
 #                        from GitHub Releases (Linux / macOS).
 #
-# Installed layout:
+# Installed layout (ADR-0007):
 #   ~/.claude/                         ($HOME/.claude)
-#     agents/                          (7 generalists — always loaded by Claude Code)
+#     agents/                          (19 always-on agents — always loaded by Claude Code)
+#     skills/                          (cross-cutting skills — always available)
 #     playbook/                        ($PREFIX — what this installer manages)
 #       bin/                           (dispatcher: ccds.sh)
 #       scripts/                       (Sync-AgentPacks, Verify-Agents, jit-claude.md)
-#       agents/                        (98 pack agents — copied to projects on demand)
-#       catalog.json                   (agent index for JIT selection)
+#       agents/                        (the 19 agents — source for ~/.claude/agents)
+#       skills/                        (all skills; domain skills copied to projects on demand)
+#       catalog.json                   (agent + skill index for JIT selection)
 #       version.txt
 #       README.md
-#     CLAUDE.md                        (JIT block injected between markers)
+#     CLAUDE.md                        (ccds pointer block injected between markers)
 #
 # Atomic upgrade:
 #   1. Stage to $PREFIX.new
@@ -338,18 +340,7 @@ remove_path_rc() {
 # ~/.claude/ post-install helpers
 # ---------------------------------------------------------------------------
 
-GENERALIST_AGENTS=(
-    api-expert
-    deploy-checklist
-    plan-architect
-    pr-code-reviewer
-    secure-auditor
-    test-writer-runner
-    ux-design-critic
-)
-
-
-# Remove the playbook JIT block from ~/.claude/CLAUDE.md (used by uninstall)
+# Remove the playbook ccds block from ~/.claude/CLAUDE.md (used by uninstall)
 remove_claude_playbook_block() {
     local claude_md="$HOME/.claude/CLAUDE.md"
     local marker_begin="# >>> ccds >>>"
@@ -410,7 +401,7 @@ install_from_zip() {
     unzip -q "$zip_path" -d "$new_dir"
 
     # Sanity: key files must exist in the extracted tree.
-    for sentinel in "bin/ccds.sh" "catalog.json" "agents"; do
+    for sentinel in "bin/ccds.sh" "catalog.json" "agents" "skills"; do
         if [[ ! -e "$new_dir/$sentinel" ]]; then
             rm -rf "$new_dir"
             die "Extraction did not produce '$sentinel' -- archive layout is unexpected."
@@ -465,8 +456,8 @@ do_uninstall() {
     if (( DRY_RUN )); then
         [[ -d "$PREFIX" ]] && log_info "DRY RUN -- would remove $PREFIX"
         (( NO_PATH == 0 )) && log_info "DRY RUN -- would remove ccds PATH block from shell rc files"
-        log_info "DRY RUN -- would remove playbook JIT block from $HOME/.claude/CLAUDE.md"
-        log_info "DRY RUN -- note: generalist agents in $HOME/.claude/agents are NOT removed"
+        log_info "DRY RUN -- would remove ccds block from $HOME/.claude/CLAUDE.md"
+        log_info "DRY RUN -- note: agents in $HOME/.claude/agents and skills in $HOME/.claude/skills are NOT removed"
         return
     fi
 
@@ -486,7 +477,7 @@ do_uninstall() {
     log_step "Removing playbook JIT block from CLAUDE.md"
     remove_claude_playbook_block
 
-    log_warn "Generalist agents in $HOME/.claude/agents were NOT removed."
+    log_warn "Agents in $HOME/.claude/agents and skills in $HOME/.claude/skills were NOT removed."
     log_warn "Delete them manually if desired."
 }
 
@@ -570,8 +561,9 @@ printf '\n'
 printf '%s=== Claude Code Dev Studio installed ===%s\n' "$C_GREEN" "$C_RESET"
 printf 'Prefix  : %s\n' "$PREFIX"
 printf 'Version : %s\n' "$INSTALLED_VERSION"
-printf 'Library : %s/agents (98 pack agents; %d generalists → ~/.claude/agents)\n' "$PREFIX" "${#GENERALIST_AGENTS[@]}"
-printf 'CLAUDE  : %s/.claude/CLAUDE.md (JIT block injected)\n' "$HOME"
+printf 'Agents  : 19 always-on → ~/.claude/agents (14 domain + 5 core)\n'
+printf 'Skills  : %s/skills (domain skills, JIT per project; cross-cutting → ~/.claude/skills)\n' "$PREFIX"
+printf 'CLAUDE  : %s/.claude/CLAUDE.md (ccds pointer block injected)\n' "$HOME"
 if (( NO_PATH == 0 )); then
     printf 'PATH    : %s (added to shell rc files)\n' "$PREFIX/bin"
     printf '\n'
@@ -582,6 +574,6 @@ printf '\n'
 printf '%sSmoke test:%s\n' "$C_YELLOW" "$C_RESET"
 printf '  ccds version\n'
 printf '  cd <your-project>\n'
-printf '  ccds sync saas,common --dry-run\n'
+printf '  ccds sync saas --dry-run\n'
 printf '\n'
-printf '%sThen restart Claude Code to activate the generalist agents.%s\n' "$C_YELLOW" "$C_RESET"
+printf '%sThe 19 agents load on next Claude Code start; per-project skills appear after sync.%s\n' "$C_YELLOW" "$C_RESET"

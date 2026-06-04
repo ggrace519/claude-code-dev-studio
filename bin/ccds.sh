@@ -35,9 +35,9 @@ fi
 # Checks whether the per-user setup has been run (generalists present + JIT
 # block injected). Returns 0 if setup is complete, 1 if it needs to run.
 needs_user_setup() {
-    # Check for at least one generalist agent
+    # Check for at least one always-on (core) agent
     [[ -f "$HOME/.claude/agents/plan-architect.md" ]] || return 0
-    # Check for JIT block in CLAUDE.md
+    # Check for ccds block in CLAUDE.md
     [[ -f "$HOME/.claude/CLAUDE.md" ]] && grep -qF '# >>> ccds >>>' "$HOME/.claude/CLAUDE.md" || return 0
     return 1
 }
@@ -70,17 +70,16 @@ USAGE
   ccds <command> [arguments]
 
 COMMANDS
-  sync <packs>         Activate packs in the current directory (default: apply)
+  sync <packs>         Stage domain skills for the packs into ./.claude/skills/
+      --clean               Remove all skills staged by a previous sync
       --dry-run             Preview changes without writing
       --write-adr           Record activation as an ADR in DECISIONS.md
-      --no-generalists      Exclude the 7 generalist agents
-      --mode <copy|symlink> Sync mode (default: copy)
       --target <path>       Target project path (default: current directory)
 
-  verify               Validate .claude/agents/ in the current directory
+  verify               Validate global agents and project skills
       --target <path>       Target path (default: current directory)
 
-  setup                Copy generalist agents and inject JIT block into CLAUDE.md
+  setup                Install the 19 agents + cross-cutting skills, inject CLAUDE.md block
       --dry-run             Preview without writing
 
   update [tag]         Download and install a release (default: latest stable)
@@ -94,12 +93,12 @@ COMMANDS
   help                 Show this help
 
 EXAMPLES
-  ccds sync saas,common
-  ccds sync saas,ai,common --write-adr
+  ccds sync saas
+  ccds sync saas,ai --write-adr
   ccds sync game --dry-run
+  ccds sync --clean
   ccds verify
   ccds setup
-  ccds --target /opt/foo verify
 
 LAYOUT
   Install location : $INSTALL_ROOT
@@ -116,8 +115,7 @@ EOF
 # ---------------------------------------------------------------------------
 DRY_RUN=0
 WRITE_ADR=0
-NO_GENERALISTS=0
-MODE="copy"
+CLEAN=0
 TARGET=""
 ROLLBACK=0
 INCLUDE_PRERELEASE=0
@@ -139,12 +137,9 @@ while (( $# > 0 )); do
     case "$1" in
         --dry-run)            DRY_RUN=1; shift ;;
         --write-adr)          WRITE_ADR=1; shift ;;
-        --no-generalists)     NO_GENERALISTS=1; shift ;;
+        --clean)              CLEAN=1; shift ;;
         --rollback)           ROLLBACK=1; shift ;;
         --include-prerelease) INCLUDE_PRERELEASE=1; shift ;;
-        --mode)
-            [[ -n "${2:-}" ]] || { echo "ERROR: --mode requires a value (copy|symlink)" >&2; exit 2; }
-            MODE="$2"; shift 2 ;;
         --target)
             [[ -n "${2:-}" ]] || { echo "ERROR: --target requires a path" >&2; exit 2; }
             TARGET="$2"; shift 2 ;;
@@ -168,24 +163,21 @@ cmd_setup() {
 }
 
 cmd_sync() {
-    if (( ${#POSITIONAL[@]} < 1 )); then
-        echo "ERROR: sync requires a pack list. Example: ccds sync saas,common" >&2
-        exit 2
-    fi
     run_user_setup_if_needed
-
-    local packs="${POSITIONAL[0]}"
     local target="${TARGET:-$PWD}"
+    local args=(--target-project "$target" --library-root "$LIBRARY_ROOT")
 
-    local args=(
-        --target-project "$target"
-        --packs "$packs"
-        --library-root "$LIBRARY_ROOT"
-        --mode "$MODE"
-    )
-    (( DRY_RUN ))        && args+=(--dry-run)
-    (( WRITE_ADR ))      && args+=(--write-adr)
-    (( NO_GENERALISTS )) && args+=(--no-generalists)
+    if (( CLEAN )); then
+        args+=(--clean)
+    else
+        if (( ${#POSITIONAL[@]} < 1 )); then
+            echo "ERROR: sync requires a pack list (or --clean). Example: ccds sync saas" >&2
+            exit 2
+        fi
+        args+=(--packs "${POSITIONAL[0]}")
+    fi
+    (( DRY_RUN ))   && args+=(--dry-run)
+    (( WRITE_ADR )) && args+=(--write-adr)
 
     exec "$SYNC_SCRIPT" "${args[@]}"
 }

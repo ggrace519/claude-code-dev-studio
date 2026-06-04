@@ -2,631 +2,873 @@
   {
     "name": "ai-architect",
     "pack": "ai",
+    "kind": "agent",
+    "scope": "global",
     "model": "claude-opus-4-7",
-    "description": "AI / LLM application architecture specialist. Auto-invoked on AI-powered projects during Phase 2, or when model choice, train-vs-serve split, prompt/agent topology, eval strategy, or cost-latency trade-offs are being decided. Composes with `plan-architect`."
+    "description": "AI / LLM application domain specialist. Use proactively on AI / LLM work — model selection, serving topology, RAG-vs-finetune-vs-prompt, eval strategy, cost/latency budgets, and data policy. Owns AI architecture and composes the ai-* implementation skills."
   },
   {
-    "name": "ai-eval-expert",
-    "pack": "ai",
+    "name": "dataplat-architect",
+    "pack": "dataplat",
+    "kind": "agent",
+    "scope": "global",
+    "model": "claude-opus-4-7",
+    "description": "Data Platform domain specialist. Use proactively on data-platform work — warehouse/lakehouse topology, batch vs streaming, partitioning and storage format, governance, ingestion, quality, and serving. Owns data-platform architecture and composes the dataplat-* implementation skills."
+  },
+  {
+    "name": "deploy-checklist",
+    "pack": "core",
+    "kind": "agent",
+    "scope": "global",
+    "model": "claude-haiku-4-6",
+    "description": "Deployment readiness and pre-production checklist specialist. Use proactively before any production deployment, environment promotion, release cut, or go/no-go assessment."
+  },
+  {
+    "name": "desktop-architect",
+    "pack": "desktop",
+    "kind": "agent",
+    "scope": "global",
+    "model": "claude-opus-4-7",
+    "description": "Desktop App domain specialist. Use proactively on desktop work — runtime choice, process/window model, IPC topology, OS integration, autoupdate, code signing, installers, and shell integration. Owns desktop architecture and composes the desktop-* implementation skills."
+  },
+  {
+    "name": "devtool-architect",
+    "pack": "devtool",
+    "kind": "agent",
+    "scope": "global",
+    "model": "claude-opus-4-7",
+    "description": "DevTool / CLI / Library domain specialist. Use proactively on public-surface work — API and CLI surface design, versioning, distribution, extensibility, compatibility, docs, packaging, and telemetry. Owns devtool architecture and composes the devtool-* implementation skills."
+  },
+  {
+    "name": "ecom-architect",
+    "pack": "ecom",
+    "kind": "agent",
+    "scope": "global",
+    "model": "claude-opus-4-7",
+    "description": "E-commerce domain specialist. Use proactively on storefront/checkout/OMS work — catalog vs cart vs order boundary, payment strategy, inventory reservation, tax/shipping, promotions, search, and peak-event scale. Owns e-commerce architecture and composes the ecom-* implementation skills."
+  },
+  {
+    "name": "embed-architect",
+    "pack": "embed",
+    "kind": "agent",
+    "scope": "global",
+    "model": "claude-opus-4-7",
+    "description": "Embedded / IoT domain specialist. Use proactively on embedded / firmware / IoT work — SoC/MCU choice, RTOS vs bare-metal, memory/flash layout, secure boot chain, A/B partitioning, fleet OTA topology, and provisioning/attestation. Owns embedded architecture and composes the embed-* implementation skills."
+  },
+  {
+    "name": "ext-architect",
+    "pack": "ext",
+    "kind": "agent",
+    "scope": "global",
+    "model": "claude-opus-4-7",
+    "description": "Browser extension domain specialist. Use proactively on browser-extension work — manifest version (MV3), permissions model, background/service-worker/content-script split, cross-browser strategy, store-review posture, and native-host bridges. Owns browser-extension architecture and composes the ext-* implementation skills."
+  },
+  {
+    "name": "fintech-architect",
+    "pack": "fintech",
+    "kind": "agent",
+    "scope": "global",
+    "model": "claude-opus-4-7",
+    "description": "Fintech domain specialist. Use proactively on regulated-money work — ledger topology, custody, KYC/AML and licensing, money-movement primitives, reconciliation, audit retention, and risk. Owns fintech architecture and composes the fintech-* implementation skills."
+  },
+  {
+    "name": "game-architect",
+    "pack": "game",
+    "kind": "agent",
+    "scope": "global",
+    "model": "claude-opus-4-7",
+    "description": "Game domain specialist. Use proactively on game work — engine selection, core game loop, state architecture, asset pipeline, save/load topology, and platform-target strategy. Owns game architecture and composes the game-* implementation skills."
+  },
+  {
+    "name": "infra-architect",
+    "pack": "infra",
+    "kind": "agent",
+    "scope": "global",
+    "model": "claude-opus-4-7",
+    "description": "Infrastructure / dev-platform domain specialist. Use proactively on infra / platform work — cloud topology, network segmentation, environments, IaC strategy, secrets topology, and platform tenancy. Owns infrastructure architecture and composes the infra-* implementation skills."
+  },
+  {
+    "name": "media-architect",
+    "pack": "media",
+    "kind": "agent",
+    "scope": "global",
+    "model": "claude-opus-4-7",
+    "description": "Media / streaming domain specialist. Use proactively on media / streaming work — ingest → process → store → deliver pipeline, codec/container strategy, VOD vs live topology, DRM posture, CDN strategy, and QoE. Owns media architecture and composes the media-* implementation skills."
+  },
+  {
+    "name": "mobile-architect",
+    "pack": "mobile",
+    "kind": "agent",
+    "scope": "global",
+    "model": "claude-opus-4-7",
+    "description": "Mobile domain specialist. Use proactively on iOS / Android work — framework choice, offline posture, background-execution strategy, release topology, and privacy posture. Owns mobile architecture and composes the mobile-* implementation skills."
+  },
+  {
+    "name": "orch-architect",
+    "pack": "orch",
+    "kind": "agent",
+    "scope": "global",
+    "model": "claude-opus-4-7",
+    "description": "Agent / orchestration domain specialist. Use proactively on agent / orchestration work — agent topology, tool-use contract, memory model, planning/looping control, sandbox boundaries, and eval strategy. Owns orchestration architecture and composes the orch-* implementation skills."
+  },
+  {
+    "name": "plan-architect",
+    "pack": "core",
+    "kind": "agent",
+    "scope": "global",
+    "model": "claude-opus-4-7",
+    "description": "Universal system design and architecture planning specialist. Use proactively when defining component boundaries, data flows, integration patterns, or making major structural decisions before or during implementation."
+  },
+  {
+    "name": "pr-code-reviewer",
+    "pack": "core",
+    "kind": "agent",
+    "scope": "global",
     "model": "claude-sonnet-4-6",
+    "description": "Pull request and code review specialist. Use proactively when a PR is opened, a diff is ready for review, or the user requests feedback on a changeset before merging."
+  },
+  {
+    "name": "saas-architect",
+    "pack": "saas",
+    "kind": "agent",
+    "scope": "global",
+    "model": "claude-opus-4-7",
+    "description": "SaaS domain specialist. Use proactively on multi-tenant / productivity web-app work — tenancy model, data isolation, billing topology, entitlements, auth/SSO, realtime collab, and horizontal-scale decisions. Owns SaaS architecture and composes the saas-* implementation skills."
+  },
+  {
+    "name": "secure-auditor",
+    "pack": "core",
+    "kind": "agent",
+    "scope": "global",
+    "model": "claude-opus-4-7",
+    "description": "Security audit and hardening specialist. Use proactively at the start of the Hardening phase and whenever security-sensitive code is written — authentication, authorization, cryptography, file I/O, secrets handling, or processing untrusted external data."
+  },
+  {
+    "name": "test-writer-runner",
+    "pack": "core",
+    "kind": "agent",
+    "scope": "global",
+    "model": "claude-sonnet-4-6",
+    "description": "Test writing and execution specialist. Use proactively after implementation is complete, after a PR review resolves issues, or when test coverage for a module or feature needs improving."
+  },
+  {
+    "name": "ai-eval",
+    "pack": "ai",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "LLM evaluation specialist. Auto-invoked when eval harnesses are being built, regression suites are designed, human-rater protocols are set up, or online evals (canaries, A/B) are being instrumented."
   },
   {
-    "name": "ai-finetune-expert",
+    "name": "ai-finetune",
     "pack": "ai",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Model fine-tuning specialist. Owns dataset curation, SFT / LoRA / QLoRA / DPO, training infra, eval-coupled training, and deployment of adapted models. Auto-invoked when fine-tuning, building training datasets, or deploying adapted models."
   },
   {
-    "name": "ai-inference-perf-expert",
+    "name": "ai-inference-perf",
     "pack": "ai",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Inference performance and cost specialist. Auto-invoked when inference latency, throughput, token cost, batching, quantization, KV caching, or GPU scheduling is being tuned."
   },
   {
     "name": "ai-prompt-engineer",
     "pack": "ai",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Prompt design specialist. Auto-invoked when prompts, system messages, few-shot examples, structured-output schemas, or chain-of-prompt chains are being written or iterated."
   },
   {
-    "name": "ai-rag-expert",
+    "name": "ai-rag",
     "pack": "ai",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Retrieval-augmented generation specialist. Auto-invoked when retrieval, chunking, embeddings, reranking, hybrid search, or RAG evaluation is being built."
   },
   {
-    "name": "ai-safety-expert",
+    "name": "ai-safety",
     "pack": "ai",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "AI content safety and prompt-injection defense specialist. Auto-invoked when user-generated input reaches an LLM, when tools are exposed to an agent, or when content filters, refusal policies, and jailbreak defenses are being designed."
   },
   {
-    "name": "api-expert",
+    "name": "api-design",
     "pack": "core",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "global",
+    "model": "",
     "description": "API design and implementation specialist. Auto-invoked when writing HTTP endpoints, REST or GraphQL APIs, authentication flows, API clients, webhooks, or defining data contracts between services."
   },
   {
-    "name": "common-a11y-expert",
+    "name": "code-review-checklist",
+    "pack": "core",
+    "kind": "skill",
+    "scope": "global",
+    "model": "",
+    "description": "Code review reference — the seven review dimensions and comment severity labels. Use proactively when reviewing a diff or self-reviewing changes before handing off to the pr-code-reviewer agent."
+  },
+  {
+    "name": "common-a11y",
     "pack": "common",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "global",
+    "model": "",
     "description": "Accessibility (WCAG 2.2 AA+, ARIA, assistive-tech compatibility, keyboard / switch / voice / screen-reader UX). Auto-invoked when building UI, prepping for audit, or remediating a11y findings."
   },
   {
-    "name": "common-i18n-expert",
+    "name": "common-i18n",
     "pack": "common",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "global",
+    "model": "",
     "description": "Internationalization and localization — string externalization, ICU MessageFormat, plurals, RTL, locale-aware formatting, translation workflow. Auto-invoked when adding locales, debugging localized bugs, or designing the i18n architecture."
   },
   {
-    "name": "common-notifications-expert",
+    "name": "common-notifications",
     "pack": "common",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "global",
+    "model": "",
     "description": "Cross-channel user notifications — push, email, SMS, in-app, webhook, batching / throttling / quiet-hours, preferences, deliverability. Auto-invoked when designing notification flows, investigating open-rate drops, or implementing preferences UI."
   },
   {
-    "name": "common-privacy-expert",
+    "name": "common-privacy",
     "pack": "common",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "global",
+    "model": "",
     "description": "Application-layer privacy — consent management (TCF / GPP / region-specific), DSAR fulfillment, data minimization, purpose limitation, cookie / SDK governance. Auto-invoked when designing consent flows, handling access / deletion requests, or mapping data to purposes."
   },
   {
-    "name": "common-product-analytics-expert",
+    "name": "common-product-analytics",
     "pack": "common",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "global",
+    "model": "",
     "description": "Product analytics — event schema design, instrumentation, identity / identity-resolution, funnels / cohorts / retention, experimentation wiring. Auto-invoked when designing an event taxonomy, debugging bad data, or instrumenting a new surface."
   },
   {
-    "name": "dataplat-architect",
+    "name": "dataplat-etl",
     "pack": "dataplat",
-    "model": "claude-opus-4-7",
-    "description": "Data platform architect. Owns warehouse/lakehouse topology, batch vs streaming, partitioning strategy, storage format choice, and data governance posture. Auto-invoked in Phase 2 on data-platform projects and whenever a decision could reshape storage/compute topology or governance."
-  },
-  {
-    "name": "dataplat-etl-expert",
-    "pack": "dataplat",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "ETL / ELT pipeline specialist. Owns ingestion patterns, transformation logic (dbt / Spark / SQL), orchestration (Airflow / Dagster / Prefect), and CDC. Auto-invoked when writing or refactoring any data pipeline."
   },
   {
-    "name": "dataplat-feature-store-expert",
+    "name": "dataplat-feature-store",
     "pack": "dataplat",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Feature store / ML data ops specialist. Owns feature definitions, online / offline parity, point-in-time correctness, materialization, and feature serving latency. Auto-invoked when building, debugging, or extending feature pipelines for ML."
   },
   {
-    "name": "dataplat-privacy-expert",
+    "name": "dataplat-privacy",
     "pack": "dataplat",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Warehouse-side privacy specialist. Owns PII classification, masking / tokenization, deletion propagation (DSAR / right-to-erasure), retention enforcement, and access control on sensitive columns. Auto-invoked when classifying data, enforcing retention, or processing erasure requests."
   },
   {
-    "name": "dataplat-quality-expert",
+    "name": "dataplat-quality",
     "pack": "dataplat",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Data quality and contracts specialist. Owns data contracts, expectation testing (Great Expectations, dbt tests, Soda), lineage, freshness SLAs, and incident response for bad data. Auto-invoked when adding or tightening quality rules, or when a downstream consumer reports bad data."
   },
   {
-    "name": "dataplat-sql-expert",
+    "name": "dataplat-sql",
     "pack": "dataplat",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Analytical SQL specialist. Owns dialect-specific optimization, CTEs and window functions, join strategy, partition pruning, and query cost tuning. Auto-invoked for slow queries, complex analytical SQL, or dialect translation."
   },
   {
-    "name": "dataplat-streaming-expert",
+    "name": "dataplat-streaming",
     "pack": "dataplat",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Streaming / event-data specialist. Owns Kafka / Kinesis / Pulsar / PubSub topology, schema evolution, exactly-once semantics, stream processing (Flink / Spark / ksqlDB), and stream-to-warehouse landing. Auto-invoked when designing or debugging streaming pipelines, schemas, or stream-processing jobs."
   },
   {
-    "name": "dataplat-viz-expert",
+    "name": "dataplat-viz",
     "pack": "dataplat",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Analytics delivery specialist. Owns semantic / metrics layer, dashboards (Looker, Tableau, Superset, Metabase), metric definitions, and self-serve patterns. Auto-invoked when building dashboards, defining metrics, or designing a semantic layer."
   },
   {
-    "name": "deploy-checklist",
-    "pack": "core",
-    "model": "claude-haiku-4-6",
-    "description": "Deployment readiness and pre-production checklist specialist. Auto-invoked before any production deployment, environment promotion, or release cut."
-  },
-  {
-    "name": "desktop-architect",
+    "name": "desktop-autoupdate",
     "pack": "desktop",
-    "model": "claude-opus-4-7",
-    "description": "Desktop application architect. Owns runtime choice (Electron, Tauri, native, Qt), process model (main/renderer/worker), IPC topology, file-system and OS integration, and cross-platform posture. Auto-invoked in Phase 2 on desktop projects or for runtime / process / packaging topology decisions."
-  },
-  {
-    "name": "desktop-autoupdate-expert",
-    "pack": "desktop",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Autoupdate specialist. Owns update channels, delta / full download, signature verification, rollback, staged rollout, and update UX. Auto-invoked when designing, changing, or debugging the update mechanism."
   },
   {
-    "name": "desktop-code-signing-expert",
+    "name": "desktop-code-signing",
     "pack": "desktop",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Code-signing and notarization specialist. Owns signing keys, certificates, platform signing (Authenticode, Apple notarization, Linux repos), and CI integration. Auto-invoked when setting up, debugging, or rotating signing."
   },
   {
-    "name": "desktop-installer-expert",
+    "name": "desktop-installer",
     "pack": "desktop",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Installers, uninstallers, and first-run provisioning for Windows, macOS, and Linux desktop apps. Auto-invoked when building MSI/EXE/PKG/DMG/DEB/RPM installers, debugging install failures, or designing per-user vs system-wide installs."
   },
   {
-    "name": "desktop-ipc-expert",
+    "name": "desktop-ipc",
     "pack": "desktop",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Desktop IPC specialist. Owns protocol design between main/renderer/workers, message schemas, request/response patterns, security boundaries, and performance. Auto-invoked when designing or changing inter-process messages."
   },
   {
-    "name": "desktop-shell-integration-expert",
+    "name": "desktop-shell-integration",
     "pack": "desktop",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "OS shell integration — context menus, file associations, protocol handlers, Spotlight / search, Quick Look, jump lists, dock badges. Auto-invoked when implementing native integrations, debugging why associations don't stick, or cleaning up after uninstall."
   },
   {
-    "name": "devtool-architect",
+    "name": "devtool-cli-ux",
     "pack": "devtool",
-    "model": "claude-opus-4-7",
-    "description": "DevTool / CLI / library architect. Owns API surface design, versioning strategy, distribution model, extensibility (plugins/hooks), and compatibility posture. Auto-invoked in Phase 2 on devtool projects and whenever a public-surface or compat decision is being made."
-  },
-  {
-    "name": "devtool-cli-ux-expert",
-    "pack": "devtool",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "CLI ergonomics specialist. Owns flag naming, output format, error messages, progress indicators, interactivity, and shell integration. Auto-invoked when designing or refining any CLI command, flag, or user-facing output."
   },
   {
-    "name": "devtool-docgen-expert",
+    "name": "devtool-docgen",
     "pack": "devtool",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Documentation generation specialist. Owns API reference generation, example extraction, doctests, versioned docs sites, and changelog curation. Auto-invoked when writing / refreshing docs or setting up docs infrastructure."
   },
   {
-    "name": "devtool-library-api-expert",
+    "name": "devtool-library-api",
     "pack": "devtool",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Library API specialist. Owns public API design at the code level: types, signatures, error types, nullability, generics, async surface. Auto-invoked when designing or changing a public library surface."
   },
   {
-    "name": "devtool-packaging-expert",
+    "name": "devtool-packaging",
     "pack": "devtool",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Build, packaging, signing, and release specialist. Owns build pipeline, artifacts (npm, wheel, binary, container), code signing, SBOM, release automation, and provenance. Auto-invoked for build / release / signing / distribution work."
   },
   {
-    "name": "devtool-telemetry-expert",
+    "name": "devtool-telemetry",
     "pack": "devtool",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Opt-in usage telemetry, crash reports, and update pings for CLIs and libraries. Auto-invoked when designing telemetry, debating what to collect, or responding to privacy concerns from enterprise users."
   },
   {
-    "name": "ecom-architect",
+    "name": "ecom-inventory",
     "pack": "ecom",
-    "model": "claude-opus-4-7",
-    "description": "E-commerce architect. Owns storefront / checkout / OMS topology, catalog vs cart vs order boundary, payment provider strategy, tax/shipping model, and peak-event scale posture. Auto-invoked in Phase 2 on e-commerce projects and for any decision touching checkout, fulfillment, or peak traffic."
-  },
-  {
-    "name": "ecom-inventory-expert",
-    "pack": "ecom",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Inventory and fulfillment specialist. Owns inventory model (on-hand, reserved, available-to-sell), multi-location allocation, reservation TTLs, oversell prevention, and OMS/WMS integration. Auto-invoked for inventory, stock, allocation, or fulfillment code."
   },
   {
-    "name": "ecom-payments-expert",
+    "name": "ecom-payments",
     "pack": "ecom",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Payments integration specialist. Owns gateway integration (Stripe, Adyen, Braintree, PayPal), 3DS / SCA, tokenization, auth/capture/void/refund, chargebacks, and PCI scope minimization. Auto-invoked for any payment code path."
   },
   {
-    "name": "ecom-promotions-expert",
+    "name": "ecom-promotions",
     "pack": "ecom",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Coupons, discounts, gift cards, loyalty, and promotion-stacking rules. Auto-invoked when designing promo logic, debugging unexpected discount totals, or integrating loyalty / store-credit systems."
   },
   {
-    "name": "ecom-search-merch-expert",
+    "name": "ecom-search-merch",
     "pack": "ecom",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Search and merchandising specialist. Owns product search (Elastic, OpenSearch, Algolia, Vespa), relevance tuning, faceting, ranking, synonyms, and merchandising rules (pinning, boosting, personalization). Auto-invoked for any search, browse, or ranking work."
   },
   {
-    "name": "ecom-storefront-perf-expert",
+    "name": "ecom-storefront-perf",
     "pack": "ecom",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Storefront performance specialist. Owns Core Web Vitals, edge caching, rendering strategy (SSR / ISR / SSG / streaming), image optimization, and third-party script discipline. Auto-invoked for storefront perf regressions, LCP/CLS/INP issues, or rendering strategy decisions."
   },
   {
-    "name": "ecom-tax-expert",
+    "name": "ecom-tax",
     "pack": "ecom",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Sales tax, VAT, GST, and marketplace-facilitator obligations. Auto-invoked when integrating tax engines, implementing nexus logic, handling cross-border orders, or reconciling tax filings."
   },
   {
-    "name": "embed-architect",
+    "name": "embed-connectivity",
     "pack": "embed",
-    "model": "claude-opus-4-7",
-    "description": "Embedded / IoT architect. Owns SoC/MCU choice, RTOS vs bare-metal, memory / flash layout, boot/recovery model, secure boot chain, and fleet update topology. Auto-invoked in Phase 2 on embedded / firmware / IoT projects or for any decision affecting hardware, boot, or fleet update posture."
-  },
-  {
-    "name": "embed-connectivity-expert",
-    "pack": "embed",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Wireless and networked connectivity for embedded devices — Wi-Fi, BLE, Thread / Matter, cellular, LoRaWAN, MQTT/CoAP. Auto-invoked when designing connectivity stacks, debugging pairing/provisioning, or optimizing power/cost trade-offs for fleet comms."
   },
   {
-    "name": "embed-driver-expert",
+    "name": "embed-driver",
     "pack": "embed",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Embedded driver / peripheral specialist. Owns device drivers, bus protocols (I2C, SPI, UART, CAN, USB), DMA, interrupt handling, and hardware-abstraction layers. Auto-invoked when writing, porting, or debugging driver / bus / peripheral code."
   },
   {
-    "name": "embed-manufacturing-expert",
+    "name": "embed-manufacturing",
     "pack": "embed",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Factory provisioning, test fixtures, yield, traceability, and RMA workflow for embedded products. Auto-invoked when designing manufacturing test, debugging DFx issues, or preparing for a CM handoff."
   },
   {
-    "name": "embed-ota-expert",
+    "name": "embed-ota",
     "pack": "embed",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Firmware OTA / fleet update specialist. Owns update transport, delta / block / full images, signature verification, A/B swap, resumability, and fleet-staged rollouts. Auto-invoked when building, testing, or debugging firmware updates."
   },
   {
-    "name": "embed-power-expert",
+    "name": "embed-power",
     "pack": "embed",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Power management specialist. Owns sleep modes, duty cycling, peripheral gating, wake sources, and battery-life budgeting. Auto-invoked for battery devices, low-power design, or power regressions."
   },
   {
-    "name": "embed-rtos-expert",
+    "name": "embed-rtos",
     "pack": "embed",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "RTOS specialist. Owns task design, scheduling, synchronization primitives, memory layout, stack sizing, and real-time constraints. Auto-invoked when writing or refactoring task / scheduler / IPC code on FreeRTOS, Zephyr, ThreadX, etc."
   },
   {
-    "name": "ext-architect",
+    "name": "ext-native-messaging",
     "pack": "ext",
-    "model": "claude-opus-4-7",
-    "description": "Browser extension architect. Owns manifest version choice (MV3), permissions model, background/service-worker/content-script split, cross-browser strategy, and store-review posture. Auto-invoked in Phase 2 on extension projects or for manifest / permission decisions."
-  },
-  {
-    "name": "ext-native-messaging-expert",
-    "pack": "ext",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Browser-extension ↔ native-host bridge via Native Messaging. Auto-invoked when designing the extension/native boundary, debugging stdio framing, or handling installation of the native host."
   },
   {
-    "name": "ext-permissions-expert",
+    "name": "ext-permissions",
     "pack": "ext",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Permissions specialist. Owns permission model choices (optional vs required, host patterns), user consent flows, privacy disclosures, and store-review permission justifications. Auto-invoked when adding, changing, or defending permissions."
   },
   {
-    "name": "ext-security-expert",
+    "name": "ext-security",
     "pack": "ext",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Extension security specialist. Owns threat model for content-script injection, CSP, message validation across origins, secret handling, and supply-chain risk. Auto-invoked for any content-script, page-world, or cross-origin messaging code."
   },
   {
-    "name": "ext-ux-expert",
+    "name": "ext-ux",
     "pack": "ext",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Extension UX specialist. Owns popup, options page, onboarding, permission-request timing, and in-page UI design. Auto-invoked for popup / options / onboarding / page-overlay work."
   },
   {
-    "name": "fintech-architect",
+    "name": "fintech-audit-trail",
     "pack": "fintech",
-    "model": "claude-opus-4-7",
-    "description": "Fintech architect. Owns ledger topology, regulatory posture (KYC/AML, licensing, jurisdictions), money-movement primitives, reconciliation strategy, and audit/evidence retention. Auto-invoked in Phase 2 on fintech or regulated-money projects, or when any decision touches money, compliance, or audit."
-  },
-  {
-    "name": "fintech-audit-trail-expert",
-    "pack": "fintech",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Audit-trail specialist. Owns immutable event log, who/what/when capture, tamper evidence, retention, and audit export. Auto-invoked when adding audit logging to a new domain or responding to an audit request."
   },
   {
-    "name": "fintech-compliance-expert",
+    "name": "fintech-compliance",
     "pack": "fintech",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Compliance program specialist. Owns KYC/KYB, sanctions/PEP screening, AML monitoring, SAR/CTR workflows, and regulator-mapping evidence. Auto-invoked for any code that gates customer access, screens transactions, or files regulatory reports."
   },
   {
-    "name": "fintech-ledger-expert",
+    "name": "fintech-ledger",
     "pack": "fintech",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Ledger specialist. Owns double-entry accounting, postings, balances, multi-currency, and ledger invariants. Auto-invoked for any code that posts to the ledger, computes balances, or models money movement."
   },
   {
-    "name": "fintech-risk-expert",
+    "name": "fintech-risk",
     "pack": "fintech",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Risk modeling specialist. Owns credit, fraud, and exposure models, feature pipelines, decisioning thresholds, and model monitoring. Auto-invoked for credit decisioning, fraud scoring, chargeback prediction, or risk-limit code."
   },
   {
-    "name": "game-architect",
+    "name": "game-audio",
     "pack": "game",
-    "model": "claude-opus-4-7",
-    "description": "Game architecture specialist. Auto-invoked on gaming projects during Phase 2, or when engine choice, core game loop, state architecture (ECS vs OOP vs scene graph), asset pipeline, or save/load topology is being decided. Composes with `plan-architect`."
-  },
-  {
-    "name": "game-audio-expert",
-    "pack": "game",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Game audio specialist. Owns audio middleware (Wwise, FMOD), mix bus design, spatial / 3D audio, dynamic music systems, and audio performance budgets. Auto-invoked for audio integration, mixing, spatialization, or audio-perf work."
   },
   {
     "name": "game-balance-designer",
     "pack": "game",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Game economy and progression tuning specialist. Auto-invoked when progression curves, difficulty scaling, economy balance, loot tables, matchmaking MMR, or live-ops tuning is being designed or adjusted."
   },
   {
-    "name": "game-engine-expert",
+    "name": "game-engine",
     "pack": "game",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Engine-specific implementation specialist (Unity, Unreal, Godot, bespoke). Auto-invoked when engine APIs are being used — rendering, shaders, scene management, physics, animation, audio, or engine-idiomatic patterns."
   },
   {
     "name": "game-feel-critic",
     "pack": "game",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Game feel, input, and accessibility specialist. Auto-invoked when controls, input mapping, camera behavior, feedback (hitstop, screen shake, rumble), or accessibility options are being designed or tuned."
   },
   {
-    "name": "game-liveops-expert",
+    "name": "game-liveops",
     "pack": "game",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Live-ops specialist. Owns telemetry, A/B testing, content-update cadence, retention loops, IAP/monetization integration, and seasonal/event scheduling. Auto-invoked for any live-ops, telemetry, A/B, monetization-integration, or content-cadence work."
   },
   {
-    "name": "game-netcode-expert",
+    "name": "game-netcode",
     "pack": "game",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Multiplayer netcode specialist. Auto-invoked when networked gameplay code is written — client prediction, server reconciliation, rollback, lag compensation, matchmaking, or dedicated-server topology."
   },
   {
     "name": "game-perf-profiler",
     "pack": "game",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Frame-budget and performance specialist. Auto-invoked when frame time, draw calls, GC, memory bandwidth, CPU/GPU bottlenecks, or platform-specific performance regressions need investigation."
   },
   {
-    "name": "game-platform-cert-expert",
+    "name": "game-platform-cert",
     "pack": "game",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Console / store certification specialist. Owns platform technical requirements (Sony TRC, MS XR, Nintendo Lotcheck), age ratings (ESRB/PEGI/CERO), localization compliance, and submission workflow. Auto-invoked when preparing or debugging a console or store submission."
   },
   {
-    "name": "infra-architect",
+    "name": "infra-dr-backup",
     "pack": "infra",
-    "model": "claude-opus-4-7",
-    "description": "Infrastructure / dev-platform architect. Owns cloud topology, network segmentation, environments, IaC strategy, secrets topology, and tenancy of the platform itself. Auto-invoked in Phase 2 on infra / platform projects or for any decision touching cloud layout, IaC posture, or environment strategy."
-  },
-  {
-    "name": "infra-dr-backup-expert",
-    "pack": "infra",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Disaster recovery, backup strategy, RPO / RTO targets, cross-region failover, and restore drills. Auto-invoked when designing DR posture, reviewing backup coverage, or running recovery game-days."
   },
   {
-    "name": "infra-finops-expert",
+    "name": "infra-finops",
     "pack": "infra",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "FinOps specialist. Owns cloud cost visibility, allocation, unit economics, right-sizing, commitment strategy (RI/SP/CUD), and forecasting. Auto-invoked for cost investigation, reserved-capacity planning, or unit-economics work."
   },
   {
-    "name": "infra-iam-expert",
+    "name": "infra-iam",
     "pack": "infra",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Cloud IAM — roles, policies, SCPs / Organization Policies, workload identity, secrets, key management, zero-standing-privilege. Auto-invoked when designing IAM posture, auditing overly-broad permissions, or implementing break-glass procedures."
   },
   {
-    "name": "infra-k8s-expert",
+    "name": "infra-k8s",
     "pack": "infra",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Kubernetes platform specialist. Owns cluster design, namespaces and RBAC, workload patterns (Deployments, StatefulSets, Jobs), autoscaling, ingress, and GitOps delivery. Auto-invoked for K8s manifest, cluster, controller, or deployment work."
   },
   {
-    "name": "infra-networking-expert",
+    "name": "infra-networking",
     "pack": "infra",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Network topology, VPC / subnets, peering, transit gateways, VPN, service mesh, DNS, egress / ingress, firewalling. Auto-invoked when designing network layout, debugging connectivity, or reviewing zero-trust / segmentation posture."
   },
   {
-    "name": "infra-observability-expert",
+    "name": "infra-observability",
     "pack": "infra",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Observability specialist. Owns metrics / logs / traces, instrumentation, retention, cardinality control, and dashboards. Auto-invoked when instrumenting services, investigating perf, or building dashboards."
   },
   {
-    "name": "infra-sre-expert",
+    "name": "infra-sre",
     "pack": "infra",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "SRE specialist. Owns SLOs, error budgets, incident response, postmortems, on-call rotation, and reliability engineering practice. Auto-invoked when setting up SLOs, responding to incidents, or improving reliability."
   },
   {
-    "name": "media-ad-insertion-expert",
+    "name": "media-ad-insertion",
     "pack": "media",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Ad insertion — SSAI (server-side stitching), CSAI (client-side), VAST / VMAP / VPAID, SCTE-35 markers, ad-break pacing, viewability, and verification. Auto-invoked when designing ad pipelines, debugging stitch glitches, or improving fill / revenue."
   },
   {
-    "name": "media-architect",
+    "name": "media-cms-workflow",
     "pack": "media",
-    "model": "claude-opus-4-7",
-    "description": "Media / streaming architect. Owns ingest → process → store → deliver pipeline, codec / container strategy, VOD vs live topology, DRM posture, and CDN strategy. Auto-invoked in Phase 2 on media / streaming projects or for any decision touching pipeline topology, codec/DRM, or delivery."
-  },
-  {
-    "name": "media-cms-workflow-expert",
-    "pack": "media",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "CMS / editorial workflow specialist. Owns asset ingest, metadata model, rights windows, scheduling / publishing, and editorial review. Auto-invoked for CMS schema, workflow, rights, or scheduling work."
   },
   {
-    "name": "media-drm-cdn-expert",
+    "name": "media-drm-cdn",
     "pack": "media",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "DRM and CDN delivery specialist. Owns Widevine / FairPlay / PlayReady license flow, key rotation, tokenized URLs, multi-CDN, and QoE / rebuffering analysis. Auto-invoked for DRM integration, CDN config, or playback-quality investigation."
   },
   {
-    "name": "media-live-expert",
+    "name": "media-live",
     "pack": "media",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Live-streaming pipeline — ingest (SRT / RTMP / RIST / WebRTC), transcoding, low-latency delivery (LL-HLS, LL-DASH, WebRTC), redundancy, failover. Auto-invoked when designing live pipelines, debugging glass-to-glass latency, or planning failover for tentpole events."
   },
   {
-    "name": "media-player-expert",
+    "name": "media-player",
     "pack": "media",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Client-side video / audio playback — ABR heuristics, player SDKs (Shaka, dash.js, ExoPlayer, AVPlayer), buffering / startup / rebuffer tuning. Auto-invoked when debugging QoE issues, implementing a player UI, or optimizing startup time."
   },
   {
-    "name": "media-transcode-expert",
+    "name": "media-transcode",
     "pack": "media",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Transcoding and packaging specialist. Owns ffmpeg pipelines, encoder tuning, bitrate ladders, per-title encoding, packaging (CMAF/HLS/DASH), and quality metrics (VMAF/PSNR). Auto-invoked for transcode / encode / package / QoE work."
   },
   {
-    "name": "mobile-architect",
+    "name": "mobile-crash",
     "pack": "mobile",
-    "model": "claude-opus-4-7",
-    "description": "Mobile app architecture specialist. Auto-invoked on iOS / Android projects during Phase 2, or when framework choice (native vs React Native vs Flutter vs Kotlin Multiplatform), offline posture, background-execution strategy, or release topology is being decided. Composes with `plan-architect`."
-  },
-  {
-    "name": "mobile-crash-expert",
-    "pack": "mobile",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Mobile crash and stability specialist. Owns crash reporting integration (Crashlytics, Sentry, App Center, native), symbolication (dSYMs, ProGuard/R8 mappings), ANR/foreground-service issues, and stability triage. Auto-invoked for crash spikes, symbolication breakage, or stability/ANR investigation."
   },
   {
-    "name": "mobile-iap-expert",
+    "name": "mobile-iap",
     "pack": "mobile",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Mobile in-app purchase specialist. Owns App Store / Play billing integration, receipts, server-side validation, restore, refund handling, subscription lifecycle, and family sharing. Auto-invoked for any IAP, subscription, or store-billing code."
   },
   {
-    "name": "mobile-offline-sync-expert",
+    "name": "mobile-offline-sync",
     "pack": "mobile",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Offline storage, sync, and conflict-resolution specialist for mobile. Auto-invoked when local persistence (SQLite, Core Data, Room), sync engines, background sync, or conflict resolution is being built."
   },
   {
-    "name": "mobile-perf-expert",
+    "name": "mobile-perf",
     "pack": "mobile",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Mobile performance specialist — cold start, jank, memory, battery, ANR / crash reduction. Auto-invoked when performance regressions are investigated, cold start is being optimized, or thermal / memory budgets need enforcement."
   },
   {
-    "name": "mobile-platform-expert",
+    "name": "mobile-platform",
     "pack": "mobile",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Platform conventions and native integration specialist. Auto-invoked when platform-specific UI, navigation, permissions, or OS-integration code is written — HIG/Material adherence, share sheets, widgets, intents, App Clips, Siri/App Shortcuts."
   },
   {
-    "name": "mobile-release-expert",
+    "name": "mobile-release",
     "pack": "mobile",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Mobile release pipeline and store submission specialist. Auto-invoked when TestFlight, Play Console, signing, provisioning, staged rollouts, review preparation, or store metadata / privacy declarations are being handled."
   },
   {
-    "name": "orch-architect",
+    "name": "orch-eval",
     "pack": "orch",
-    "model": "claude-opus-4-7",
-    "description": "Agent / orchestration systems architect. Owns agent topology (single, multi-agent, hierarchical), tool-use contract, memory model, planning / looping control, sandbox boundaries, and eval strategy. Auto-invoked in Phase 2 on agent / orchestration projects or for any decision touching topology, tool surface, or control loop."
-  },
-  {
-    "name": "orch-eval-expert",
-    "pack": "orch",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Agent / LLM eval specialist. Owns eval set curation, metrics, judges (LLM-as-judge and programmatic), regression harnesses, and continuous evaluation. Auto-invoked when adding, tightening, or investigating eval coverage."
   },
   {
     "name": "orch-prompt-engineer",
     "pack": "orch",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Prompt engineering specialist for agents and orchestration systems. Owns system prompts, role structure, few-shot selection, output formatting contracts, and guardrail prompting. Auto-invoked for prompt authoring, refinement, or regression investigation."
   },
   {
-    "name": "orch-sandbox-safety-expert",
+    "name": "orch-sandbox-safety",
     "pack": "orch",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Agent sandbox and safety specialist. Owns execution isolation, resource limits, file/network allowlists, tool-authority gating, and prompt-injection defense. Auto-invoked when agents can execute code, call external tools, or consume untrusted inputs."
   },
   {
-    "name": "orch-tool-design-expert",
+    "name": "orch-tool-design",
     "pack": "orch",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Tool-design specialist for agents. Owns individual tool specs — name, description, schema, examples, error behavior — and the tool-catalog discipline that shapes agent reliability. Auto-invoked when designing, adding, or refining tools exposed to an agent."
   },
   {
-    "name": "plan-architect",
+    "name": "playbook-conventions",
     "pack": "core",
-    "model": "claude-opus-4-7",
-    "description": "System design and architecture planning specialist. Auto-invoked when the user is defining component boundaries, data flows, integration patterns, or making major structural decisions before or during implementation."
+    "kind": "skill",
+    "scope": "global",
+    "model": "",
+    "description": "Shared output structure, handoff protocol, and ADR format for Claude Code Dev Studio agents and skills. Use proactively when a domain agent or skill is producing deliverables, handing work off, or recording a decision."
   },
   {
-    "name": "pr-code-reviewer",
-    "pack": "core",
-    "model": "claude-sonnet-4-6",
-    "description": "Pull request and code review specialist. Auto-invoked when a PR is opened, ready for review, or when the user requests a review of a diff or changeset."
-  },
-  {
-    "name": "saas-architect",
+    "name": "saas-auth-sso",
     "pack": "saas",
-    "model": "claude-opus-4-7",
-    "description": "Multi-tenant SaaS architecture specialist. Auto-invoked on SaaS / productivity web app projects during Phase 2, or when tenancy, data isolation, billing topology, entitlements, or horizontal-scale decisions are being made. Composes with `plan-architect`: `plan-architect` handles universal component boundaries and data flows; `saas-architect` handles SaaS-specific concerns that shape the entire system and are expensive to reverse."
-  },
-  {
-    "name": "saas-auth-sso-expert",
-    "pack": "saas",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Authentication, SSO, and authorization implementation specialist. Auto-invoked when login/signup flows, OIDC/SAML/SCIM integration, session management, password/MFA handling, JWT logic, or RBAC/ABAC policy code is being written."
   },
   {
-    "name": "saas-billing-expert",
+    "name": "saas-billing",
     "pack": "saas",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Subscription, entitlement, and billing integration specialist. Auto-invoked when payment-provider integration code is written (Stripe, Paddle, Lago, etc.), webhooks are handled, entitlement checks are placed in code paths, usage meters are ingested, or proration/dunning logic is added."
   },
   {
-    "name": "saas-collab-sync-expert",
+    "name": "saas-collab-sync",
     "pack": "saas",
-    "model": "claude-sonnet-4-6",
-    "description": "Realtime collaboration and sync specialist. Auto-invoked when realtime features are being built â€” WebSocket/SSE/long-polling protocols, CRDT/OT implementations, presence systems, conflict resolution, optimistic updates, or offline-replay patterns."
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
+    "description": "Realtime collaboration and sync specialist. Auto-invoked when realtime features are being built — WebSocket/SSE/long-polling protocols, CRDT/OT implementations, presence systems, conflict resolution, optimistic updates, or offline-replay patterns."
   },
   {
-    "name": "saas-data-model-expert",
+    "name": "saas-data-model",
     "pack": "saas",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
     "description": "Schema design and data access specialist for SaaS workloads. Auto-invoked when schemas are being created or changed, migrations are written, indexes are added/removed, ORMs are being configured, or slow queries need investigation."
   },
   {
-    "name": "saas-multitenancy-expert",
+    "name": "saas-multitenancy",
     "pack": "saas",
-    "model": "claude-sonnet-4-6",
-    "description": "Tenant isolation implementation specialist. Auto-invoked when tenant boundary code is written â€” row-level security (RLS) policies, query guards, tenant context propagation middleware, cross-tenant access checks, or partition-key enforcement. Also invoked when noisy-neighbor or per-tenant quota code is being added."
+    "kind": "skill",
+    "scope": "project",
+    "model": "",
+    "description": "Tenant isolation implementation specialist. Auto-invoked when tenant boundary code is written — row-level security (RLS) policies, query guards, tenant context propagation middleware, cross-tenant access checks, or partition-key enforcement. Also invoked when noisy-neighbor or per-tenant quota code is being added."
   },
   {
-    "name": "secure-auditor",
+    "name": "security-checklist",
     "pack": "core",
-    "model": "claude-opus-4-7",
-    "description": "Security audit and hardening specialist. Auto-invoked at the start of the Hardening phase and whenever security-sensitive code is written: authentication, authorization, cryptography, file I/O, secrets handling, or processing untrusted external data."
+    "kind": "skill",
+    "scope": "global",
+    "model": "",
+    "description": "Application security reference — OWASP Top 10, secrets hygiene, and severity rating. Use proactively when writing or reviewing auth, crypto, file I/O, secrets handling, or code that processes untrusted input, to self-check before a full audit."
   },
   {
-    "name": "test-writer-runner",
+    "name": "sync-agents",
     "pack": "core",
-    "model": "claude-sonnet-4-6",
-    "description": "Test writing and execution specialist. Auto-invoked after implementation is complete, after a PR review resolves issues, or when the user needs to improve test coverage for a module or feature."
+    "kind": "skill",
+    "scope": "global",
+    "model": "",
+    "description": "Activate Claude Code Dev Studio domain skills for the current project. Use proactively when running /init, when the user describes a new task or project type, when the user says \"sync agents\" / \"load skills\", or when the relevant domain skills are absent from .claude/skills/ for the work at hand."
   },
   {
-    "name": "ux-design-critic",
+    "name": "ux-design",
     "pack": "core",
-    "model": "claude-sonnet-4-6",
+    "kind": "skill",
+    "scope": "global",
+    "model": "",
     "description": "UX and frontend design critic. Auto-invoked when implementing UI components, forms, layouts, navigation flows, or any user-facing interactions."
   }
 ]
