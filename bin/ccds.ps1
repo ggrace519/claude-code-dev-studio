@@ -101,6 +101,10 @@ COMMANDS
   verify               Validate global agents and project skills
       --target <path>       Target path (default: current directory)
 
+  lint                 Lint the playbook library's semantic invariants
+                       (skill cross-refs, catalog freshness, URL/description
+                       conventions). Requires a repo clone (dev layout).
+
   update [tag]         Download and install a release (default: latest stable)
       --rollback            Restore the previous installed version
       --include-prerelease  Pick up release candidates when resolving 'latest'
@@ -239,6 +243,25 @@ function Invoke-VerifyCommand {
 }
 
 # ---------------------------------------------------------------------------
+# Command: lint
+# ---------------------------------------------------------------------------
+function Invoke-LintCommand {
+    $lintScript = Join-Path $installRoot 'scripts\lint-playbook.py'
+    if (-not (Test-Path -LiteralPath $lintScript)) {
+        Write-Error "lint-playbook.py not found at $lintScript. 'ccds lint' validates the library source; run it from a repo clone."
+        exit 2
+    }
+    $python = Get-Command python3 -ErrorAction SilentlyContinue
+    if (-not $python) { $python = Get-Command python -ErrorAction SilentlyContinue }
+    if (-not $python) {
+        Write-Error "python3 is required for lint"
+        exit 2
+    }
+    & $python.Source $lintScript $installRoot
+    exit $LASTEXITCODE
+}
+
+# ---------------------------------------------------------------------------
 # Command: update / uninstall (delegate to Install-Playbook.ps1 fetched from main)
 # ---------------------------------------------------------------------------
 $Script:InstallerUrlPs1 = 'https://raw.githubusercontent.com/ggrace519/claude-code-dev-studio/main/Install-Playbook.ps1'
@@ -349,6 +372,7 @@ try {
 switch ($Command) {
     'sync'       { Invoke-SyncCommand -Opts $opts }
     'verify'     { Invoke-VerifyCommand -Opts $opts }
+    'lint'       { Invoke-LintCommand }
     'update'     { Invoke-UpdateCommand -Opts $opts }
     'uninstall'  { Invoke-UninstallCommand }
     default {
