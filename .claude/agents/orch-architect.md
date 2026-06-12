@@ -1,6 +1,6 @@
 ---
 name: orch-architect
-model: claude-opus-4-7
+model: opus
 color: "#be123c"
 description: Agent / orchestration domain specialist. Use proactively on agent / orchestration work — agent topology, tool-use contract, memory model, planning/looping control, sandbox boundaries, and eval strategy. Owns orchestration architecture and composes the orch-* implementation skills.
 ---

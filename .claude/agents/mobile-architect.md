@@ -1,6 +1,6 @@
 ---
 name: mobile-architect
-model: claude-opus-4-7
+model: opus
 color: "#2563eb"
 description: Mobile domain specialist. Use proactively on iOS / Android work — framework choice, offline posture, background-execution strategy, release topology, and privacy posture. Owns mobile architecture and composes the mobile-* implementation skills.
 ---
