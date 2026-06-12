@@ -1,0 +1,11 @@
+{
+  "name": "ccds-core",
+  "description": "Claude Code Dev Studio core: 5 generalist agents (plan, review, security, test, deploy) plus the cross-cutting skills every project uses.",
+  "version": "0.8.0",
+  "author": {
+    "name": "Greg Grace",
+    "email": "contact@519lab.com"
+  },
+  "homepage": "https://github.com/ggrace519/claude-code-dev-studio",
+  "license": "PolyForm-Noncommercial-1.0.0"
+}

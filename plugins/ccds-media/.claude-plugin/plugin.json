@@ -1,0 +1,11 @@
+{
+  "name": "ccds-media",
+  "description": "Media / streaming domain specialist. Ships the media-architect agent and 6 media-* skills it composes.",
+  "version": "0.8.0",
+  "author": {
+    "name": "Greg Grace",
+    "email": "contact@519lab.com"
+  },
+  "homepage": "https://github.com/ggrace519/claude-code-dev-studio",
+  "license": "PolyForm-Noncommercial-1.0.0"
+}

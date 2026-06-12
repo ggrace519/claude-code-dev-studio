@@ -56,6 +56,27 @@ Skills are the just-in-time layer. The `sync-agents` skill (or `ccds sync`):
 
 Cross-cutting skills (`playbook-conventions`, `api-design`, `ux-design`, `security-checklist`, `code-review-checklist`, `common-*`) install once to `~/.claude/skills/` and are always available.
 
+## Install as native Claude Code plugins (recommended)
+
+The repo doubles as a **Claude Code plugin marketplace**: one plugin per pack
+(`ccds-saas`, `ccds-ai`, …) plus `ccds-core` (the 5 core agents + cross-cutting
+skills). Claude Code handles versioning, updates, and enable/disable — no
+installer, no PATH, no restart dance.
+
+```
+/plugin marketplace add ggrace519/claude-code-dev-studio
+/plugin install ccds-core@ccds
+/plugin install ccds-saas@ccds        # one per archetype you work in
+```
+
+Update later with `/plugin marketplace update ccds`. The marketplace tree
+(`.claude-plugin/marketplace.json` + `plugins/`) is generated from the library
+source by `scripts/build-marketplace.py` and gated for freshness in CI.
+
+The ZIP installer below remains fully supported — it additionally provides the
+`ccds` CLI, the global `~/.claude/playbook/` library, and per-project skill
+staging via `ccds sync`.
+
 ## Install
 
 The installer downloads a GitHub Release ZIP, verifies its SHA256 against the sidecar, stages to `<prefix>.new`, snapshots the existing install to `<prefix>.previous`, and atomically promotes. It copies the 19 agents to `~/.claude/agents/`, the cross-cutting skills to `~/.claude/skills/`, injects the ccds block into `~/.claude/CLAUDE.md`, and updates `PATH` so `ccds` resolves in new shells.
