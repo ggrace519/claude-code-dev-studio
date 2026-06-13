@@ -24,6 +24,21 @@ jobs:
       - name: Run verify-agents.sh
         run: ./verify-agents.sh
 
+  marketplace-freshness:
+    name: Marketplace tree is regenerated
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # build-marketplace.py resolves the version from git tags
+
+      - name: Regenerate marketplace
+        run: python3 scripts/build-marketplace.py
+
+      - name: Fail on drift
+        run: git diff --exit-code -- .claude-plugin plugins
+
   lint-playbook:
     name: Lint playbook invariants
     runs-on: ubuntu-latest
