@@ -141,7 +141,8 @@ def check_catalog_fresh():
 def check_urls():
     url_re = re.compile(r'github(?:usercontent)?\.com/([A-Za-z0-9_.-]+)/' + re.escape(REPO_NAME))
     for dirpath, dirnames, filenames in os.walk(REPO_ROOT):
-        dirnames[:] = [d for d in dirnames if d not in {".git", "node_modules", "dist"}]
+        # tests/ deliberately contains wrong-owner URLs as lint counterexamples
+        dirnames[:] = [d for d in dirnames if d not in {".git", "node_modules", "dist", "tests"}]
         for fname in filenames:
             if os.path.splitext(fname)[1] not in URL_SCAN_EXT or fname in URL_EXEMPT:
                 continue
