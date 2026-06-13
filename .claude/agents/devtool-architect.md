@@ -1,6 +1,6 @@
 ---
 name: devtool-architect
-model: claude-opus-4-7
+model: opus
 color: "#475569"
 description: DevTool / CLI / Library domain specialist. Use proactively on public-surface work — API and CLI surface design, versioning, distribution, extensibility, compatibility, docs, packaging, and telemetry. Owns devtool architecture and composes the devtool-* implementation skills.
 ---

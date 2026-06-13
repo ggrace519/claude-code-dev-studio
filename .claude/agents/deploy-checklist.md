@@ -1,7 +1,8 @@
 ---
 name: deploy-checklist
-model: claude-haiku-4-6
+model: haiku
 color: "#ff5a1f"
+disallowedTools: Write, Edit, NotebookEdit
 description: Deployment readiness and pre-production checklist specialist. Use proactively before any production deployment, environment promotion, release cut, or go/no-go assessment.
 ---
 

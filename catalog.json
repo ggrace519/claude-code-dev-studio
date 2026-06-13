@@ -4,7 +4,7 @@
     "pack": "ai",
     "kind": "agent",
     "scope": "global",
-    "model": "claude-opus-4-7",
+    "model": "opus",
     "description": "AI / LLM application domain specialist. Use proactively on AI / LLM work — model selection, serving topology, RAG-vs-finetune-vs-prompt, eval strategy, cost/latency budgets, and data policy. Owns AI architecture and composes the ai-* implementation skills."
   },
   {
@@ -12,7 +12,7 @@
     "pack": "dataplat",
     "kind": "agent",
     "scope": "global",
-    "model": "claude-opus-4-7",
+    "model": "opus",
     "description": "Data Platform domain specialist. Use proactively on data-platform work — warehouse/lakehouse topology, batch vs streaming, partitioning and storage format, governance, ingestion, quality, and serving. Owns data-platform architecture and composes the dataplat-* implementation skills."
   },
   {
@@ -20,7 +20,7 @@
     "pack": "core",
     "kind": "agent",
     "scope": "global",
-    "model": "claude-haiku-4-6",
+    "model": "haiku",
     "description": "Deployment readiness and pre-production checklist specialist. Use proactively before any production deployment, environment promotion, release cut, or go/no-go assessment."
   },
   {
@@ -28,7 +28,7 @@
     "pack": "desktop",
     "kind": "agent",
     "scope": "global",
-    "model": "claude-opus-4-7",
+    "model": "opus",
     "description": "Desktop App domain specialist. Use proactively on desktop work — runtime choice, process/window model, IPC topology, OS integration, autoupdate, code signing, installers, and shell integration. Owns desktop architecture and composes the desktop-* implementation skills."
   },
   {
@@ -36,7 +36,7 @@
     "pack": "devtool",
     "kind": "agent",
     "scope": "global",
-    "model": "claude-opus-4-7",
+    "model": "opus",
     "description": "DevTool / CLI / Library domain specialist. Use proactively on public-surface work — API and CLI surface design, versioning, distribution, extensibility, compatibility, docs, packaging, and telemetry. Owns devtool architecture and composes the devtool-* implementation skills."
   },
   {
@@ -44,7 +44,7 @@
     "pack": "ecom",
     "kind": "agent",
     "scope": "global",
-    "model": "claude-opus-4-7",
+    "model": "opus",
     "description": "E-commerce domain specialist. Use proactively on storefront/checkout/OMS work — catalog vs cart vs order boundary, payment strategy, inventory reservation, tax/shipping, promotions, search, and peak-event scale. Owns e-commerce architecture and composes the ecom-* implementation skills."
   },
   {
@@ -52,7 +52,7 @@
     "pack": "embed",
     "kind": "agent",
     "scope": "global",
-    "model": "claude-opus-4-7",
+    "model": "opus",
     "description": "Embedded / IoT domain specialist. Use proactively on embedded / firmware / IoT work — SoC/MCU choice, RTOS vs bare-metal, memory/flash layout, secure boot chain, A/B partitioning, fleet OTA topology, and provisioning/attestation. Owns embedded architecture and composes the embed-* implementation skills."
   },
   {
@@ -60,7 +60,7 @@
     "pack": "ext",
     "kind": "agent",
     "scope": "global",
-    "model": "claude-opus-4-7",
+    "model": "opus",
     "description": "Browser extension domain specialist. Use proactively on browser-extension work — manifest version (MV3), permissions model, background/service-worker/content-script split, cross-browser strategy, store-review posture, and native-host bridges. Owns browser-extension architecture and composes the ext-* implementation skills."
   },
   {
@@ -68,7 +68,7 @@
     "pack": "fintech",
     "kind": "agent",
     "scope": "global",
-    "model": "claude-opus-4-7",
+    "model": "opus",
     "description": "Fintech domain specialist. Use proactively on regulated-money work — ledger topology, custody, KYC/AML and licensing, money-movement primitives, reconciliation, audit retention, and risk. Owns fintech architecture and composes the fintech-* implementation skills."
   },
   {
@@ -76,7 +76,7 @@
     "pack": "game",
     "kind": "agent",
     "scope": "global",
-    "model": "claude-opus-4-7",
+    "model": "opus",
     "description": "Game domain specialist. Use proactively on game work — engine selection, core game loop, state architecture, asset pipeline, save/load topology, and platform-target strategy. Owns game architecture and composes the game-* implementation skills."
   },
   {
@@ -84,7 +84,7 @@
     "pack": "infra",
     "kind": "agent",
     "scope": "global",
-    "model": "claude-opus-4-7",
+    "model": "opus",
     "description": "Infrastructure / dev-platform domain specialist. Use proactively on infra / platform work — cloud topology, network segmentation, environments, IaC strategy, secrets topology, and platform tenancy. Owns infrastructure architecture and composes the infra-* implementation skills."
   },
   {
@@ -92,7 +92,7 @@
     "pack": "media",
     "kind": "agent",
     "scope": "global",
-    "model": "claude-opus-4-7",
+    "model": "opus",
     "description": "Media / streaming domain specialist. Use proactively on media / streaming work — ingest → process → store → deliver pipeline, codec/container strategy, VOD vs live topology, DRM posture, CDN strategy, and QoE. Owns media architecture and composes the media-* implementation skills."
   },
   {
@@ -100,7 +100,7 @@
     "pack": "mobile",
     "kind": "agent",
     "scope": "global",
-    "model": "claude-opus-4-7",
+    "model": "opus",
     "description": "Mobile domain specialist. Use proactively on iOS / Android work — framework choice, offline posture, background-execution strategy, release topology, and privacy posture. Owns mobile architecture and composes the mobile-* implementation skills."
   },
   {
@@ -108,7 +108,7 @@
     "pack": "orch",
     "kind": "agent",
     "scope": "global",
-    "model": "claude-opus-4-7",
+    "model": "opus",
     "description": "Agent / orchestration domain specialist. Use proactively on agent / orchestration work — agent topology, tool-use contract, memory model, planning/looping control, sandbox boundaries, and eval strategy. Owns orchestration architecture and composes the orch-* implementation skills."
   },
   {
@@ -116,7 +116,7 @@
     "pack": "core",
     "kind": "agent",
     "scope": "global",
-    "model": "claude-opus-4-7",
+    "model": "opus",
     "description": "Universal system design and architecture planning specialist. Use proactively when defining component boundaries, data flows, integration patterns, or making major structural decisions before or during implementation."
   },
   {
@@ -124,7 +124,7 @@
     "pack": "core",
     "kind": "agent",
     "scope": "global",
-    "model": "claude-sonnet-4-6",
+    "model": "sonnet",
     "description": "Pull request and code review specialist. Use proactively when a PR is opened, a diff is ready for review, or the user requests feedback on a changeset before merging."
   },
   {
@@ -132,7 +132,7 @@
     "pack": "saas",
     "kind": "agent",
     "scope": "global",
-    "model": "claude-opus-4-7",
+    "model": "opus",
     "description": "SaaS domain specialist. Use proactively on multi-tenant / productivity web-app work — tenancy model, data isolation, billing topology, entitlements, auth/SSO, realtime collab, and horizontal-scale decisions. Owns SaaS architecture and composes the saas-* implementation skills."
   },
   {
@@ -140,7 +140,7 @@
     "pack": "core",
     "kind": "agent",
     "scope": "global",
-    "model": "claude-opus-4-7",
+    "model": "opus",
     "description": "Security audit and hardening specialist. Use proactively at the start of the Hardening phase and whenever security-sensitive code is written — authentication, authorization, cryptography, file I/O, secrets handling, or processing untrusted external data."
   },
   {
@@ -148,7 +148,7 @@
     "pack": "core",
     "kind": "agent",
     "scope": "global",
-    "model": "claude-sonnet-4-6",
+    "model": "sonnet",
     "description": "Test writing and execution specialist. Use proactively after implementation is complete, after a PR review resolves issues, or when test coverage for a module or feature needs improving."
   },
   {

@@ -39,6 +39,26 @@ jobs:
       - name: Fail on drift
         run: git diff --exit-code -- .claude-plugin plugins
 
+  lint-playbook:
+    name: Lint playbook invariants
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Run lint-playbook.py
+        run: python3 scripts/lint-playbook.py
+
+  python-tests:
+    name: Script tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Run unittest suite
+        run: python3 -m unittest discover -s tests -v
+
   verify-agents-windows:
     name: Verify agents (Windows)
     runs-on: windows-latest

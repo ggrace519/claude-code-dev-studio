@@ -3,45 +3,81 @@ name: embed-manufacturing
 description: Factory provisioning, test fixtures, yield, traceability, and RMA workflow for embedded products. Auto-invoked when designing manufacturing test, debugging DFx issues, or preparing for a CM handoff.
 ---
 
-# Embedded Manufacturing Expert
+# Embedded Manufacturing
 
-Firmware that works on the bench and fails in the factory is still a product failure. You own the bridge between engineering and mass production — test coverage, yield, traceability, and the field feedback loop.
+Firmware that works on the bench and fails in the factory is still a product
+failure. The bridge between engineering and mass production — test coverage,
+serialization, key injection, yield, and the field-return loop — has to be
+designed, not improvised at the CM.
 
-## Scope
+## When to reach for this
 
-You own:
-- Design for Test (DFT) — test points, boundary scan, built-in self-test, factory-mode unlock path, fixture-accessible debug interfaces
-- Factory test flow — PCB-level ICT, functional test, RF characterization, calibration, acoustic/mechanical test, final pack-out
-- Serialization and identity — MAC assignment, per-unit keys, serial number / IMEI / EUI assignment, labeling / QR / 2D-Matrix
-- Key injection — per-device key provisioning, HSM integration at the fixture, attestation cert signing
-- Yield and defect tracking — first-pass yield, rework rate, Pareto analysis, CAPA cycles with the CM
-- Traceability — genealogy from component lot → sub-assembly → final unit → shipped order; recall scope
-- RMA / field-return analysis — diagnostic download, failure binning, fleet-level corrective rollouts
-- Transfer documentation — AVL/BOM governance, ECN flow, test-coverage matrix, acceptance criteria with the CM
+- Designing factory test stations, fixtures, or the factory-mode firmware path
+- Setting up serialization, per-device key injection, or traceability
+- Preparing a CM handoff packet, or running yield/CAPA cycles with the CM
+- Building RMA intake and field-return failure analysis
 
-You do NOT own:
-- OTA firmware delivery to shipped fleet → `embed-ota`
-- Over-the-air connectivity debug → `embed-connectivity`
-- Deep driver-level bring-up → `embed-driver`
-- Regulatory lab testing (separate from production test) → `embed-architect`
+## Principles
 
-## Approach
+1. **Design test coverage alongside features.** Every external interface gets a
+   factory-test hook before board layout freezes; retrofitting test points after
+   layout is how untested units ship. Target ≥95% fault coverage at functional
+   test.
+2. **Serialization has one source of truth.** A single system issues every
+   serial, MAC, IMEI, and per-device key; the CM reads from it and the cloud
+   validates against it. Ad-hoc CSV handoffs are the origin of most
+   traceability disasters.
+3. **Inject keys at the fixture, not in firmware.** Keys come from an HSM at the
+   production line, burn once into the secure element, and attest upward.
+   Factory images carry no embedded secrets — a leaked factory image must not be
+   a fleet compromise.
+4. **Track yield like a product metric.** First-pass yield, retest yield, and
+   final yield, broken out by station and by day. A 2% drop on one station is
+   usually fixture wear or a component-lot change — catch it in days, not weeks.
+5. **Build the recall lookup on day one.** "Which shipped units contain this
+   component lot?" must answer in minutes: component lot → sub-assembly → unit →
+   customer order, as queryable joins.
+6. **Make RMA intake automatic.** Every return goes onto a diagnostic fixture
+   that pulls crash logs, firmware version, sensor state, and uptime before a
+   human touches it. Without captured state, root cause is guesswork.
 
-1. **Design test coverage alongside features.** Every external interface gets a factory-test hook. Retrofitting test after board layout is how you ship untested units. Target ≥95% fault coverage at functional test.
-2. **Serialization is a single source of truth.** One system issues every serial, MAC, IMEI, per-device key. The CM reads from it; the cloud validates against it. Ad-hoc CSV hand-offs are the origin of most traceability disasters.
-3. **Inject keys at the fixture, not the firmware.** Keys come from an HSM at the production line, burn once, and attest up. Factory code should never carry embedded secrets — a leaked factory image is a fleet compromise.
-4. **Track yield like a product metric.** First-pass yield, retest yield, final yield, by station and by day. Watch for drift. A 2% yield drop on station 4 is often a fixture-wear problem — catch it in days, not weeks.
-5. **Build the recall lookup on day one.** When a failed part batch surfaces, "which units shipped with this" must resolve in minutes. Join table: component lot × sub-assembly × unit × customer order.
-6. **Make RMA intake automatic.** Every returned unit gets plugged into a diagnostic fixture that captures crash logs, sensor state, firmware version, uptime histogram. Without this, root-cause is guesswork.
+## Factory test flow — station template
 
-## Output Format
+| Station | Verifies | Typical gate |
+|---|---|---|
+| ICT / flying probe | solder, opens/shorts, passives | per-net pass |
+| Program + boot | flash image, secure-boot fuses | boots to factory mode |
+| Functional test | every interface via test hooks | ≥95% fault coverage |
+| RF / calibration | TX power, sensitivity, sensor cal | within cal limits, values logged |
+| Key injection + serialize | HSM-signed identity, label print | attestation verifies against issuer |
+| Final / pack-out | cosmetic, accessories, factory-mode locked | factory unlock disabled |
 
-- **DFT spec** — test points, boundary-scan coverage, factory-mode unlock protocol, fixture interface
-- **Test flow chart** — stations in order, pass/fail criteria per station, rework loops, final gate
-- **Serialization plan** — ID types, issuer system, labeling format, collision prevention
-- **Key-injection architecture** — HSM → fixture → unit, attestation chain, audit log
-- **Yield dashboard spec** — metrics, thresholds, alert rules, Pareto views
-- **Traceability schema** — tables and joins for genealogy and recall lookup
-- **RMA workflow** — intake diagnostic, binning rules, fleet-rollout decision criteria
-- **CM handoff packet** — test specs, fixture BOM, acceptance criteria, ECN protocol
-- **Recommended next steps** — Return DFT spec and test flow to the orchestrator; `pr-code-reviewer` reviews any automation code before merging. If key injection involves cryptographic design decisions, invoke `secure-auditor`.
+Every station logs unit ID, station ID, measurements (not just pass/fail), and
+firmware/fixture versions — that record is the traceability spine.
+
+## CM handoff checklist
+
+- [ ] Test spec per station with numeric pass/fail limits (no "verify it works")
+- [ ] Fixture BOM + maintenance/calibration schedule
+- [ ] Golden units and known-bad units for fixture validation
+- [ ] AVL/BOM under ECN control; substitution requires sign-off
+- [ ] Yield thresholds and stop-ship criteria agreed in writing
+- [ ] Factory-mode unlock protocol documented — and how it is permanently
+      disabled at pack-out
+
+## Pitfalls
+
+- Factory mode reachable on shipped units (or unlockable with a shared secret)
+- Pass/fail recorded without measured values — no drift detection, no Pareto
+- Calibration data stored only on the unit, not mirrored to the factory DB
+- Test fixtures running a different firmware build than production units
+- Yield reported as a single aggregate number — station-level drift invisible
+- Key injection logs without an audit trail tying each cert to a unit and time
+- New cryptographic design (key hierarchy, attestation chain) standing up a
+  line without a security review — re-provisioning a built fleet is rarely
+  possible
+
+---
+*Related: `embed-ota` (post-ship firmware delivery), `embed-connectivity`
+(provisioned-credential consumers), `embed-driver` (board bring-up under test)
+· domain agent: `embed-architect` · output/ADR format: `playbook-conventions`*

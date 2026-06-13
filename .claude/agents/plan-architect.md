@@ -1,6 +1,6 @@
 ---
 name: plan-architect
-model: claude-opus-4-7
+model: opus
 color: "#1a56db"
 description: Universal system design and architecture planning specialist. Use proactively when defining component boundaries, data flows, integration patterns, or making major structural decisions before or during implementation.
 ---

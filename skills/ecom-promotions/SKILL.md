@@ -3,43 +3,71 @@ name: ecom-promotions
 description: Coupons, discounts, gift cards, loyalty, and promotion-stacking rules. Auto-invoked when designing promo logic, debugging unexpected discount totals, or integrating loyalty / store-credit systems.
 ---
 
-# E-commerce Promotions Expert
+# E-commerce Promotions
 
-Promotions are the most error-prone code in e-commerce — a single stacking bug can discount an entire catalog to zero during peak. You own the correctness of every discount, coupon, gift-card, and loyalty calculation, and the guardrails that keep them from draining margin.
+Promotions are the most error-prone code in e-commerce — a single stacking bug
+can discount the whole catalog to zero during peak, and gift cards are bearer
+instruments that fraud rings actively probe.
 
-## Scope
+## When to reach for this
 
-You own:
-- Promotion engine — rule model (percent, fixed, BOGO, tiered, bundle), targeting (catalog, category, SKU, customer segment), eligibility conditions (min subtotal, customer tier, first-order)
-- Stacking and precedence — which promos combine, which are exclusive, application order (line-item → cart → shipping → tax), rounding policy
-- Coupon codes — generation, single-use vs multi-use, per-customer caps, expiry, referral codes, affiliate attribution
-- Gift cards — issuance, activation policy, balance tracking, partial redemption, refunds-to-card, fraud controls (velocity, geo, BIN checks)
-- Store credit and loyalty — points accrual, tier logic, redemption rules, breakage modeling, expiration policy
-- Abandoned-cart and win-back incentives — dynamic codes, single-use personalized offers, suppression lists
-- A/B testing and holdouts for promotions — clean measurement, avoiding promo-cannibalization of full-price demand
+- Designing a promo rule model (percent, fixed, BOGO, tiered, bundle) or its targeting/eligibility
+- Debugging an unexpected discount total or a stacking conflict
+- Implementing gift cards, store credit, or loyalty accrual/redemption
+- Adding abandoned-cart or win-back incentive codes
 
-You do NOT own:
-- Tax treatment of discounts (discount-before-tax vs after-tax) → `ecom-tax`
-- Payment-provider gift-card integrations → `ecom-payments`
-- Inventory reservation during BOGO / bundle promos → `ecom-inventory`
-- Ledger postings for gift-card liability and loyalty liability → `fintech-ledger` (if activated) or `saas-billing`
-- Search/ranking boosts for promoted products → `ecom-search-merch`
+## Principles
 
-## Approach
+1. **Promos are pure functions.** `(cart, customer, context) → discount_lines`,
+   no hidden mutation — identical inputs always reproduce identical outputs,
+   which is the only way to audit a disputed total.
+2. **Precedence is written down and versioned.** Fix the application order
+   (line-item → cart-level → shipping; tax computed on the discounted base) and
+   snapshot the rule-set version onto every order so any historical total can be
+   replayed exactly.
+3. **Cap every knob.** Max discount per line, per cart, per customer per period;
+   max loyalty-point redemption; max gift cards per order. Missing caps are how
+   $0 orders ship in production.
+4. **Gift cards are money.** Activation cool-off on newly sold cards, velocity
+   limits on redemption, geo/BIN checks at purchase, and rapid-drain monitoring.
+   Refunds-to-card must track remaining balance correctly.
+5. **Instrument every application.** Each promo applied writes a structured
+   event (`promo_id`, `rule_version`, `discount_amount`, cart context) — without
+   it, attribution, abuse detection, and finance reconciliation are guesswork.
+6. **Stress-test stacking with generated carts.** Property-based tests: random
+   carts × random active promo sets, asserting the invariants below. Humans do
+   not find combinatorial stacking bugs by inspection.
 
-1. **Pure functions over procedural rules.** Every promo is a function: `(cart, customer, context) → discount_lines`. No hidden mutation. The same inputs always produce the same outputs — that's how you audit a dispute.
-2. **Make precedence explicit.** Order-of-operations is not intuitive. Write the stacking order down, enforce it in code, and snapshot the rule-set version onto every order so you can reproduce any historical total.
-3. **Cap every knob.** Max discount per cart, max discount per line, max total loyalty-point redemption, max gift-card split. Missing caps are how you get $0 orders in production.
-4. **Gift cards are money.** Treat them as bearer instruments: activation delay for new sales (fraud cool-off), velocity limits on redemption, geo checks, and monitoring for rapid-drain patterns. Partial refunds must track remaining balance correctly across currency conversions.
-5. **Instrument before shipping.** Every promo application writes a structured event (promo_id, rule_version, discount_amount, cart_context). Without it, attribution, abuse detection, and finance reconciliation are guesswork.
-6. **Stress-test stacking with generated carts.** Property-based tests: generate random carts × random active promo sets, assert invariants (no negative totals, no sub-cost pricing, caps respected). This catches combinatorial bugs humans miss.
+## Invariants every generated-cart test asserts
 
-## Output Format
+- [ ] Cart total never negative; no line discounted below zero
+- [ ] No item priced below its floor (cost or configured minimum margin)
+- [ ] Exclusive promos never co-applied; stacking matrix respected
+- [ ] All caps respected (per-line, per-cart, per-customer, loyalty, gift-card split)
+- [ ] Rounding policy applied once, at the documented step — totals re-derive exactly
+- [ ] Removing a cart item never *increases* the total (discount re-evaluation is monotonic)
+- [ ] Same cart + same rule-set version → identical discount lines (determinism)
 
-- **Rule model** — promo-type taxonomy, targeting DSL, eligibility predicates, exclusivity flags
-- **Stacking matrix** — which promo types combine vs conflict, application order, rounding rule
-- **Gift-card spec** — issuance → activation → redemption → refund flow, fraud controls, balance accounting
-- **Loyalty spec** — accrual events, tier transitions, redemption rules, expiration policy, breakage model
-- **Abuse playbook** — detection signals (velocity, code-sharing, multi-account), throttles, response matrix
-- **Testing strategy** — property-based cart-generation tests, regression suite for historical order replay, peak-load validation
-- **Recommended next steps** — Return implementation to the orchestrator; `pr-code-reviewer` reviews before proceeding. If gift-card or loyalty liability involves ledger entries, invoke `fintech-ledger` (if fintech pack active) or `saas-billing`.
+Also worth a regression suite: replay historical orders against the current
+engine pinned to their stored rule-set version — totals must match to the cent.
+
+## Pitfalls
+
+- Percentage discounts applied after fixed discounts when the spec says the
+  reverse (order-of-operations changes the total)
+- Single-use codes enforced only client-side or checked outside the redemption
+  transaction (race → multi-redemption)
+- Gift-card balance updated without an idempotency key — a retried redemption
+  drains it twice
+- Loyalty points accrued on the pre-discount total but reversed on the
+  post-discount refund (slow point inflation)
+- Stacked free-shipping + cart-percent promos pushing orders below cost with no
+  margin floor
+- A/B promo tests without a holdout — you can't see cannibalization of
+  full-price demand
+
+---
+*Related: `ecom-tax` (discount-before-tax vs after-tax treatment),
+`ecom-payments` (gift card as tender, refund-to-card), `ecom-inventory`
+(reserving BOGO/bundle components) · domain agent: `ecom-architect`
+(promotions-engine boundary) · output/ADR format: `playbook-conventions`*

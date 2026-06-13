@@ -28,8 +28,8 @@ in `~/.claude/skills/` and are always available — do not copy them per project
 Read `~/.claude/playbook/catalog.json`. It indexes every agent and skill with `name`,
 `pack`, `kind` (`agent` | `skill`), `scope` (`global` | `project`), `model`, and
 `description`. If the file does not exist, stop and tell the user to install:
-> **macOS/Linux:** `curl -fsSL https://raw.githubusercontent.com/519lab/claude-code-dev-studio/main/install-playbook.sh | bash`
-> **Windows:** `iwr https://raw.githubusercontent.com/519lab/claude-code-dev-studio/main/Install-Playbook.ps1 | iex`
+> **macOS/Linux:** `curl -fsSL https://raw.githubusercontent.com/ggrace519/claude-code-dev-studio/main/install-playbook.sh | bash`
+> **Windows:** `iwr https://raw.githubusercontent.com/ggrace519/claude-code-dev-studio/main/Install-Playbook.ps1 | iex`
 
 ## Step 2 — Assess the project
 

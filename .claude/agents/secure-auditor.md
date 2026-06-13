@@ -1,7 +1,10 @@
 ---
 name: secure-auditor
-model: claude-opus-4-7
+model: opus
 color: "#e3a008"
+disallowedTools: Write, Edit, NotebookEdit
+skills:
+  - security-checklist
 description: Security audit and hardening specialist. Use proactively at the start of the Hardening phase and whenever security-sensitive code is written — authentication, authorization, cryptography, file I/O, secrets handling, or processing untrusted external data.
 ---
 

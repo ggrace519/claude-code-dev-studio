@@ -5,9 +5,16 @@ description: Application security reference — OWASP Top 10, secrets hygiene, a
 
 # Security Checklist
 
-Reference checklists for application security self-review. The `secure-auditor` agent
-pulls this for its full audit; any domain agent should pull it while writing
-security-sensitive code (auth, crypto, file I/O, secrets, untrusted input).
+Reference checklists for application security self-review — the shared severity
+language and baseline checks used while writing security-sensitive code, before the
+`secure-auditor` agent runs its full audit.
+
+## When to reach for this
+
+- Writing or reviewing auth, crypto, file I/O, or secrets-handling code
+- Any code path that processes untrusted external input
+- Self-checking a change before requesting a full security audit
+- Rating a security finding consistently (severity definitions below)
 
 ## Vulnerability priority framework
 
@@ -43,5 +50,16 @@ Review every codebase against:
 - [ ] No secrets in logs, error messages, or API responses
 - [ ] Rotation strategy exists for all secrets
 
-When a finding requires a full audit with exploit scenarios and fixes, return to the
-orchestrator to engage the `secure-auditor` agent.
+## Pitfalls
+
+- Self-rating real findings as MEDIUM to dodge the CRITICAL/HIGH deployment gate
+- Checking the boxes against the framework's defaults instead of this codebase's
+  actual routes, queries, and file paths
+- Treating a passing checklist as a substitute for the full audit — this is the
+  self-check, not the exploit-scenario analysis a finding deserves
+
+---
+*Related: `code-review-checklist` (general review dimensions), `api-design`
+(boundary validation), `common-privacy` (data-exposure handling) · pulled by any
+domain agent; the `secure-auditor` agent runs the full audit · output/ADR format:
+`playbook-conventions`*

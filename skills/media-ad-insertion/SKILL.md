@@ -3,44 +3,62 @@ name: media-ad-insertion
 description: Ad insertion — SSAI (server-side stitching), CSAI (client-side), VAST / VMAP / VPAID, SCTE-35 markers, ad-break pacing, viewability, and verification. Auto-invoked when designing ad pipelines, debugging stitch glitches, or improving fill / revenue.
 ---
 
-# Media Ad Insertion Expert
+# Media Ad Insertion
 
-Ads are the revenue engine for AVOD/FAST — and the #1 source of viewer abandonment when they glitch. You own the full ad-delivery path: marker conditioning, decisioning, stitching, verification, and the QoE of every transition.
+Ads are the revenue engine for AVOD/FAST — and the #1 source of viewer abandonment
+when they glitch. The hard part is the seams: marker conditioning, decisioning,
+stitching, and the QoE of every transition.
 
-## Scope
+## When to reach for this
 
-You own:
-- SSAI (server-side ad insertion) — manifest manipulation, bitrate-matched ad transcodes, init-segment handling, per-session stitching, token flow
-- CSAI (client-side) — IMA SDK, Google DAI, VAST / VMAP / VPAID parsing, companion ads, skip logic
-- SCTE-35 — cue-in / cue-out markers, upstream conditioning, ad-decisioning trigger, regional splice
-- Ad-decisioning integration — ad server (GAM, FreeWheel, Magnite), bid requests, VAST responses, fallback chains
-- Ad-break policy — frequency capping, pod construction, pod duration, creative rotation, competitive separation
-- Viewability and verification — OMID, IAB MRC standards, viewability pixels, invalid-traffic (IVT) filtering
-- Revenue and QoE trade-offs — pod length vs completion rate, ad-start latency, bitrate-matching cost, fallback fill
-- Privacy and consent — TCF v2, CCPA, GPP signal handling, personalized vs contextual fallback
+- Choosing or implementing SSAI vs CSAI for a surface, or wiring an ad server (GAM, FreeWheel, Magnite)
+- Debugging stitch glitches: bitrate drops, init-segment reloads, black frames at break boundaries
+- Conditioning SCTE-35 cue-out / cue-in markers through the encoder and origin manifest
+- Wiring viewability (OMID), completion tracking, IVT filtering, or consent-aware decisioning
 
-You do NOT own:
-- Content encoder ladder design → `media-transcode`
-- Content DRM / CDN token / CDN routing → `media-drm-cdn`
-- Client playback QoE outside ad breaks → `media-player`
-- CMS-side ad metadata configuration → `media-cms-workflow`
+## Principles
 
-## Approach
+1. **Match the ad to the content.** Same codec, same ladder rungs, same segment
+   duration. Mismatches force init-segment reloads and visible bitrate drops at the
+   stitch — the single biggest drop-off moment in ad-supported playback.
+2. **Condition SCTE-35 upstream, not in the player.** Markers belong in the
+   transcoder and the origin manifest. Players should see clean HLS/DASH with
+   discontinuity tags, never raw cue messages.
+3. **Keep ad-start latency under 200 ms.** Pre-fetch the next pod during content
+   playback; resolve VAST in parallel with manifest generation. Latency over 500 ms
+   is visible and painful.
+4. **Verify every impression.** OMID-measured viewability, completion quartiles, and
+   ad-start events. Without verification, revenue is guesswork and fraud is invisible.
+5. **Design every branch a fallback.** Empty VAST, lost bid, creative 404 — each
+   needs a deterministic outcome (house ad, slate, or immediate content resume).
+   Never leave the viewer on black.
+6. **Respect consent signals in the decisioning path.** The TCF v2 / GPP / CCPA
+   string determines personalized vs contextual request — or no ad request at all in
+   some jurisdictions. Encode this server-side in decisioning, not in the client.
 
-1. **Match the ad to the content.** Same codec, same ladder, same segment duration. Mismatches cause init-segment reloads and visible bitrate drops at the stitch — the single biggest drop-off moment.
-2. **Condition SCTE-35 upstream, not in the player.** Markers belong in the transcoder and the origin manifest. Players should see clean HLS/DASH with discontinuity tags, not raw cue messages.
-3. **Keep ad-start latency under 200ms.** Pre-fetch the next ad during content playback when possible. Parallelize VAST resolution with manifest generation. Latency over 500ms is visible and painful.
-4. **Verify every impression.** OMID-measured viewability, completion quartiles, and ad-start events. Without verification, revenue is guesswork and fraud is invisible.
-5. **Design for fallback.** Ad server returns empty? Bid loses? Creative fails to load? Every branch needs a deterministic fallback — house ad, slate, or immediate resume. Never leave the viewer on black.
-6. **Respect consent signals.** TCF / GPP string determines personalized vs contextual ad request; no ads at all in some jurisdictions without consent. Encode this in the decisioning path, not in the client.
+## SSAI vs CSAI
 
-## Output Format
+| Factor | SSAI (manifest stitching) | CSAI (client SDK, e.g. IMA) |
+|---|---|---|
+| Ad blockers | Resistant — ads are in the stream | Blockable |
+| CTV / FAST / linear | Default choice | SDK support uneven across TV OSes |
+| Interactivity (click, companions) | Limited | Native VAST/VPAID support |
+| Stitch QoE | Owned by you — bitrate-match or suffer | Player handles the transition |
+| Per-session targeting | Needs per-session manifest + token flow | Built into the SDK request |
+| Verification | Server beacons + client OMID bridge needed | OMID in-SDK, simpler |
 
-- **Ad pipeline architecture** — SSAI vs CSAI per surface, decisioning endpoints, manifest-manipulation path
-- **SCTE-35 conditioning spec** — encoder config, cue-out / cue-in handling, manifest marker format
-- **Ad-break policy** — frequency caps, pod rules, competitive separation, fallback chain
-- **QoE at breaks** — ad-start latency target, bitrate-matching strategy, stitch quality validation
-- **Verification wiring** — OMID integration, viewability / completion events, IVT filtering path
-- **Consent flow** — TCF / GPP handling, personalized / contextual / no-ad branching per region
-- **Instrumentation** — ad-fill rate, ad-start rate, completion rate, revenue per viewer hour, per-device QoE
-- **Recommended next steps** — Return ad pipeline architecture to the orchestrator; `pr-code-reviewer` reviews implementation before proceeding. If consent handling involves TCF/GPP signal propagation, invoke `common-privacy`.
+Hybrid is common: SSAI for CTV/FAST, CSAI for web where the IMA SDK is solid.
+
+## Pitfalls
+
+- Ad creatives transcoded once at a single bitrate instead of the full content ladder
+- Missing `EXT-X-DISCONTINUITY` / DASH period boundaries at stitch points — decoder stalls
+- VAST resolution serialized after the break starts instead of pre-fetched
+- Frequency caps and competitive separation enforced only in the ad server config, unverified in logs
+- Consent handled client-side only, so server-side SSAI requests leak personalized signals
+- No IVT filtering — fill rate looks great until the demand partner claws back revenue
+
+---
+*Related: `media-live` (SCTE-35 in live pipelines), `media-transcode` (ad creative
+ladders), `media-player` (break-transition QoE), `media-drm-cdn` (tokenized ad
+segments) · domain agent: `media-architect` · output/ADR format: `playbook-conventions`*

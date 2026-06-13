@@ -1,6 +1,6 @@
 ---
 name: media-architect
-model: claude-opus-4-7
+model: opus
 color: "#0369a1"
 description: Media / streaming domain specialist. Use proactively on media / streaming work — ingest → process → store → deliver pipeline, codec/container strategy, VOD vs live topology, DRM posture, CDN strategy, and QoE. Owns media architecture and composes the media-* implementation skills.
 ---
