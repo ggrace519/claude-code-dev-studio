@@ -6,15 +6,13 @@
     "email": "contact@519lab.com"
   },
   "metadata": {
-    "description": "Claude Code Dev Studio — domain-agent + skills playbook as native plugins. One plugin per archetype pack.",
-    "version": "0.8.0"
+    "description": "Claude Code Dev Studio — domain-agent + skills playbook as native plugins. One plugin per archetype pack."
   },
   "plugins": [
     {
       "name": "ccds-core",
       "source": "./plugins/ccds-core",
       "description": "Claude Code Dev Studio core: 5 generalist agents (plan, review, security, test, deploy) plus the cross-cutting skills every project uses.",
-      "version": "0.8.0",
       "category": "workflow",
       "tags": [
         "ccds",
@@ -25,7 +23,6 @@
       "name": "ccds-ai",
       "source": "./plugins/ccds-ai",
       "description": "AI / LLM application domain specialist. Ships the ai-architect agent and 6 ai-* skills it composes.",
-      "version": "0.8.0",
       "category": "domain-pack",
       "tags": [
         "ccds",
@@ -37,7 +34,6 @@
       "name": "ccds-dataplat",
       "source": "./plugins/ccds-dataplat",
       "description": "Data Platform domain specialist. Ships the dataplat-architect agent and 7 dataplat-* skills it composes.",
-      "version": "0.8.0",
       "category": "domain-pack",
       "tags": [
         "ccds",
@@ -49,7 +45,6 @@
       "name": "ccds-desktop",
       "source": "./plugins/ccds-desktop",
       "description": "Desktop App domain specialist. Ships the desktop-architect agent and 5 desktop-* skills it composes.",
-      "version": "0.8.0",
       "category": "domain-pack",
       "tags": [
         "ccds",
@@ -61,7 +56,6 @@
       "name": "ccds-devtool",
       "source": "./plugins/ccds-devtool",
       "description": "DevTool / CLI / Library domain specialist. Ships the devtool-architect agent and 5 devtool-* skills it composes.",
-      "version": "0.8.0",
       "category": "domain-pack",
       "tags": [
         "ccds",
@@ -73,7 +67,6 @@
       "name": "ccds-ecom",
       "source": "./plugins/ccds-ecom",
       "description": "E-commerce domain specialist. Ships the ecom-architect agent and 6 ecom-* skills it composes.",
-      "version": "0.8.0",
       "category": "domain-pack",
       "tags": [
         "ccds",
@@ -85,7 +78,6 @@
       "name": "ccds-embed",
       "source": "./plugins/ccds-embed",
       "description": "Embedded / IoT domain specialist. Ships the embed-architect agent and 6 embed-* skills it composes.",
-      "version": "0.8.0",
       "category": "domain-pack",
       "tags": [
         "ccds",
@@ -97,7 +89,6 @@
       "name": "ccds-ext",
       "source": "./plugins/ccds-ext",
       "description": "Browser extension domain specialist. Ships the ext-architect agent and 4 ext-* skills it composes.",
-      "version": "0.8.0",
       "category": "domain-pack",
       "tags": [
         "ccds",
@@ -109,7 +100,6 @@
       "name": "ccds-fintech",
       "source": "./plugins/ccds-fintech",
       "description": "Fintech domain specialist. Ships the fintech-architect agent and 4 fintech-* skills it composes.",
-      "version": "0.8.0",
       "category": "domain-pack",
       "tags": [
         "ccds",
@@ -121,7 +111,6 @@
       "name": "ccds-game",
       "source": "./plugins/ccds-game",
       "description": "Game domain specialist. Ships the game-architect agent and 8 game-* skills it composes.",
-      "version": "0.8.0",
       "category": "domain-pack",
       "tags": [
         "ccds",
@@ -133,7 +122,6 @@
       "name": "ccds-infra",
       "source": "./plugins/ccds-infra",
       "description": "Infrastructure / dev-platform domain specialist. Ships the infra-architect agent and 7 infra-* skills it composes.",
-      "version": "0.8.0",
       "category": "domain-pack",
       "tags": [
         "ccds",
@@ -145,7 +133,6 @@
       "name": "ccds-media",
       "source": "./plugins/ccds-media",
       "description": "Media / streaming domain specialist. Ships the media-architect agent and 6 media-* skills it composes.",
-      "version": "0.8.0",
       "category": "domain-pack",
       "tags": [
         "ccds",
@@ -157,7 +144,6 @@
       "name": "ccds-mobile",
       "source": "./plugins/ccds-mobile",
       "description": "Mobile domain specialist. Ships the mobile-architect agent and 6 mobile-* skills it composes.",
-      "version": "0.8.0",
       "category": "domain-pack",
       "tags": [
         "ccds",
@@ -169,7 +155,6 @@
       "name": "ccds-orch",
       "source": "./plugins/ccds-orch",
       "description": "Agent / orchestration domain specialist. Ships the orch-architect agent and 4 orch-* skills it composes.",
-      "version": "0.8.0",
       "category": "domain-pack",
       "tags": [
         "ccds",
@@ -181,7 +166,6 @@
       "name": "ccds-saas",
       "source": "./plugins/ccds-saas",
       "description": "SaaS domain specialist. Ships the saas-architect agent and 5 saas-* skills it composes.",
-      "version": "0.8.0",
       "category": "domain-pack",
       "tags": [
         "ccds",

@@ -187,17 +187,31 @@ class TestBuildMarketplace(unittest.TestCase):
     regenerates and asserts is git-clean elsewhere — here we assert shape)."""
 
     def test_generates_valid_marketplace(self):
-        r = run(BUILD_MARKETPLACE, REPO_ROOT, "--version", "0.0.0-test")
+        # No --version: the committed tree is unversioned (git-commit-driven),
+        # so a bare regen must reproduce it byte-for-byte (this is what the
+        # marketplace-freshness CI job asserts).
+        r = run(BUILD_MARKETPLACE, REPO_ROOT)
         self.assertEqual(r.returncode, 0, r.stderr)
         m = json.loads(read(os.path.join(REPO_ROOT, ".claude-plugin", "marketplace.json")))
         self.assertEqual(m["name"], "ccds")
         self.assertEqual(len(m["plugins"]), 15)
         for p in m["plugins"]:
+            self.assertNotIn("version", p, "default tree must be unversioned")
             pdir = os.path.join(REPO_ROOT, p["source"].lstrip("./"))
-            self.assertTrue(os.path.isfile(os.path.join(pdir, ".claude-plugin", "plugin.json")), p["name"])
-        # restore the checked-in version stamp
-        subprocess.run(["git", "-C", REPO_ROOT, "checkout", "--", ".claude-plugin", "plugins"],
-                       capture_output=True)
+            manifest = json.loads(read(os.path.join(pdir, ".claude-plugin", "plugin.json")))
+            self.assertNotIn("version", manifest, p["name"])
+
+    def test_explicit_version_pins_plugins(self):
+        try:
+            r = run(BUILD_MARKETPLACE, REPO_ROOT, "--version", "0.0.0-test")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            m = json.loads(read(os.path.join(REPO_ROOT, ".claude-plugin", "marketplace.json")))
+            self.assertEqual(m["metadata"]["version"], "0.0.0-test")
+            self.assertTrue(all(p["version"] == "0.0.0-test" for p in m["plugins"]))
+        finally:
+            # restore the checked-in (unversioned) tree
+            subprocess.run(["git", "-C", REPO_ROOT, "checkout", "--", ".claude-plugin", "plugins"],
+                           capture_output=True)
 
 
 if __name__ == "__main__":

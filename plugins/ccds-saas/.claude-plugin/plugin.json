@@ -1,7 +1,6 @@
 {
   "name": "ccds-saas",
   "description": "SaaS domain specialist. Ships the saas-architect agent and 5 saas-* skills it composes.",
-  "version": "0.8.0",
   "author": {
     "name": "Greg Grace",
     "email": "contact@519lab.com"

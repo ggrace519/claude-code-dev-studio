@@ -1,7 +1,6 @@
 {
   "name": "ccds-dataplat",
   "description": "Data Platform domain specialist. Ships the dataplat-architect agent and 7 dataplat-* skills it composes.",
-  "version": "0.8.0",
   "author": {
     "name": "Greg Grace",
     "email": "contact@519lab.com"

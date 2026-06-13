@@ -22,8 +22,12 @@ Users then install with:
   /plugin marketplace add ggrace519/claude-code-dev-studio
   /plugin install ccds-saas@ccds
 
-Generation is deterministic (sorted, no timestamps) so CI can regenerate and
-`git diff --exit-code` to detect drift. The `sync-agents` skill is intentionally
+Generation is deterministic (sorted, no timestamps, no git state) so CI can
+regenerate and `git diff --exit-code` to detect drift. Plugins are emitted
+without a `version` field by default: a git-hosted marketplace lets the commit
+SHA drive updates, which keeps the committed tree byte-stable across release
+tags (the freshness check never races a version bump). Pass --version to pin an
+explicit semver into every plugin. The `sync-agents` skill is intentionally
 excluded from plugins: it drives the ZIP-install JIT staging flow, which plugin
 enablement replaces.
 
@@ -35,7 +39,6 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import sys
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -59,15 +62,14 @@ REPO_URL = "https://github.com/ggrace519/claude-code-dev-studio"
 
 
 def version_arg():
+    """Explicit --version pins every plugin to that string. Omitted by default:
+    a git-hosted marketplace lets the commit SHA drive updates (every commit is
+    a new version), so the committed tree stays byte-stable across release tags
+    and the marketplace-freshness CI check never races the version bump."""
     for i, a in enumerate(sys.argv):
         if a == "--version" and i + 1 < len(sys.argv):
             return sys.argv[i + 1]
-    try:
-        tag = subprocess.run(["git", "-C", REPO_ROOT, "describe", "--tags", "--abbrev=0"],
-                             capture_output=True, text=True, check=True).stdout.strip()
-        return tag.lstrip("v")
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return "0.0.0"
+    return None
 
 
 def frontmatter_field(path, name):
@@ -104,26 +106,29 @@ def build_plugin(name, description, agents, skill_names, version):
     manifest = {
         "name": name,
         "description": description,
-        "version": version,
         "author": OWNER,
         "homepage": REPO_URL,
         "license": "PolyForm-Noncommercial-1.0.0",
     }
+    if version:
+        manifest["version"] = version
     write_json(os.path.join(plugin_dir, ".claude-plugin", "plugin.json"), manifest)
     for a in agents:
         copy_agent(a, plugin_dir)
     for s in skill_names:
         copy_skill(s, plugin_dir)
-    return {
+    entry = {
         "name": name,
         # Explicit relative path rather than pluginRoot + bare name: identical
         # meaning, but supported by older Claude Code versions too.
         "source": f"./plugins/{name}",
         "description": description,
-        "version": version,
         "category": "workflow" if name == "ccds-core" else "domain-pack",
         "tags": ["ccds", "playbook"] + ([] if name == "ccds-core" else [name.removeprefix("ccds-")]),
     }
+    if version:
+        entry["version"] = version
+    return entry
 
 
 def main():
@@ -158,15 +163,17 @@ def main():
             f"{pack}-* skills it composes.",
             [agent], pack_skills, version))
 
+    metadata = {
+        "description": "Claude Code Dev Studio — domain-agent + skills playbook "
+                       "as native plugins. One plugin per archetype pack.",
+    }
+    if version:
+        metadata["version"] = version
     marketplace = {
         "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
         "name": "ccds",
         "owner": OWNER,
-        "metadata": {
-            "description": "Claude Code Dev Studio — domain-agent + skills playbook "
-                           "as native plugins. One plugin per archetype pack.",
-            "version": version,
-        },
+        "metadata": metadata,
         "plugins": entries,
     }
     write_json(os.path.join(MARKETPLACE_DIR, "marketplace.json"), marketplace)
@@ -189,7 +196,8 @@ def main():
     n_skills = sum(len(os.listdir(os.path.join(PLUGINS_DIR, e["name"], "skills")))
                    for e in entries if os.path.isdir(os.path.join(PLUGINS_DIR, e["name"], "skills")))
     print(f"marketplace.json -> {os.path.join(MARKETPLACE_DIR, 'marketplace.json')}")
-    print(f"{len(entries)} plugins ({n_agents} agents + {n_skills} skills) at version {version}")
+    stamp = f"version {version}" if version else "unversioned (git-commit-driven)"
+    print(f"{len(entries)} plugins ({n_agents} agents + {n_skills} skills), {stamp}")
     return 0
 
 

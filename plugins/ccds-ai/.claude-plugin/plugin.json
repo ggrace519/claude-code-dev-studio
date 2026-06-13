@@ -1,7 +1,6 @@
 {
   "name": "ccds-ai",
   "description": "AI / LLM application domain specialist. Ships the ai-architect agent and 6 ai-* skills it composes.",
-  "version": "0.8.0",
   "author": {
     "name": "Greg Grace",
     "email": "contact@519lab.com"

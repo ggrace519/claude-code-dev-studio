@@ -5,6 +5,42 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## v0.9.0 — 2026-06-12 — Native plugin marketplace, skill-voice rewrite, lint + tests
+
+### What changed
+
+Five merged PRs (#12–#15 plus release prep) turn the v0.8.0 library into a distributable, self-validating one: the playbook now ships as a **native Claude Code plugin marketplace**, every skill body was rewritten from agent voice into reference voice with concrete artifacts, and a semantic linter + test suite guard the whole thing in CI. See `DECISIONS.md` ADR-0008 (marketplace) and ADR-0009 (skill authoring convention).
+
+### Native plugin marketplace (ADR-0008)
+
+- `scripts/build-marketplace.py` deterministically generates `.claude-plugin/marketplace.json` + `plugins/` — 15 plugins (`ccds-core` + 14 pack plugins) bundling 19 agents and 89 skills, mapped 1:1 onto the existing pack architecture.
+- Install path: `/plugin marketplace add ggrace519/claude-code-dev-studio` then `/plugin install ccds-saas@ccds`. Verified end-to-end against the real `claude` CLI (add → install → component inventory → uninstall).
+- Plugins are **unversioned** (git-commit-driven updates), so the generated tree is byte-stable across release tags and the `marketplace-freshness` CI job never races a version bump. Pass `--version` to pin an explicit semver.
+- The ZIP / `.deb` / `.rpm` installer path is unchanged and fully supported; the marketplace is an additional, parallel channel consumed directly from git.
+
+### Skill-voice rewrite (ADR-0009)
+
+- All **88 in-scope skills** rewritten from the agent-era bodies ADR-0007 carried over near-verbatim: removed persona intros, "You do NOT own → `<agent>`" ownership blocks, per-skill "Output Format" sections, and "return to the orchestrator" choreography. Each skill now leads with framing, sharpens its principles with concrete defaults, carries at least one decision table / checklist / skeleton, and ends with a one-line *Related* footer.
+- **16 bundled `references/*.md` resources** added for progressive disclosure (e.g. `saas-multitenancy/references/rls-policies.md`, `fintech-ledger/references/double-entry-schema.md`, `infra-sre/references/slo-worksheet.md`).
+- `playbook-conventions` and `sync-agents` are exempt by design. Aligned with Anthropic's published skill-authoring best practices (concise, third-person descriptions, references one level deep, consistent terminology). Frontmatter descriptions are untouched, so `catalog.json` is unchanged and routing is unaffected.
+
+### Lint + tests (ADR-0009)
+
+- `scripts/lint-playbook.py` validates the library's own claims beyond `verify-agents`' structural checks: skill cross-references (both directions), catalog freshness, canonical repo URLs, description style, dated-model pins, token budget, and agent-voice leakage in skills. Exposed as `ccds lint` and a CI job.
+- `tests/test_playbook_scripts.py` — fixture-based unittest suite (12 tests) over the catalog, lint, and marketplace generators, with its own CI job.
+- `model-values` and `skill-voice` checks are **errors** (not warnings) now that the underlying fixes have landed — dated model IDs and agent-voice phrasing can no longer regress.
+
+### Agents
+
+- All 19 agents repinned from dated model IDs to tier aliases (`opus` / `sonnet` / `haiku`), which track the best model per tier and never go stale (the previous `claude-haiku-4-6` pin was not a current public model ID).
+- `pr-code-reviewer` / `secure-auditor` preload their checklist skills via the `skills:` frontmatter field; the three read-only verdict agents (`pr-code-reviewer`, `secure-auditor`, `deploy-checklist`) carry `disallowedTools: Write, Edit, NotebookEdit` — per Anthropic's subagent best practices.
+
+### Fixes
+
+- `skills/sync-agents/SKILL.md` install instructions pointed at `519lab/...` instead of `ggrace519/...` (caught by the new `url-consistency` lint check on its first run).
+
+---
+
 ## v0.8.0 — 2026-06-03 — Domain-agent + skills architecture (ADR-0007)
 
 ### What changed
