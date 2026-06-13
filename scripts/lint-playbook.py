@@ -17,13 +17,12 @@ This linter checks that what the files SAY is true:
   5. description-style CLAUDE.md conventions: one-line descriptions, no
                        <example> blocks, no literal \\n escapes, <= 400 chars.
   6. model-values      Agent model is a tier alias (opus/sonnet/haiku/inherit).
-                       Dated IDs (claude-opus-4-7, ...) rot and are warned on.
+                       Dated IDs (claude-opus-4-7, ...) rot and are errors.
   7. token-budget      Always-on agent descriptions stay within budget (~chars/4
                        estimate). Warn-only: the budget is advisory.
   8. skill-voice       Skill bodies carry no agent-era language (persona,
                        ownership blocks, orchestrator choreography, per-skill
-                       Output Format). Warn-only until the skill-content
-                       conversion lands; see docs/skill-authoring.md.
+                       Output Format). See docs/skill-authoring.md.
 
 Exit codes: 0 = pass (warnings allowed), 1 = one or more errors, 2 = config error.
 
@@ -180,7 +179,7 @@ def check_skill_voice():
         body = re.sub(r'^---\s*\n.*?\n---', '', content, count=1, flags=re.DOTALL)
         for label, pattern in SKILL_VOICE_PATTERNS:
             if pattern.search(body):
-                warn("skill-voice", f"skills/{d}: {label} — see docs/skill-authoring.md")
+                err("skill-voice", f"skills/{d}: {label} — see docs/skill-authoring.md")
 
 
 # --- 5 + 6 + 7: descriptions and models --------------------------------------
@@ -204,7 +203,7 @@ def check_descriptions_and_models():
             agent_desc_chars += len(desc)
             model = field(fm, "model")
             if model and model not in MODEL_ALIASES:
-                warn("model-values",
+                err("model-values",
                      f"{label}: model '{model}' is a dated ID — prefer a tier alias ({'/'.join(sorted(MODEL_ALIASES))})")
 
     est_tokens = agent_desc_chars // 4

@@ -3,40 +3,60 @@ name: game-balance-designer
 description: Game economy and progression tuning specialist. Auto-invoked when progression curves, difficulty scaling, economy balance, loot tables, matchmaking MMR, or live-ops tuning is being designed or adjusted.
 ---
 
-# Game Balance Designer
+# Game Balance Design
 
-You make the numbers feel right — and catch the exploit before shipping, because balance failures are public.
+Balance makes the numbers feel right — and balance failures are public: an economy
+exploit or a broken curve is discovered by players within hours of ship.
 
-## Scope
+## When to reach for this
 
-You own:
+- Designing or tuning progression curves, XP tables, or difficulty scaling
+- Building an economy: currencies, sinks, sources, loot tables, pity systems
+- Setting matchmaking MMR, rank decay, or placement parameters
+- A live-ops tuning change needs a model and a telemetry plan before ship
 
-- Progression curves — XP, levels, gating
-- Economy — currencies, sinks, sources, inflation control
-- Loot tables — drop rates, pity systems, variance
-- Difficulty scaling — adaptive difficulty, boss DPS, encounter pacing
-- Matchmaking rating — MMR, rank decay, placement matches
-- Monetization balance — soft/hard currency, battle pass, paywalls
-- Live-ops knobs — tunable in config, not code
+## Principles
 
-You do NOT own:
+1. **Model before you ship.** Build a spreadsheet or Monte Carlo sim that predicts
+   the average *and* the 95th-percentile outcome — the unlucky player at p95 is the
+   one who churns or posts about it.
+2. **Tune with config, not code.** Every balance knob lives in remote-config or data
+   files so a live patch never requires a client update or store review.
+3. **Design the sink before the source.** Every currency has an inflation path;
+   model net flow per player-day and per cohort before adding any new source.
+4. **Respect the grind curve.** Hours-to-next-milestone is the most-felt number in
+   the game — chart it across the whole progression, not just the first ten levels.
+5. **Find the exploit before players do.** Adversarially playtest the economy: max
+   one axis (time, money, trading, a single repeatable action) and see what breaks.
+6. **Pity systems bound variance.** Any low-probability reward (roughly < 2% drop
+   rate) needs a hard or soft pity ceiling, or p95 players experience it as never.
 
-- Core loop architecture → `game-architect`
-- Payment / subscription plumbing → `api-design` (collaborate on storefront integration)
+## Balance change worksheet
 
-## Approach
+For any tuning change, produce these five artifacts before it ships:
 
-1. **Model before you ship.** Build a spreadsheet or sim that predicts average and 95th-percentile outcomes.
-2. **Tune with config, not code.** Live balance patches must not require a client update.
-3. **Design the sink before the source.** Every currency has an inflation path. Model it.
-4. **Respect the grind curve.** Hours-to-next-milestone is the most-felt number in a game.
-5. **Find the exploit before players do.** Adversarial playtest against the economy — what breaks if one axis is maxed?
+| Artifact | Contents |
+|---|---|
+| Model / sim | numeric model with assumptions stated; mean and p95 outcomes |
+| Proposed values | exact tunables in the game's config format, with old → new |
+| Grind delta | hours-to-milestone before vs. after, per affected segment |
+| Exploit surface | what combinations this opens or closes; the maxed-axis test result |
+| Telemetry plan | the specific metric (and cohort cut) that confirms or refutes the change post-launch |
 
-## Output Format
+## Pitfalls
 
-- **Summary** — balance change and its predicted player-feel effect in 2–4 sentences
-- **Model / sim** — the numeric model with assumptions
-- **Proposed values** — exact tunables, in the config format used by the game
-- **Exploit surface** — what combinations this opens or closes
-- **Telemetry plan** — the metric that confirms or refutes the tuning post-launch
-- **Recommended next steps** — Return tuning values to the orchestrator; `game-liveops` validates with live telemetry after ship. If economy involves IAP, coordinate with `mobile-iap` (mobile) or `ecom-payments` (web storefront).
+- Tuning from aggregate averages — segment by cohort and spender tier, or the
+  whales mask the curve everyone else feels
+- A new currency source with no matching sink — inflation shows up weeks later
+  and is far harder to remove than to prevent
+- Drop rates stated without variance — "1% drop" without pity means 1 in 20
+  players hasn't seen it after 300 attempts
+- Difficulty tuned on developer skill — devs are p99 players of their own game
+- Hardcoded balance values that turn a number tweak into a client release
+- Shipping a tuning change with no pre-registered success metric, so the
+  post-hoc telemetry read becomes a Rorschach test
+
+---
+*Related: `game-liveops` (validating tuning with live telemetry), `game-netcode`
+(matchmaking/session lifecycle) · domain agent: `game-architect` (core loop the
+economy hangs off) · output/ADR format: `playbook-conventions`*

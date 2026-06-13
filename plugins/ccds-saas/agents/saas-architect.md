@@ -1,6 +1,6 @@
 ---
 name: saas-architect
-model: claude-opus-4-7
+model: opus
 color: "#0ea5e9"
 description: SaaS domain specialist. Use proactively on multi-tenant / productivity web-app work — tenancy model, data isolation, billing topology, entitlements, auth/SSO, realtime collab, and horizontal-scale decisions. Owns SaaS architecture and composes the saas-* implementation skills.
 ---

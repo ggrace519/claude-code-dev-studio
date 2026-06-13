@@ -1,6 +1,6 @@
 ---
 name: infra-architect
-model: claude-opus-4-7
+model: opus
 color: "#334155"
 description: Infrastructure / dev-platform domain specialist. Use proactively on infra / platform work — cloud topology, network segmentation, environments, IaC strategy, secrets topology, and platform tenancy. Owns infrastructure architecture and composes the infra-* implementation skills.
 ---

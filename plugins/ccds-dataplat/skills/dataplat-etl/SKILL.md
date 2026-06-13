@@ -3,34 +3,70 @@ name: dataplat-etl
 description: ETL / ELT pipeline specialist. Owns ingestion patterns, transformation logic (dbt / Spark / SQL), orchestration (Airflow / Dagster / Prefect), and CDC. Auto-invoked when writing or refactoring any data pipeline.
 ---
 
-# Data Platform ETL / ELT Expert
+# Data Platform ETL / ELT
 
-Pipelines that silently corrupt data are worse than pipelines that fail loudly. Idempotency, testability, and lineage are not optional.
+Pipelines that silently corrupt data are worse than pipelines that fail loudly.
+A pipeline is correct only if any task can be re-run on any window and produce
+the same result — idempotency, layering, and lineage are the price of admission.
 
-## Scope
-You own:
-- Ingestion: batch snapshots, CDC (Debezium, Fivetran, native), event streams (Kafka, Kinesis)
-- Transformation layers: dbt models, Spark jobs, SQL-based ELT
-- Orchestration: Airflow / Dagster / Prefect DAG design, retries, backfills
-- Idempotency, late-arriving data, slowly-changing dimensions
-- Pipeline observability: run metadata, failure alerting, SLA tracking
+## When to reach for this
 
-You do NOT own:
-- Platform topology (warehouse choice, storage format) → `dataplat-architect`
-- SQL query optimization inside analytical queries → `dataplat-sql`
-- Data contracts and expectation testing → `dataplat-quality`
-- Downstream dashboards / semantic layer → `dataplat-viz`
+- Writing or refactoring an ingestion, dbt, or Spark transformation pipeline
+- Designing orchestration DAGs, retries, schedules, or backfills
+- Adding CDC (Debezium, Fivetran, native change feeds) or handling late-arriving data
+- A re-run or backfill produced duplicates or different numbers than the original run
 
-## Approach
-1. **ELT by default** — push transformation into the warehouse unless there's a reason not to.
-2. **Idempotent by design** — every task must be safely re-runnable on any window.
-3. **Staging → intermediate → marts** — enforce dbt layering; never query raw from a mart.
-4. **Backfill is a feature** — parameterize date windows; no hardcoded `today()`.
-5. **Observability before optimization** — emit run metadata for every job.
+## Principles
 
-## Output Format
-- **Pipeline design** — source → staging → marts flow, with materializations
-- **Orchestration plan** — DAG structure, schedule, dependencies, retries
-- **Idempotency notes** — how re-runs and backfills behave
-- **Tests** — dbt tests / expectations required before merge
-- **Recommended next steps** — Return pipeline design to the orchestrator; `pr-code-reviewer` reviews code before merging. If quality contracts need updating to reflect the new pipeline, invoke `dataplat-quality`. If the pipeline feeds an AI/ML feature store, consider whether a feature store specialist would add value reviewing point-in-time correctness.
+1. **ELT by default.** Land raw, transform in the warehouse. Pull transformation
+   out of the warehouse only for a concrete reason (PII scrubbing pre-landing,
+   unstructured parsing, cost).
+2. **Idempotent by design.** Every task tolerates exact re-runs: incremental
+   models carry a `unique_key` (merge) or delete+insert the target window —
+   never blind append.
+3. **Enforce staging → intermediate → marts.** Staging is 1:1 with sources
+   (rename, cast, nothing else); marts never read raw. A mart selecting from a
+   source table is a review blocker.
+4. **Backfill is a feature, not an emergency.** Parameterize every task on the
+   scheduler's logical date / data interval (Airflow's `data_interval_end`,
+   Dagster partitions) — never `current_date` or `now()` inside transformation
+   logic.
+5. **Late data needs a lookback.** Reprocess a trailing window (commonly 3–7
+   days for event data) on each incremental run instead of trusting "new rows
+   only".
+6. **Observability before optimization.** Every run emits rows in/out, window
+   processed, duration, and status to run metadata — you cannot debug a
+   pipeline you cannot see.
+
+## Materialization decision table
+
+| Materialization | Use when | Watch for |
+|---|---|---|
+| `view` | staging models, cheap logic | repeated downstream scans of expensive views |
+| `table` | small/medium marts rebuilt fully | rebuild cost growing with history |
+| `incremental` | large fact tables, event data | needs `unique_key` + late-data lookback |
+| `snapshot` | slowly-changing dimensions (SCD2) | source must have a reliable updated-at |
+| full refresh schedule | any incremental model | schedule a periodic full refresh to heal drift |
+
+A worked idempotent incremental model with backfill-safe windowing and a
+late-data lookback is in
+[`references/incremental-model.md`](references/incremental-model.md).
+
+## Pitfalls
+
+- Append-only loads: a retry after partial failure doubles rows — the most
+  common silent-corruption source
+- Using wall-clock execution time instead of the logical/data-interval date, so
+  backfills process the wrong window
+- Incremental models without `unique_key` quietly duplicating late-arriving rows
+- `SELECT *` from sources into staging — upstream column adds/renames break or
+  silently widen downstream models
+- DAG retries configured, but the task isn't idempotent, so the retry is the bug
+- CDC deletes ignored: soft-deleted source rows live forever in the warehouse
+
+---
+*Related: `dataplat-quality` (contracts and tests on pipeline outputs),
+`dataplat-sql` (tuning the transformation queries), `dataplat-streaming`
+(event-stream ingestion), `dataplat-feature-store` (pipelines feeding ML
+features) · domain agent: `dataplat-architect` (warehouse topology, batch vs
+streaming) · output/ADR format: `playbook-conventions`*

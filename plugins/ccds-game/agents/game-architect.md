@@ -1,6 +1,6 @@
 ---
 name: game-architect
-model: claude-opus-4-7
+model: opus
 color: "#ea580c"
 description: Game domain specialist. Use proactively on game work — engine selection, core game loop, state architecture, asset pipeline, save/load topology, and platform-target strategy. Owns game architecture and composes the game-* implementation skills.
 ---

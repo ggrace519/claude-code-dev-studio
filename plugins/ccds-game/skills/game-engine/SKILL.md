@@ -3,41 +3,67 @@ name: game-engine
 description: Engine-specific implementation specialist (Unity, Unreal, Godot, bespoke). Auto-invoked when engine APIs are being used — rendering, shaders, scene management, physics, animation, audio, or engine-idiomatic patterns.
 ---
 
-# Game Engine Expert
+# Game Engine Implementation
 
-You own engine-idiomatic implementation — code that uses the engine's APIs correctly and follows its grain rather than fighting it.
+Engine-idiomatic code uses the engine's APIs with their grain rather than fighting
+it. Fighting the engine produces subtle lifecycle bugs and performance traps that
+surface months later under load.
 
-## Scope
+## When to reach for this
 
-You own:
+- Writing gameplay code against engine APIs — rendering, physics, animation, scene management
+- Deciding between a built-in engine system and a custom replacement
+- Authoring or reviewing shaders, LOD setups, or streaming/scene-loading code
+- Porting a pattern from one engine's idiom to another's (MonoBehaviour ↔ Actor/Component ↔ Node)
 
-- Rendering pipeline usage — materials, shaders, render passes, post-processing
-- Scene / world management — scene graph, streaming, LODs
-- Physics integration — rigid bodies, colliders, constraints, character controllers
-- Animation systems — state machines, blending, IK
-- Audio pipeline — mixing, spatialization, event-based audio
-- Engine-idiomatic patterns — MonoBehaviour, Actor/Component, NodeTree, etc.
+## Principles
 
-You do NOT own:
+1. **Use the engine's patterns.** Unity: components + ScriptableObjects, respect the
+   `Awake`/`OnEnable`/`Start` order. Unreal: Actor/Component + UPROPERTY for GC
+   visibility. Godot: scene composition + signals. Cross-engine "framework" layers
+   that hide the engine usually hide its lifecycle guarantees too.
+2. **Prefer built-in over custom.** Built-in physics, animation, navigation, and
+   audio are battle-tested across thousands of titles. Replace one only with a
+   measured cause and an ADR recording why.
+3. **Shaders have budgets.** Every sampler, texture read, and branch costs;
+   mobile/tile-based GPUs additionally punish overdraw and alpha blending. Know the
+   target hardware before authoring, not after profiling.
+4. **LODs and culling ship from the start.** Retrofitting LOD chains, occlusion
+   culling, and impostors onto finished content is far costlier than authoring with
+   them — make them part of the asset acceptance criteria.
+5. **Profile inside the engine's tooling.** Unity Profiler + Frame Debugger,
+   Unreal Insights + `stat unit`, RenderDoc/PIX for GPU captures. The engine's view
+   of its own frame beats guessing from external timers.
+6. **Respect the main-thread contract.** Most engine APIs are main-thread-only;
+   move work off-thread via the engine's own job/task system (Unity Jobs/Burst,
+   Unreal TaskGraph), not raw threads touching engine objects.
 
-- Engine choice → `game-architect`
-- Frame-budget analysis → `game-perf-profiler`
-- Netcode → `game-netcode`
-- Game feel and input response → `game-feel-critic`
+## Built-in vs. custom decision table
 
-## Approach
+| Situation | Default | Go custom only when |
+|---|---|---|
+| Rigid-body physics | engine physics | deterministic lockstep/rollback netcode requires it |
+| Character movement | engine character controller | feel requirements exceed it — and measured against `game-feel-critic` criteria |
+| Animation blending | engine state machine / blend trees | procedural animation is the product |
+| Pathfinding | engine navmesh | non-planar or massively dynamic worlds |
+| UI | engine UI system | proven perf ceiling on target hardware |
+| Serialization/saves | engine-supported formats | versioned cross-platform saves demand a stable custom schema |
 
-1. **Use the engine's patterns.** Fighting the engine produces subtle bugs and performance traps.
-2. **Prefer built-in over custom.** Built-in physics, animation, and audio are battle-tested. Replace only with measured cause.
-3. **Shaders have budgets.** Every sampler, every texture read, every branch costs. Know the target hardware.
-4. **LODs and culling are not optional at scale.** Ship with them from the start.
-5. **Profile inside the engine's tooling.** Frame Debugger, Stat Unit, RenderDoc — use them.
+When the built-in option is rejected, record the measured reason and the fallback
+as an ADR — "we didn't like it" does not survive the next hire.
 
-## Output Format
+## Pitfalls
 
-- **Summary** — what was implemented, using which engine APIs, in 2–4 sentences
-- **Implementation** — exact code in engine-idiomatic form
-- **Perf implications** — expected cost and where it hits the frame
-- **Platform caveats** — any mobile / console / web-specific concerns
-- **Fallback / alternative** — if the built-in option was rejected, why
-- **Recommended next steps** — Return implementation to the orchestrator; `pr-code-reviewer` reviews before proceeding. If the change affects frame budget, invoke `game-perf-profiler`. If audio integration is involved, invoke `game-audio`. If the implementation exposes player-facing interactions, consider whether a game feel specialist would add value reviewing the responsiveness.
+- Per-frame allocations in hot paths (`Update`, tick) — GC spikes read as random hitches
+- Doing work in constructors/`Awake` that depends on other objects' initialization order
+- `Find`/string-based lookups every frame instead of cached references
+- Physics queried or stepped from rendering callbacks (or vice versa) — use the
+  engine's fixed-step callback for simulation logic
+- Shaders authored on desktop GPUs, first mobile capture taken at beta
+- Custom replacements for built-ins with no benchmark proving the built-in was the problem
+
+---
+*Related: `game-perf-profiler` (frame-budget analysis), `game-netcode` (determinism
+constraints on physics/engine choices), `game-audio` (audio pipeline integration),
+`game-feel-critic` (input/camera responsiveness) · domain agent: `game-architect`
+(engine selection) · output/ADR format: `playbook-conventions`*

@@ -155,14 +155,14 @@ class TestLintPlaybook(FixtureCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("url-consistency", r.stdout)
 
-    def test_skill_voice_warns_but_passes(self):
+    def test_skill_voice_fails(self):
         write(os.path.join(self.root, "skills", "saas-billing", "SKILL.md"),
               SKILL_TMPL.format(name="saas-billing",
                                 description="Billing integration specialist. Auto-invoked when webhooks are handled.",
                                 body="You do NOT own billing topology."))
         self.regen_catalog()
         r = self.lint()
-        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("skill-voice", r.stdout)
 
     def test_skill_voice_exempts_playbook_conventions(self):
@@ -170,12 +170,12 @@ class TestLintPlaybook(FixtureCase):
         r = self.lint()
         self.assertNotIn("skills/playbook-conventions: ", r.stdout)
 
-    def test_dated_model_warns_but_passes(self):
+    def test_dated_model_fails(self):
         write(self.agent_path(),
               AGENT_TMPL.format(extra="").replace("model: opus", "model: claude-opus-4-7"))
         self.regen_catalog()
         r = self.lint()
-        self.assertEqual(r.returncode, 0)
+        self.assertEqual(r.returncode, 1)
         self.assertIn("model-values", r.stdout)
 
 
