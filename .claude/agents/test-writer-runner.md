@@ -1,6 +1,6 @@
 ---
 name: test-writer-runner
-model: claude-sonnet-4-6
+model: sonnet
 color: "#057a55"
 description: Test writing and execution specialist. Use proactively after implementation is complete, after a PR review resolves issues, or when test coverage for a module or feature needs improving.
 ---

@@ -1,6 +1,6 @@
 ---
 name: embed-architect
-model: claude-opus-4-7
+model: opus
 color: "#78350f"
 description: Embedded / IoT domain specialist. Use proactively on embedded / firmware / IoT work — SoC/MCU choice, RTOS vs bare-metal, memory/flash layout, secure boot chain, A/B partitioning, fleet OTA topology, and provisioning/attestation. Owns embedded architecture and composes the embed-* implementation skills.
 ---
