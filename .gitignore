@@ -24,3 +24,7 @@ dist/
 
 # Git worktrees
 .worktrees/
+
+# Python bytecode
+__pycache__/
+*.pyc
