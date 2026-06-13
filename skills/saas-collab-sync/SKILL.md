@@ -3,52 +3,67 @@ name: saas-collab-sync
 description: Realtime collaboration and sync specialist. Auto-invoked when realtime features are being built — WebSocket/SSE/long-polling protocols, CRDT/OT implementations, presence systems, conflict resolution, optimistic updates, or offline-replay patterns.
 ---
 
-# SaaS Collab Sync Expert
+# SaaS Collab & Sync
 
-You are a senior engineer specializing in realtime collaboration and data synchronization. Your role is to make concurrent editing feel instant, survive disconnects, and converge correctly — without which realtime features produce corruption customers cannot recover from.
+Concurrent editing has to feel instant, survive disconnects, and converge
+correctly — a sync layer that diverges produces corruption customers cannot
+recover from, and it rarely shows up before production traffic.
 
-## Scope
+## When to reach for this
 
-You own:
+- Choosing or implementing a realtime transport (WebSocket, SSE, long-polling)
+- Adding CRDT/OT-based collaborative editing, presence, or live cursors
+- Building optimistic UI updates, offline queues, or replay-on-reconnect
+- Debugging divergence, dropped updates, or noisy-tenant fan-out problems
 
-- Transport selection — WebSocket vs. SSE vs. long-polling vs. WebTransport trade-offs
-- Connection lifecycle — heartbeat, reconnection with backoff, resume-from-offset
-- Presence — who-is-here, cursors, typing indicators, idle timeout, tab-visibility
-- CRDT integration (Yjs, Automerge, Loro) or OT implementation
-- Conflict resolution policy — last-writer-wins, merge rules, three-way diffs
-- Optimistic UI updates with rollback on server rejection
-- Offline queue and replay — durable outbox, ordering guarantees, dedupe
-- Delivery semantics — at-most-once vs. at-least-once vs. exactly-once; idempotency keys
-- Fan-out topology — per-document channels, sharding, backpressure
-- Server-side authorization of live-edit operations (per-op, not just per-connection)
+## Principles
 
-You do NOT own:
+1. **Pick the simplest transport that works.** SSE covers most server-push cases;
+   reach for WebSocket only when bidirectional or low-latency input matters.
+   Long-polling is a valid fallback, not a shame.
+2. **Design for reconnection on day one.** Mobile networks drop constantly.
+   Heartbeat at ~25–30 s (under typical 60 s proxy idle timeouts), reconnect with
+   exponential backoff plus jitter, and resume from a server-assigned offset.
+3. **Every op is tenant-scoped and authorized server-side, per-op.** A connected
+   socket is not a license to mutate — connection-time auth alone is a leak.
+4. **CRDTs over OT for greenfield.** Start with Yjs, Automerge, or Loro unless you
+   specifically need server-authoritative edit control. Rolling your own OT is a
+   multi-year project.
+5. **Optimistic updates need a tested rollback path.** Apply locally, reconcile on
+   server confirm/reject. The reject branch is where untested code corrupts state.
+6. **Offline queue: durable, deduped, ordered.** Persist queued ops across client
+   restart; dedupe on a stable client-generated op ID; replay in original order.
+7. **State delivery semantics explicitly.** Most systems are at-least-once with
+   idempotent application via op IDs — "exactly-once transport" is a design smell.
+8. **Backpressure is not optional.** Per-connection and per-document rate limits;
+   one chatty tenant must not degrade the shard.
 
-- Tenancy/isolation for realtime channels → `saas-multitenancy` (collaborate)
-- Schema design for sync state → `saas-data-model` (collaborate)
-- Auth/session handling for the socket → `saas-auth-sso`
-- General API contracts → `api-design`
+## Transport decision table
 
-## Approach
+| Situation | Transport | Notes |
+|---|---|---|
+| Server→client push only (notifications, dashboards) | SSE | auto-reconnect built in via `Last-Event-ID` |
+| Bidirectional, low-latency input (co-editing, cursors) | WebSocket | own the heartbeat + resume protocol yourself |
+| Restrictive corporate proxies / transport fallback | long-polling | keep the message schema identical to the primary transport |
+| Occasional client→server writes alongside SSE | SSE + plain HTTP POST | often beats WebSocket for simplicity |
 
-1. **Pick the simplest transport that works.** SSE handles most server-push cases. Reach for WebSocket only when bidirectional or low-latency input matters. Long-polling is a valid fallback, not a shame.
-2. **Every op is tenant-scoped and authorized server-side.** A connected socket is not a license to mutate; each op is authorized independently.
-3. **Design for reconnection on turn 1.** Mobile networks drop. Reconnection with resume-from-offset is a core feature, not an afterthought.
-4. **Optimistic updates need rollback.** The UI applies the op immediately, but the state is reconciled when the server confirms or rejects. Reject paths must be tested.
-5. **CRDTs over OT for greenfield.** Unless there is a specific reason (server-authoritative edit control, compression), start with Yjs or Automerge. Rolling your own OT is a multi-year project.
-6. **Offline queue is durable, deduped, ordered.** Client restart must not lose or reorder queued operations. Dedupe on a stable client-generated op ID.
-7. **Backpressure is not optional.** One chatty tenant should not degrade others. Per-connection and per-document rate limits.
-8. **Test against adversarial conditions.** Packet loss, high latency, repeated disconnects, clock skew between clients — these are the real production conditions.
+Whatever the transport: version the message schema from message one, and make
+`resume(offset)` a first-class server operation — not a client-side full refetch.
 
-## Output Format
+## Pitfalls
 
-- **Summary** — realtime/sync change and its user-visible effect in 2–4 sentences
-- **Transport + protocol** — chosen transport, message schema, connection lifecycle
-- **Conflict model** — the resolution approach and convergence guarantee
-- **Optimistic update flow** — apply → confirm / rollback path, including rejected ops
-- **Offline behavior** — queue durability, replay order, dedupe key
-- **Delivery semantics** — explicitly state at-most-once / at-least-once / exactly-once
-- **Authorization** — per-op authorization point, not just per-connection
-- **Adversarial tests** — tests covering drop, reorder, duplicate, high-latency, and malformed-op cases
-- **Draft ADR** — when a non-trivial sync decision is made
-- **Recommended next steps** — Return sync implementation to the orchestrator; `pr-code-reviewer` reviews before proceeding. If tenant isolation of realtime channels needs verification, invoke `saas-multitenancy`. If the sync protocol must operate over mobile devices with intermittent connectivity, consider whether a mobile offline sync specialist would add value reviewing the reconnection and replay design.
+- Authorizing only at connection time, then trusting every subsequent op
+- Optimistic UI with no rollback — server rejection silently forks client state
+- Offline queue in memory only; a tab crash loses user edits
+- Presence updates fanned out unthrottled — typing indicators at keystroke rate
+  melt the channel; coalesce to ~1 update/s per user
+- Testing only on localhost — the real conditions are packet loss, reorder,
+  duplicate delivery, multi-second latency, and client clock skew
+- LWW conflict resolution applied to rich text or nested structures (it loses
+  user data by design; reserve it for scalar fields)
+
+---
+*Related: `saas-multitenancy` (channel isolation, per-tenant limits),
+`saas-data-model` (persisted sync state), `saas-auth-sso` (socket auth/session),
+`api-design` (message contracts) · domain agent: `saas-architect` (realtime
+topology) · output/ADR format: `playbook-conventions`*

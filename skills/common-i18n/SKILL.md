@@ -3,44 +3,78 @@ name: common-i18n
 description: Internationalization and localization — string externalization, ICU MessageFormat, plurals, RTL, locale-aware formatting, translation workflow. Auto-invoked when adding locales, debugging localized bugs, or designing the i18n architecture.
 ---
 
-# Common i18n Expert
+# Internationalization
 
-Internationalization done late is ten times the work. String concatenation, hard-coded dates, and `if (plural) ...` code build up into a localization tax that only grows. You own the architecture that makes translation a content problem, not an engineering problem.
+Internationalization done late is ten times the work: string concatenation,
+hard-coded dates, and `if (plural)` branches accumulate into a localization tax that
+only grows. The goal is an architecture where translation is a content problem, not
+an engineering problem.
 
-## Scope
+## When to reach for this
 
-You own:
-- String externalization — extraction pipeline, message catalogs, namespacing, fallback chain
-- Message formatting — ICU MessageFormat for plurals, gender, select, nested messages; avoiding concatenation
-- Locale-aware formatting — dates, times, numbers, currencies (per CLDR), relative time, list formatting
-- RTL / BiDi — logical CSS properties, mirrored icons/layouts, BiDi-safe text insertion
-- Font / script support — CJK, Arabic, Thai line-breaking, emoji fallback, font subsetting for perf
-- Translation workflow — source-of-truth catalog, TMS integration (Lokalise, Phrase, Crowdin), continuous localization, pseudo-locale testing
-- Locale detection — user preference → browser / device → geo → default; explicit override UI
-- Testing — pseudo-localization (accents, expansion), length-sensitive layouts, RTL layout screenshots
+- Designing the i18n architecture: catalogs, extraction pipeline, fallback chain
+- Adding a locale (especially a first RTL or CJK locale) to an existing product
+- Debugging localized bugs — wrong plurals, broken BiDi, mis-formatted dates/currency
+- Setting up or fixing the translation workflow (TMS, pseudo-locale CI)
 
-You do NOT own:
-- Accessibility-specific labeling (screen reader hints) → `common-a11y`
-- Legal/tax differences per locale (that's domain-specific) → `ecom-tax`, `fintech-compliance`
-- Content-team editorial workflow / scheduling → `media-cms-workflow` (if active)
-- Platform-specific text APIs (NSLocalizedString nuances) → `mobile-platform`
+## Principles
 
-## Approach
+1. **Never concatenate user-visible strings.** `"Hello, " + name` is a localization
+   bug — translators rearrange words; code can't. Use ICU parameters: `"Hello, {name}"`.
+2. **ICU MessageFormat for every variable string.** Plurals, gender, select. Plain
+   interpolation fails the moment a second locale arrives (many languages have more
+   than two plural forms).
+3. **Format via CLDR, never by hand.** Dates, times, numbers, currencies, relative
+   time, and lists go through locale-aware APIs (`Intl.*`, ICU libraries) — never
+   `toFixed()` + a hard-coded symbol.
+4. **Logical CSS properties everywhere.** `margin-inline-start`, not `margin-left`;
+   `padding-inline-end`, not `padding-right`. Icons that "point forward" need RTL
+   variants or logical transforms.
+5. **Pseudo-localize in CI.** Wrap every string with accents and ~50% expansion. Any
+   plain-English text in the UI is an un-externalized string; any clipped text is a
+   fixed-width bug — caught before a single translator is paid.
+6. **Separate code locale from user locale.** Logs, error stacks, and analytics event
+   names stay in English; only user-facing surfaces localize.
+7. **Keep translation continuous.** Every PR that adds strings triggers extraction →
+   TMS push → machine-translate → human review. Batch localization kills velocity.
+8. **Detect locale in order:** explicit user preference → browser/device setting →
+   geo → default, with an always-visible override UI.
 
-1. **Never concatenate user-visible strings.** `"Hello, " + name` is a localization bug. Use ICU parameters: `"Hello, {name}"`. Translators rearrange words; your code can't.
-2. **ICU MessageFormat for every variable string.** Plurals (`{count, plural, one {item} other {items}}`), gender, select. Plain string interpolation fails the moment you add a second locale.
-3. **Logical CSS properties everywhere.** `margin-inline-start` not `margin-left`, `padding-inline-end` not `padding-right`. Icons that "point forward" need RTL variants or logical transforms.
-4. **Pseudo-localize in CI.** Wrap every string with accent marks and 50% expansion (`Helló Wörld →` → `⟪Hȅḷḷȱ Ẉȱȑḷḋ⟫`). Any English text in the UI is an un-externalized string; any cut-off text is a fixed-width bug.
-5. **Separate code locale from user locale.** Server logs, error stacks, analytics event names stay in English. Only user-facing surfaces localize. Mixing these makes debugging painful.
-6. **Keep translation continuous.** Every PR that adds strings triggers an extraction → push to TMS → machine-translate → human-review flow. Batch localization kills velocity.
+## ICU patterns — required and forbidden
 
-## Output Format
+```text
+✅ "You have {count, plural, one {# item} other {# items}} in your cart"
+✅ "{name} commented on {gender, select, female {her} male {his} other {their}} post"
+✅ "Last updated {when, time, short} on {when, date, medium}"
 
-- **i18n architecture** — extraction pipeline, catalog format (ARB / XLIFF / JSON), namespace strategy, fallback chain
-- **Message guidelines** — ICU patterns for plural / gender / select, forbidden patterns (concatenation, word-order assumptions)
-- **Locale formatting** — dates, times, numbers, currencies per CLDR; utility-function contract
-- **RTL playbook** — logical CSS audit, icon mirroring rules, BiDi-safe text-insertion
-- **Translation workflow** — TMS integration, source→translate→review→publish loop, SLA per tier
-- **Testing strategy** — pseudo-locale coverage, layout regression, RTL screenshot suite
-- **Launch-locale checklist** — font coverage, legal content review, QA plan, soft-launch plan
-- **Recommended next steps** — Return i18n architecture to the orchestrator; `pr-code-reviewer` reviews implementation before proceeding. If RTL layout issues surface that affect keyboard navigation or focus order, invoke `common-a11y`. If translations involve regulated content (legal, medical, financial), consider whether a domain compliance specialist would add value reviewing the jurisdiction-specific copy.
+❌ "You have " + count + " item" + (count === 1 ? "" : "s")     // plural rules vary
+❌ `${currencySymbol}${amount.toFixed(2)}`                       // CLDR placement/precision
+❌ t("greeting_start") + name + t("greeting_end")                // word-order assumption
+```
+
+Catalog hygiene: one source-of-truth format (ARB/XLIFF/JSON), keys namespaced by
+surface, a documented fallback chain (e.g. `fr-CA → fr → en`), and translator
+comments on every ambiguous string.
+
+## Launch-locale checklist
+
+- [ ] Pseudo-locale pass clean (no raw English, no clipped layouts)
+- [ ] RTL screenshot suite reviewed (if the locale is RTL)
+- [ ] Font/script coverage verified (CJK weight, Arabic shaping, Thai line-breaking)
+- [ ] Dates, numbers, currency spot-checked against CLDR expectations
+- [ ] Legal/regulated copy reviewed for the jurisdiction
+- [ ] Locale-override UI reachable and persistent
+
+## Pitfalls
+
+- Translating keys ("save_button") shipped to production as visible text
+- Splitting a sentence across multiple HTML elements, making it untranslatable as a unit
+- Sorting user-visible lists with code-point order instead of locale-aware collation
+- Embedding directional punctuation around user input without BiDi isolation (`<bdi>`)
+- Re-using one string in two contexts where target languages need different translations
+- Hard-coding a 24-hour or MM/DD assumption anywhere near a formatter
+
+---
+*Related: `common-a11y` (RTL affects focus order), `ux-design` (text-expansion
+layout), `common-notifications` (localized templates) · pulled by any domain agent ·
+output/ADR format: `playbook-conventions`*

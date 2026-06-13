@@ -3,44 +3,68 @@ name: media-player
 description: Client-side video / audio playback — ABR heuristics, player SDKs (Shaka, dash.js, ExoPlayer, AVPlayer), buffering / startup / rebuffer tuning. Auto-invoked when debugging QoE issues, implementing a player UI, or optimizing startup time.
 ---
 
-# Media Player Expert
+# Media Player
 
-QoE is felt in seconds and fractions of seconds. Time-to-first-frame, rebuffer rate, bitrate stability — these are the metrics viewers vote with. You own the client-side playback stack and every decision between "user hits play" and "video plays smoothly."
+QoE is felt in seconds and fractions of seconds — time-to-first-frame, rebuffer
+rate, bitrate stability are the metrics viewers vote with. Everything between "user
+hits play" and "video plays smoothly" is a deliberate decision, not SDK defaults.
 
-## Scope
+## When to reach for this
 
-You own:
-- Player SDK choice and integration — Shaka Player, dash.js, hls.js, ExoPlayer / Media3, AVPlayer, native platform players; trade-offs per platform
-- ABR (adaptive bitrate) tuning — throughput heuristics, buffer-based algorithms, switch aggressiveness, ladder pinning for known-good networks
-- Startup optimization — CMAF chunked transfer, preload, warm cache, parallel manifest / init / segment fetch, first-segment low-bitrate hack
-- Buffering and seeking — target buffer length, seek-to-keyframe vs seek-accurate, scrubbing thumbnails, instant-play on resume
-- QoE instrumentation — startup time, rebuffer ratio, average bitrate, bitrate changes, error codes, playback session duration
-- Platform quirks — iOS HLS mandatory, Android MediaCodec variance, WebRTC vs MSE, Safari ManagedMediaSource, TV OS limitations
-- Subtitles / captions — WebVTT, TTML, embedded CEA-608/708, styling, language switching, a11y conformance
+- Choosing or integrating a player SDK (Shaka, hls.js, dash.js, ExoPlayer/Media3, AVPlayer) for a platform
+- Tuning ABR: switch aggressiveness, buffer targets, panic-down thresholds
+- Optimizing startup / TTFF, seeking behavior, or resume-instant-play
+- Standing up QoE instrumentation, caption support, or a playback regression harness
 
-You do NOT own:
-- Encoder ladder design and segment packaging → `media-transcode`
-- DRM license acquisition and CDN delivery → `media-drm-cdn`
-- CMS-side metadata, scheduling, editorial workflow → `media-cms-workflow`
-- Player chrome UX visual design → `ux-design`
-- Ad insertion mechanics → `media-ad-insertion`
+## Principles
 
-## Approach
+1. **Measure before tuning.** Startup time (p50/p95), rebuffer ratio (% of playback
+   time), rebuffer events/hour, average and median bitrate served, error rate by
+   code — instrumented from SDK events, emitted as per-session summaries. Tuning
+   without these is guessing.
+2. **Make ABR config explicit.** SDK defaults err toward stable bitrate over peak
+   quality. Put switch aggressiveness, buffer target, and the panic-down threshold
+   in one config block with documented per-platform overrides — never scattered
+   inline tweaks.
+3. **Win startup with parallelism and chunked transfer.** Fetch manifest, init
+   segments, and license concurrently; CMAF chunked transfer lets the player start
+   on a partially written segment. Starting one rung below estimated throughput and
+   switching up beats waiting for a perfect first segment.
+4. **Respect the platform.** iOS requires HLS and prefers native AVPlayer; Safari
+   has ManagedMediaSource quirks; Android MediaCodec varies by vendor; TV OS
+   players are slower than phones. One thin codepath per major platform beats a
+   leaky universal abstraction.
+5. **Subtitles are a11y, not an afterthought.** WebVTT/TTML/CEA-608/708 support
+   with user-adjustable size, background, and language; tested with VoiceOver and
+   TalkBack.
+6. **Regression-test QoE in CI.** Golden-path runs on reference devices (Chrome
+   desktop, Safari iOS, Android TV, one console); fail the build on startup
+   regression > 200 ms or rebuffer-rate regression > 10% against baseline.
 
-1. **Measure before tuning.** QoE metrics are non-negotiable: startup time (p50/p95), rebuffer ratio (% of playback time), rebuffer events/hour, average and median bitrate, error-rate by code. Instrument the player SDK's events; emit per-session summaries.
-2. **ABR is conservative by default — make it explicit.** Most SDKs err toward stable bitrate over peak quality. Expose the switch aggressiveness, the buffer target, and the "panic down" threshold in a single config block. Document per-platform overrides.
-3. **Optimize startup with CMAF chunked transfer.** Low-latency HLS/DASH lets the player request a segment while the encoder is still writing it. Combined with parallel init/manifest fetch, this is where TTFF wins live.
-4. **Respect the platform.** iOS requires HLS; Safari prefers native playback; Android's MediaCodec has vendor-specific bugs; TV OS players are slower than phones. One codepath per major platform beats a leaky abstraction.
-5. **Subtitles are a11y, not an afterthought.** Every player must support captions with user-adjustable size, background, and language. Test with VoiceOver / TalkBack; screen-reader announcement of chapter markers matters.
-6. **Regression-test QoE.** Automated golden-path runs across reference devices: Chrome desktop, Safari iOS, Android TV, a current game console. Fail builds that regress startup >200ms or rebuffer-rate >10% against baseline.
+## Platform → SDK starting point
 
-## Output Format
+| Platform | SDK | Notes |
+|---|---|---|
+| Web (Chrome/Firefox/Edge) | Shaka Player or hls.js / dash.js | Shaka covers HLS+DASH+EME in one |
+| Safari / iOS / tvOS | AVPlayer (native HLS) | MSE limited; FairPlay only via native |
+| Android / Android TV / Fire TV | ExoPlayer (Media3) | per-vendor MediaCodec quirks; keep a device lab |
+| Smart TVs (Tizen, webOS) | Shaka on the TV browser engine | old Chromium forks — pin SDK version floors |
 
-- **Player selection matrix** — platform × SDK × codec support × DRM support × notes
-- **ABR config** — heuristic type, switch thresholds, buffer targets, panic rules, per-platform overrides
-- **Startup path** — sequence diagram from play-click to first-frame-rendered, parallelization points
-- **QoE schema** — session events, summary fields, emission cadence, backend ingestion path
-- **Platform quirk list** — per-platform known issues, workarounds, SDK version floors
-- **A11y checklist** — caption sizing, color, language, chapter markers, audio-description track support
-- **Regression harness** — reference devices, golden-path scenarios, pass/fail thresholds
-- **Recommended next steps** — Return player config and QoE schema to the orchestrator; `pr-code-reviewer` reviews implementation before proceeding. If accessibility requirements surface (captions, audio description), invoke `common-a11y`.
+ABR knobs that matter most: target buffer (live: small, e.g. 2–3 segments; VOD:
+30 s+), upswitch confidence (sustained throughput, not one fast segment), and the
+panic-down threshold (switch immediately when buffer falls below ~1 segment).
+
+## Pitfalls
+
+- One abstraction layer over every platform that ends up fighting all of them
+- ABR "fixed" by pinning a rendition — masks the heuristic problem and burns bandwidth on good networks
+- Startup measured in the lab on fast Wi-Fi only; p95 on cellular is the number that hurts
+- Seek-accurate everywhere: keyframe-seek for scrubbing, frame-accurate only where the product needs it
+- Captions rendered without user styling controls, or burned into video
+- QoE events sampled so aggressively that per-device or per-ISP regressions are invisible
+
+---
+*Related: `media-transcode` (ladder the ABR chooses from), `media-drm-cdn` (license
+latency in startup, per-CDN QoE), `media-live` (low-latency playback),
+`media-ad-insertion` (break transitions) · domain agent: `media-architect` ·
+output/ADR format: `playbook-conventions`*

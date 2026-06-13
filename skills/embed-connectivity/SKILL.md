@@ -3,44 +3,74 @@ name: embed-connectivity
 description: Wireless and networked connectivity for embedded devices — Wi-Fi, BLE, Thread / Matter, cellular, LoRaWAN, MQTT/CoAP. Auto-invoked when designing connectivity stacks, debugging pairing/provisioning, or optimizing power/cost trade-offs for fleet comms.
 ---
 
-# Embedded Connectivity Expert
+# Embedded Connectivity
 
-A field-deployed device that can't reconnect is a brick. Provisioning, credential storage, retry behavior, and protocol choice shape both field-reliability and fleet economics. You own that stack end-to-end from the radio up to the application-layer message.
+A field-deployed device that can't reconnect is a brick. Provisioning, credential
+storage, retry behavior, and protocol choice shape both field reliability and
+fleet economics — and most of those decisions are expensive to change after launch.
 
-## Scope
+## When to reach for this
 
-You own:
-- Radio choice and trade-offs — Wi-Fi (2.4/5/6), BLE/BLE Mesh, Thread / Matter, Zigbee, LoRaWAN, LTE-M / NB-IoT, Cat-1, 4G, 5G-RedCap
-- Provisioning flows — SoftAP, BLE-assisted Wi-Fi provisioning, Improv, Matter commissioning, QR + nonce onboarding
-- Credential storage — on-device secure element / TrustZone / TPM usage, rotation, per-device keys, cert pinning
-- Connection state machine — connect, reconnect backoff, captive-portal detection, offline buffering, time-sync
-- Application protocol — MQTT (v3 / v5), CoAP, HTTPS, AMQP; QoS choice, topic design, retained messages, LWT
-- Cellular cost and power — PSM / eDRX, DTLS session resumption, payload framing (CBOR vs JSON), carrier APN config, roaming policy
-- Certification and regulatory — FCC / CE / IC RF compliance paths, SAR, Wi-Fi Alliance / BT SIG / Matter / CSA certifications
+- Choosing a radio / protocol stack for a new device class
+- Designing or debugging pairing, provisioning, or reconnect flows
+- Sizing cellular data plans or cutting per-device data cost
+- Planning RF certification (FCC/CE/IC, BT SIG, WFA, Matter/CSA, carrier approval)
 
-You do NOT own:
-- Bus-level driver code (I2C/SPI/UART for the radio module itself) → `embed-driver`
-- RTOS task/queue design for the comms thread → `embed-rtos`
-- OTA payload, signature verification, A/B swap → `embed-ota`
-- Deep sleep mode tuning unrelated to radio duty cycle → `embed-power`
-- Cloud-side MQTT broker / ingestion scaling → `infra-architect`, `dataplat-streaming`
+## Principles
 
-## Approach
+1. **Pick the radio by duty cycle and payload shape first.** LoRaWAN for
+   tiny-and-rare, BLE for paired-and-close, Thread/Matter for ecosystem-first,
+   LTE-M/NB-IoT for field-deployed without a gateway, Wi-Fi for mains-powered.
+   Cost and power diverge fast when you pick wrong.
+2. **Design for reconnect, not connect.** First-time pairing is easy;
+   week-three-in-a-basement reconnects are where fleets die. Exponential backoff
+   with jitter, persistent connection state across reboots, captive-portal
+   detection, and a physical "reset to pairing" control.
+3. **Store credentials in hardware.** Secure element (ATECC608, SE050, NXP
+   EdgeLock) or TrustZone-backed key storage — never flash-resident cleartext.
+   Provision per-device keys at manufacturing, not at first boot.
+4. **Compact payloads aggressively on cellular.** CBOR over JSON, delta encoding,
+   batching. A 200-byte payload can bloat to 600+ bytes once TLS record and IP
+   overhead are counted; use DTLS/TLS session resumption and PSM/eDRX, and size
+   the data plan from measured bytes/day, not the application payload.
+5. **Instrument the comms thread.** Counters for connect attempts,
+   failures-by-reason, bytes up/down, and latency — emitted periodically even on
+   success. Reconnect flakes are undebuggable without field telemetry.
+6. **Plan the cert path from day zero.** BLE → BT SIG listing, Wi-Fi logo → WFA,
+   Matter → CSA, cellular → PTCRB/GCF plus carrier approval. These are
+   months-long pipelines; retrofitting certification is painful and expensive.
 
-1. **Pick the radio by duty cycle and payload shape first.** LoRaWAN for tiny-and-rare, BLE for paired-and-close, Thread/Matter for ecosystem-first, LTE-M/NB-IoT for field-deployed, Wi-Fi for mains-powered. Cost and power diverge fast when you pick wrong.
-2. **Design for reconnect, not connect.** First-time pairing is easy; week-three-in-a-basement reconnects are where fleets die. Exponential backoff with jitter, persistent state across reboots, captive-portal detection, and a "reset to pairing" physical control.
-3. **Store credentials in hardware.** Secure element (ATECC608, SE050, NXP EdgeLock) or TrustZone-backed key storage. Never flash-resident cleartext. Provision per-device keys at manufacturing, not at first-boot.
-4. **Compact payloads aggressively on cellular.** CBOR over JSON, delta encoding, batching, compression. A 200-byte payload bloats to 600+ bytes over TLS; factor that into plan sizing.
-5. **Instrument the comms thread.** Counters for connect attempts, successes, failures-by-reason, bytes up/down, latency histograms. Emit them periodically even on success — you can't debug reconnect flakes without field telemetry.
-6. **Plan the cert path from day zero.** BLE = BT SIG listing, Wi-Fi = WFA cert if logos, Matter = CSA, cellular = carrier approval (PTCRB, GCF, AT&T / Verizon). These are months-long; retrofitting is painful.
+## Radio selection — first cut
 
-## Output Format
+| Radio | Best fit | Power profile | Watch out for |
+|---|---|---|---|
+| LoRaWAN | bytes, minutes–hours apart, km range | years on primary cells | regional duty-cycle limits; downlink is scarce |
+| BLE | phone-paired, short range | coin-cell viable | needs a mediator (phone/gateway) for cloud reach |
+| Thread / Matter | smart-home ecosystem play | low; mesh extends range | commissioning UX + CSA cert effort |
+| Wi-Fi | mains-powered, high throughput | worst of the set | provisioning UX; 2.4 GHz congestion |
+| LTE-M / NB-IoT | field-deployed, no gateway | battery-viable only with PSM/eDRX | carrier cert, roaming policy, per-MB cost |
+| LTE Cat-1 / 4G | bandwidth-heavy field devices | mains or large battery | module + plan cost dominates BOM |
 
-- **Radio selection matrix** — candidate radios × duty-cycle / range / power / cost / cert-cost; recommended pick with reasoning
-- **Provisioning flow diagram** — factory → first-pair → reprovision → factory-reset paths; user touch points per path
-- **Credential-storage spec** — SE/TPM choice, key hierarchy, rotation policy, attestation path
-- **Connection state machine** — states, transitions, timers, backoff, offline buffer sizing
-- **Protocol/topic design** — MQTT / CoAP topic tree, QoS per topic, retention, LWT payload
-- **Cost model** — bytes/day projection × plan cost + roaming; sensitivity to payload compaction
-- **Certification roadmap** — required certs, lab choices, estimated timeline and cost, sample-unit requirements
-- **Recommended next steps** — Return radio selection and connection state machine to the orchestrator; `pr-code-reviewer` reviews implementation before proceeding. If cloud-side ingestion needs scaling, coordinate with `infra-architect` or `dataplat-streaming`.
+## Connection state machine — minimum states
+
+`PROVISIONING → CONNECTING → CONNECTED → BACKOFF (jittered exponential, capped)
+→ OFFLINE_BUFFERING → FACTORY_RESET_PENDING`. Persist the current state and
+backoff counter across reboots; on MQTT use LWT so the fleet sees ungraceful
+drops, and pick QoS per topic (telemetry QoS 0/1, commands QoS 1) rather than
+globally.
+
+## Pitfalls
+
+- Retry loops without jitter — a fleet-wide outage recovery becomes a thundering
+  herd against your broker
+- Credentials provisioned at first boot over an unauthenticated channel
+- Trusting "connected to AP" as "has internet" — no captive-portal/DNS check
+- JSON-over-TLS telemetry on NB-IoT plans sized from payload bytes only
+- Certification discovered at EVT — module pre-certs help but don't cover the
+  end product's intentional-radiator testing
+
+---
+*Related: `embed-driver` (radio-module bus driver), `embed-rtos` (comms task
+design), `embed-ota` (update transport), `embed-power` (radio duty-cycle vs
+sleep) · domain agent: `embed-architect` · output/ADR format:
+`playbook-conventions`*

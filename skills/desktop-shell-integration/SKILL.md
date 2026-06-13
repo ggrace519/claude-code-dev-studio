@@ -3,42 +3,65 @@ name: desktop-shell-integration
 description: OS shell integration — context menus, file associations, protocol handlers, Spotlight / search, Quick Look, jump lists, dock badges. Auto-invoked when implementing native integrations, debugging why associations don't stick, or cleaning up after uninstall.
 ---
 
-# Desktop Shell Integration Expert
+# Desktop Shell Integration
 
-Shell integration is where your app stops feeling like a port and starts feeling native. It's also the most undocumented surface in desktop development — every OS does it differently, every version changes something, and half the APIs are "deprecated but still required."
+Shell integration is where an app stops feeling like a port and starts feeling
+native — and it's the most under-documented surface in desktop development: every
+OS does it differently, every version changes something, and half the APIs are
+"deprecated but still required."
 
-## Scope
+## When to reach for this
 
-You own:
-- File type associations — Windows ProgId / registry, macOS UTI + `CFBundleDocumentTypes`, Linux MIME + `.desktop` `MimeType=`
-- Custom URL / protocol handlers — Windows registry, macOS `CFBundleURLTypes`, Linux `x-scheme-handler/*`
-- Context-menu / right-click integration — Windows Shell Extensions (Sparse Package preferred over COM DLLs), macOS Finder Extensions, GNOME/KDE file-manager extensions
-- Search / preview — macOS Spotlight metadata importer, Quick Look generator, Windows Search property handler, Thumbnail provider
-- Dock / taskbar — macOS dock badges and menus, Windows jump lists, taskbar progress, notification-area icons
-- Default-app handling — registration, prompts, respecting user choice, post-uninstall cleanup
-- Startup / login items — LaunchAgents, Startup folder / registry Run, systemd user units, XDG autostart
+- Registering file associations, URL/protocol handlers, or context-menu entries
+- Debugging associations that don't stick or defaults that silently reset
+- Adding search/preview integration (Spotlight importer, Quick Look, Windows Search) or dock/taskbar features (badges, jump lists, progress)
+- Auditing what shell artifacts an uninstall must remove
 
-You do NOT own:
-- Installer registration mechanics (which registry keys get written at install) → `desktop-installer`
-- App-sandbox entitlements and hardened-runtime exceptions → `desktop-code-signing`
-- Inter-process messaging for shell-extension ↔ main app → `desktop-ipc`
-- Notifications content / scheduling → `common-notifications` (if activated)
+## Principles
 
-## Approach
+1. **Per-OS parity is a myth — aim for per-OS idiom.** A "shell extension" is a
+   registry entry on Windows, a separately-signed App Extension target on macOS,
+   and a MIME + `.desktop` combo on Linux. Model them as three designs, not one.
+2. **Sparse Package on Windows.** COM-registered DLLs are the legacy path; MSIX
+   Sparse Packages let unpackaged apps register shell extensions cleanly and
+   unregister on uninstall. Default to them.
+3. **Validate every deep-link payload.** Inbound protocol-handler URLs are an
+   attack surface: parse with a strict grammar, treat query params as untrusted,
+   reject malformed input, and never build shell commands from them.
+4. **Respect user defaults.** Never re-assert default-handler status on launch —
+   that's malware behavior. Prompt once, persist the decline, and offer "make
+   default" in settings.
+5. **Uninstall means uninstall.** Every hook added must be removed: orphaned
+   ProgIds, stale MIME entries, lingering LaunchAgents. Ship a verification
+   checklist alongside the registrations.
+6. **Verify with the OS's own tools, not the UI.** `assoc` / `ftype` on Windows,
+   `lsregister -dump` on macOS, `xdg-mime query default` on Linux — these are
+   ground truth; settings panels sometimes lie.
 
-1. **Per-OS parity is a myth — aim for per-OS idiom.** Don't force a Windows paradigm onto macOS. A "shell extension" on Windows is a registry entry; on macOS it's an App Extension target with its own signing; on Linux it's a MIME + .desktop combo. Model them separately.
-2. **Sparse Package on Windows.** COM-registered DLLs are the old way. MSIX Sparse Packages let unpackaged apps register shell extensions cleanly and unregister on uninstall. Use them unless you have a specific reason not to.
-3. **Validate every payload from a URL/protocol handler.** Inbound deep-links are an attack surface. Treat query params as untrusted, reject malformed input, and never execute shell commands built from them.
-4. **Respect user defaults.** Never re-assert yourself as the default handler on every launch — that's malware behavior. Prompt once, persist the decline, and offer a "make default" action in settings.
-5. **Uninstall means uninstall.** Every shell hook you add must be removed on uninstall, including orphaned ProgIds, stale MIME entries, and lingering LaunchAgents. Ship a verification checklist.
-6. **Test with the OS's own tools.** `assoc` / `ftype` on Windows, `lsregister -dump` on macOS, `xdg-mime query` on Linux. These are ground truth; UI sometimes lies.
+## Registration matrix
 
-## Output Format
+| Integration | Windows | macOS | Linux |
+|---|---|---|---|
+| File association | ProgId under `Software\Classes` (HKCU for per-user) | UTI + `CFBundleDocumentTypes` in Info.plist | MIME XML + `MimeType=` in `.desktop`, then `update-mime-database` + `update-desktop-database` |
+| URL scheme | `Software\Classes\<scheme>` with `URL Protocol` value | `CFBundleURLTypes` | `x-scheme-handler/<scheme>` in `.desktop` |
+| Context menu | Sparse Package shell extension (COM DLL only if forced) | Finder/App Extension target, own signing | Nautilus/Dolphin file-manager extension |
+| Login item | `Run` key or Startup folder | LaunchAgent / `SMAppService` | XDG autostart or systemd user unit |
+| Verify | `assoc .ext` / `ftype <ProgId>` | `lsregister -dump \| grep <bundle-id>` | `xdg-mime query default <mime>` |
 
-- **Registration matrix** — file type / URL scheme per OS, exact key or plist block, scope (system vs user)
-- **Shell-extension spec** — which hooks are implemented, packaging format, lifetime model
-- **Protocol-handler validation rules** — URL parse grammar, rejection cases, logging
-- **Defaults policy** — prompt wording, persistence, re-prompt rules
-- **Uninstall checklist** — every artifact created and the verification command for its absence
-- **OS-tool verification commands** — exact CLI invocations that confirm registration worked
-- **Recommended next steps** — Return registration matrix and verification commands to the orchestrator; `pr-code-reviewer` reviews implementation before proceeding. If registration triggers OS security prompts or entitlement changes, invoke `secure-auditor`.
+Match registration scope to install scope: a per-user install writes HKCU and
+`~/Library` / `~/.local/share`, never HKLM or system domains.
+
+## Pitfalls
+
+- Re-asserting yourself as default handler on every launch
+- Deep-link handlers passing URL fragments into shell commands or file paths unvalidated
+- Per-user installs writing HKLM (elevation failure) or system installs writing only the installing user's hive
+- macOS associations "not working" because LaunchServices cached a stale bundle — re-register rather than fighting the cache
+- Forgetting `update-mime-database` / `update-desktop-database` after writing Linux MIME and `.desktop` files
+- Uninstall leaving ProgIds, scheme handlers, or LaunchAgents that point at a deleted binary
+
+---
+*Related: `desktop-installer` (writes these registrations at install time),
+`desktop-ipc` (deep-link payload crossing into the app), `desktop-code-signing`
+(App Extension signing, entitlements), `security-checklist` · domain agent:
+`desktop-architect` · output/ADR format: `playbook-conventions`*

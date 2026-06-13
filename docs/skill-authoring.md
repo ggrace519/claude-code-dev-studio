@@ -69,8 +69,12 @@ output/ADR format: `playbook-conventions`*
 
 ## Conversion status
 
-| Skill | Status |
-|---|---|
-| `saas-billing` | converted (reference) |
-| `ai-rag` | converted (reference) |
-| remaining 88 | pending — convert opportunistically when a skill is touched |
+All 88 in-scope skills are converted (the two reference conversions
+`saas-billing` and `ai-rag`, plus the 86 remaining domain and cross-cutting
+skills, converted pack by pack). Each pack also gained one bundled
+`references/*.md` resource (16 total). Out of scope by design:
+`playbook-conventions` (it *documents* the handoff protocol, so handoff
+language there is subject matter) and `sync-agents` (procedural meta-skill,
+already in instructional voice).
+
+New skills must follow the template above from day one.

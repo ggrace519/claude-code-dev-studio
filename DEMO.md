@@ -50,17 +50,30 @@ cat skills/saas-billing/references/webhook-handler.md
 
 ## What works / what's stubbed
 
-- Working: both conversions, the authoring guide, bundled-resource pattern.
-- Deliberately not done: bulk-converting the other 88 skills. The guide says
-  convert opportunistically; a bulk pass should follow review of these two
-  exemplars, pack by pack (it is content work, not a mechanical transform).
+- Working: **all 88 in-scope skills converted** (the 2 exemplars + 86 bulk,
+  converted pack by pack after template approval). 16 bundled
+  `references/*.md` resources (one per pack + cross-cutting), e.g.
+  `saas-multitenancy/references/rls-policies.md`,
+  `fintech-ledger/references/double-entry-schema.md`,
+  `infra-sre/references/slo-worksheet.md`.
+- Exempt by design: `playbook-conventions` (documents the handoff protocol —
+  handoff language is its subject matter) and `sync-agents` (procedural
+  meta-skill, already instructional).
+- Verified after the bulk pass: `verify-agents.sh` PASS (90 skills, 0
+  failures); `catalog.json` byte-identical (every frontmatter untouched —
+  routing surface unchanged); zero banned-phrase hits outside the exempt
+  files; no BOM/CRLF introduced.
+- Conversion agents were instructed to add numeric specifics only where
+  confident and hedge the rest — but a domain-owner skim of the new tables
+  (regulatory deadlines, platform thresholds, config defaults) is the right
+  review focus.
 
 ## Next increment
 
-1. Approve/adjust the template via these two exemplars, then convert pack by
-   pack (the `Approach` bullets carry over; the work is adding the concrete
-   layer per skill).
-2. Add a lint check (`innovation/playbook-lint`) flagging agent-era phrases in
-   skills ("orchestrator", "You do NOT own") to ratchet the migration.
-3. Apply the same de-duplication to the 14 domain agents' closing sections,
+1. Add a lint check (`innovation/playbook-lint`) flagging agent-era phrases in
+   skills ("orchestrator", "You do NOT own", "## Output Format") to ratchet
+   the migration — warn-level until this branch merges.
+2. Apply the same de-duplication to the 14 domain agents' closing sections,
    which restate the handoff protocol `playbook-conventions` owns.
+3. Regenerate the plugin marketplace tree (`innovation/plugin-marketplace`)
+   after this branch merges so plugins ship the converted skills.
