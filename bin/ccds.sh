@@ -79,6 +79,10 @@ COMMANDS
   verify               Validate global agents and project skills
       --target <path>       Target path (default: current directory)
 
+  lint                 Lint the playbook library's semantic invariants
+                       (skill cross-refs, catalog freshness, URL/description
+                       conventions). Requires a repo clone (dev layout).
+
   setup                Install the 19 agents + cross-cutting skills, inject CLAUDE.md block
       --dry-run             Preview without writing
 
@@ -193,6 +197,17 @@ cmd_verify() {
     exec "$VERIFY_SCRIPT" "$agents_path"
 }
 
+cmd_lint() {
+    local lint_script="$INSTALL_ROOT/scripts/lint-playbook.py"
+    if [[ ! -f "$lint_script" ]]; then
+        echo "ERROR: lint-playbook.py not found at $lint_script" >&2
+        echo "       'ccds lint' validates the library source; run it from a repo clone." >&2
+        exit 2
+    fi
+    command -v python3 >/dev/null 2>&1 || { echo "ERROR: python3 is required for lint" >&2; exit 2; }
+    exec python3 "$lint_script" "$INSTALL_ROOT"
+}
+
 INSTALLER_URL_SH='https://raw.githubusercontent.com/ggrace519/claude-code-dev-studio/main/install-playbook.sh'
 
 fetch_installer() {
@@ -260,6 +275,7 @@ COMMAND="${COMMAND//$'\r'/}"
 if   [[ "$COMMAND" == "setup"     ]]; then cmd_setup
 elif [[ "$COMMAND" == "sync"      ]]; then cmd_sync
 elif [[ "$COMMAND" == "verify"    ]]; then cmd_verify
+elif [[ "$COMMAND" == "lint"      ]]; then cmd_lint
 elif [[ "$COMMAND" == "update"    ]]; then cmd_update
 elif [[ "$COMMAND" == "uninstall" ]]; then cmd_uninstall
 else
