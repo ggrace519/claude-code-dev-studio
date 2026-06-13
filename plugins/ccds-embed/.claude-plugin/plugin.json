@@ -1,7 +1,6 @@
 {
   "name": "ccds-embed",
   "description": "Embedded / IoT domain specialist. Ships the embed-architect agent and 6 embed-* skills it composes.",
-  "version": "0.8.0",
   "author": {
     "name": "Greg Grace",
     "email": "contact@519lab.com"

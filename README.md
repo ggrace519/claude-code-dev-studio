@@ -18,7 +18,7 @@ A universal, stack-agnostic Claude Code playbook: **19 always-on agents** (14 do
 | `build-release.ps1` | Build reproducible release ZIP + sidecar SHA256 |
 | `scripts/jit-claude.md` | Canonical source for the ccds pointer block injected into `~/.claude/CLAUDE.md` |
 | `.github/workflows/release.yml` | Tag-driven release build + GitHub Release publication |
-| `DECISIONS.md` | Architecture decision records (ADR-0001 … ADR-0007) |
+| `DECISIONS.md` | Architecture decision records (ADR-0001 … ADR-0009) |
 | `CHANGELOG.md` | Session-by-session history |
 | `CONTRIBUTING.md` | Contribution terms |
 | `LICENSE` | PolyForm Noncommercial 1.0.0 |

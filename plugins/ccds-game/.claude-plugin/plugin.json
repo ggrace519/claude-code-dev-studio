@@ -1,7 +1,6 @@
 {
   "name": "ccds-game",
   "description": "Game domain specialist. Ships the game-architect agent and 8 game-* skills it composes.",
-  "version": "0.8.0",
   "author": {
     "name": "Greg Grace",
     "email": "contact@519lab.com"
