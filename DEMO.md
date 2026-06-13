@@ -14,6 +14,7 @@ Adds `scripts/lint-playbook.py` — a semantic linter that verifies the playbook
 | `description-style` | one-line descriptions, no `<example>`, no literal `\n`, ≤400 chars | error |
 | `model-values` | agent `model:` is a tier alias, not a dated ID | warning |
 | `token-budget` | always-on agent descriptions stay within the advertised budget | warning |
+| `skill-voice` | skill bodies carry no agent-era language (persona, "You do NOT own", orchestrator choreography, per-skill Output Format) | warning |
 
 Wired in three places: a `lint-playbook` CI job in `ci.yml`, and a `ccds lint`
 command in both dispatchers (`bin/ccds.sh`, `bin/ccds.ps1`).
@@ -42,5 +43,7 @@ git checkout .claude/agents/saas-architect.md
 ## Next increment
 
 Once `innovation/model-aliases` merges, promote `model-values` from warning to
-error so dated IDs can never return. Then reuse this script's catalog parsing
-for the routing-eval harness (INNOVATIONS.md Proposal 2).
+error so dated IDs can never return; once `innovation/skill-content` merges,
+promote `skill-voice` the same way (on this branch it emits ~266 warnings —
+the unconverted skills; on the converted branch it goes quiet). Then reuse
+this script's catalog parsing for the routing-eval harness (Proposal 2).

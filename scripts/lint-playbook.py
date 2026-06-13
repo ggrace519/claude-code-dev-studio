@@ -20,6 +20,10 @@ This linter checks that what the files SAY is true:
                        Dated IDs (claude-opus-4-7, ...) rot and are warned on.
   7. token-budget      Always-on agent descriptions stay within budget (~chars/4
                        estimate). Warn-only: the budget is advisory.
+  8. skill-voice       Skill bodies carry no agent-era language (persona,
+                       ownership blocks, orchestrator choreography, per-skill
+                       Output Format). Warn-only until the skill-content
+                       conversion lands; see docs/skill-authoring.md.
 
 Exit codes: 0 = pass (warnings allowed), 1 = one or more errors, 2 = config error.
 
@@ -153,6 +157,31 @@ def check_urls():
                         f"{rel} points at {owner}/{REPO_NAME} (canonical: {CANONICAL_OWNER}/{REPO_NAME})")
 
 
+# --- skill-voice: agent-era language inside skill bodies ----------------------
+# Skills are reference material, not actors (docs/skill-authoring.md). These
+# phrases are migration debt from ADR-0007. Warn-level until the skill-content
+# conversion lands everywhere, then promote to error.
+SKILL_VOICE_EXEMPT = {"playbook-conventions",  # documents the handoff protocol
+                      "sync-agents"}           # procedural meta-skill
+SKILL_VOICE_PATTERNS = [
+    ("orchestrator choreography", re.compile(r'\borchestrator\b', re.IGNORECASE)),
+    ("'You do NOT own' handoff block", re.compile(r'You do NOT own')),
+    ("per-skill Output Format section", re.compile(r'^## Output Format', re.MULTILINE)),
+    ("agent persona intro", re.compile(r'^You are a ', re.MULTILINE)),
+]
+
+
+def check_skill_voice():
+    for d in skill_dirs():
+        if d in SKILL_VOICE_EXEMPT:
+            continue
+        content = read(os.path.join(SKILLS_DIR, d, "SKILL.md"))
+        body = re.sub(r'^---\s*\n.*?\n---', '', content, count=1, flags=re.DOTALL)
+        for label, pattern in SKILL_VOICE_PATTERNS:
+            if pattern.search(body):
+                warn("skill-voice", f"skills/{d}: {label} — see docs/skill-authoring.md")
+
+
 # --- 5 + 6 + 7: descriptions and models --------------------------------------
 def check_descriptions_and_models():
     agent_desc_chars = 0
@@ -192,6 +221,7 @@ def main():
     check_skill_refs()
     check_catalog_fresh()
     check_urls()
+    check_skill_voice()
     check_descriptions_and_models()
 
     for w in warnings:
