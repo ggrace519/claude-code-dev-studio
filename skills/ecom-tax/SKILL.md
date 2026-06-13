@@ -3,43 +3,70 @@ name: ecom-tax
 description: Sales tax, VAT, GST, and marketplace-facilitator obligations. Auto-invoked when integrating tax engines, implementing nexus logic, handling cross-border orders, or reconciling tax filings.
 ---
 
-# E-commerce Tax Expert
+# E-commerce Tax
 
-Tax errors don't get caught by tests — they get caught by auditors years later, with penalties and interest. You own the correctness of every tax figure that appears on a customer invoice and every tax-liability number that gets filed.
+Tax errors don't get caught by tests — they get caught by auditors years later,
+with penalties and interest. Every tax figure on an invoice and every liability
+number that gets filed has to be reproducible.
 
-## Scope
+## When to reach for this
 
-You own:
-- Tax-engine integration (Avalara AvaTax, TaxJar, Vertex, Stripe Tax) — address validation, product tax codes, jurisdiction resolution
-- US sales-tax: economic-nexus thresholds per state, origin-vs-destination sourcing, product taxability (SaaS, digital, shipping, bundles)
-- EU VAT: OSS / IOSS registration, reverse-charge B2B, place-of-supply rules, invoice requirements (VAT number, sequential numbering)
-- GST / HST (Canada, Australia, India, Singapore), consumption tax (Japan), and other national VAT/GST regimes
-- Marketplace-facilitator laws — when the platform collects on the seller's behalf vs when the seller collects
-- Tax-exempt flows — resale certificates, B2B exemption, charity, government; exemption-certificate storage and expiry
-- Returns, refunds, partial refunds, chargebacks — correct tax reversal on the original jurisdiction and rate
-- Filing-data export — transaction-level detail for CPA / filing tooling; reconciliation between tax engine, ledger, and filings
+- Integrating a tax engine (Avalara AvaTax, TaxJar, Vertex, Stripe Tax)
+- Implementing US economic-nexus tracking or EU OSS/IOSS flows
+- Handling refunds, partial refunds, or chargebacks that reverse tax
+- Building tax-exempt (resale certificate, B2B reverse-charge) checkout paths
 
-You do NOT own:
-- Ledger postings for tax liability → `fintech-ledger` (if fintech pack active) or `saas-billing`
-- Payment-provider tax features unrelated to sales-tax law → `ecom-payments`
-- Cart / checkout UX for entering VAT numbers → `ecom-architect` and `ux-design`
-- Audit-trail immutability of tax records → `fintech-audit-trail` (if activated)
+## Principles
 
-## Approach
+1. **Defer to the tax engine; own the integration.** Never hand-code rate
+   tables. Send full validated address, product tax code, and order context;
+   trust the engine's jurisdiction resolution. Cache responses only as the
+   engine's terms explicitly permit.
+2. **Track nexus continuously.** Most US states trigger at **$100K sales or 200
+   transactions** per year (thresholds vary — South Dakota v. Wayfair baseline);
+   EU distance selling consolidates at **€10K** under OSS. Build a daily rollup
+   per jurisdiction that alerts ~30 days before crossing — registration has lead
+   time.
+3. **Taxability is configuration, not code.** Map every SKU to a product tax
+   code (e.g., Avalara `PC040100` for general clothing). SaaS, digital goods,
+   shipping, and gift cards each have distinct treatment per jurisdiction —
+   never default to "tangible goods".
+4. **Reversals mirror originals.** A refund posts its tax reversal to the same
+   jurisdiction at the original rate, even if rates changed since. That means
+   storing the full original tax detail (jurisdictions, rates, amounts) on the
+   transaction, not recomputing at refund time.
+5. **EU invoices are legal documents.** Sequential numbering, seller and buyer
+   VAT numbers, itemized tax per rate, reverse-charge notation for B2B —
+   missing fields invalidate the buyer's VAT reclaim.
+6. **Reconcile three ways, monthly.** Tax-engine totals ↔ ledger tax liability
+   ↔ filed returns. Drift is almost always a refund booked in a different
+   period, currency rounding, or bundle allocation.
 
-1. **Defer to the tax engine; own the integration.** Don't hand-code tax tables. Send the full address, product tax code, and order context to Avalara/TaxJar/Stripe Tax; trust their jurisdiction lookup. Cache only what they explicitly permit.
-2. **Track nexus continuously.** Every state/country has different thresholds ($100K or 200 transactions in most US states, €10K EU-wide OSS threshold). Build a daily rollup that alerts 30 days before crossing. Registration lead time matters.
-3. **Product taxability is configuration, not code.** Map every SKU to a tax code (Avalara TaxCodes, e.g., `PC040100` for clothing). Digital goods, SaaS, shipping, and gift cards each have distinct treatment — never assume.
-4. **Reversals must mirror originals.** A refund posts tax reversal to the same jurisdiction at the same rate as the original capture, even if the rate has since changed. Store the original tax detail with the transaction.
-5. **Invoices are legal documents in the EU.** Sequential numbering, VAT registration number, itemized tax per rate, reverse-charge notation where applicable. Missing fields invalidate the invoice for VAT reclaim.
-6. **Reconcile three-way monthly.** Tax engine totals ↔ ledger tax liability ↔ filed returns. Drift is almost always a missed edge case (refund in a different period, currency rounding, bundle allocation).
+## Tax-engine call map
 
-## Output Format
+| Cart/order event | Engine call | Notes |
+|---|---|---|
+| Cart/checkout display | quote (uncommitted) | estimate; never file from quotes |
+| Order capture | commit transaction | idempotency-keyed on order ID |
+| Address change pre-ship | void + re-commit | jurisdiction may change |
+| Refund (full/partial) | committed return tied to original doc | original rates and jurisdictions, per principle 4 |
+| Exempt purchase | commit with exemption certificate ID | certificate stored with expiry; re-verify on lapse |
+| Marketplace-facilitated sale | depends on platform role | facilitator collects → record but don't double-remit |
 
-- **Integration spec** — tax-engine endpoints called per cart event (quote, commit, refund), payload shape, and idempotency keys
-- **Nexus tracker** — per-state/country threshold, current YTD sales, days until registration trigger, alert channel
-- **Product taxability matrix** — SKU → tax code → jurisdiction notes
-- **Reversal playbook** — refund, partial refund, chargeback paths and the exact tax-engine calls for each
-- **Invoice template checklist** — required fields per jurisdiction (US receipt vs EU VAT invoice vs Japan qualified invoice)
-- **Reconciliation report** — monthly three-way tie-out with drift explanations and corrective entries
-- **Recommended next steps** — Return integration spec to the orchestrator; `pr-code-reviewer` reviews before proceeding. If a new jurisdiction triggers compliance obligations beyond sales tax, invoke `fintech-compliance`.
+## Pitfalls
+
+- Computing tax on the pre-discount subtotal (or post-, when the jurisdiction
+  says otherwise) — discount treatment is a per-jurisdiction rule, not a default
+- Filing from quote-mode calls that were never committed (totals won't tie out)
+- Recalculating refund tax at today's rate instead of the original's
+- Treating shipping as universally non-taxable (taxable in many US states when
+  the goods are)
+- Missing the marketplace-facilitator split — remitting tax the marketplace
+  already remitted
+- Exemption certificates accepted once and never expired or re-validated
+
+---
+*Related: `ecom-payments` (tax committed at capture, reversed with refunds),
+`ecom-promotions` (discount-before-tax vs after-tax) · domain agent:
+`ecom-architect` (checkout boundary, where tax calls live) · output/ADR
+format: `playbook-conventions`*

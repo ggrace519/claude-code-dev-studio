@@ -5,8 +5,15 @@ description: Code review reference — the seven review dimensions and comment s
 
 # Code Review Checklist
 
-Reference for reviewing a changeset. The `pr-code-reviewer` agent pulls this for its
-full review; any agent should pull it to self-review before returning work.
+Reference for reviewing a changeset — the shared dimensions, severity labels, and
+verdict vocabulary that keep reviews consistent whether it's a self-review or the
+`pr-code-reviewer` agent's full pass.
+
+## When to reach for this
+
+- Reviewing a diff or PR for someone else
+- Self-reviewing changes before handing work off for review
+- Calibrating how to label a finding (blocker vs concern vs nit)
 
 ## Review dimensions
 
@@ -34,5 +41,15 @@ Prefix every review comment:
 
 End with one of: `APPROVE`, `APPROVE WITH NITS`, `REQUEST CHANGES`.
 
-For a full PR review across the entire diff, return to the orchestrator to engage the
-`pr-code-reviewer` agent.
+## Pitfalls
+
+- Reviewing only the diff lines — the bug is often in the unchanged code the diff
+  now interacts with
+- Labeling style preferences `[BLOCKER]`, or real correctness bugs `[NIT]`
+- A wall of nits with no verdict, leaving the author unsure whether to merge
+- Approving on "tests pass" without asking whether the tests test the new behavior
+
+---
+*Related: `security-checklist` (security dimension in depth), `playbook-conventions`
+(output/ADR format) · pulled by any domain agent for self-review; the
+`pr-code-reviewer` agent runs the full-diff review*

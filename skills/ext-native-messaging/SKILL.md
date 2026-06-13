@@ -3,43 +3,73 @@ name: ext-native-messaging
 description: Browser-extension ↔ native-host bridge via Native Messaging. Auto-invoked when designing the extension/native boundary, debugging stdio framing, or handling installation of the native host.
 ---
 
-# Extension Native Messaging Expert
+# Extension Native Messaging
 
-Native Messaging is a narrow, security-critical pipe. The extension is sandboxed; the native host isn't. Every byte that crosses the boundary is an authorization decision. You own that boundary.
+Native Messaging is a narrow, security-critical pipe: the extension is sandboxed,
+the native host is not. Every byte that crosses the boundary is an authorization
+decision, and every framing bug is a silent hang.
 
-## Scope
+## When to reach for this
 
-You own:
-- Native host manifest — `name`, `path`, `type: stdio`, `allowed_origins` (Chromium) or `allowed_extensions` (Firefox), per-OS install locations
-- Stdio framing — 4-byte little-endian length prefix + UTF-8 JSON payload; 1 MB per-message limit in Chromium, differing limits across browsers
-- Host lifecycle — per-connect vs persistent, process supervision, clean shutdown, orphan prevention
-- Manifest deployment — Windows registry (`HKCU\Software\...\NativeMessagingHosts`), macOS/Linux filesystem paths per browser, per-user vs system-wide
-- Authorization model — verify sender origin/extension-ID on every connect, reject spoofed senders, apply least privilege per-command
-- Transport-level validation — length sanity checks, JSON parse guards, command allowlist, argument schema validation
-- Error and timeout handling — no hangs on malformed input, structured error replies, log-to-stderr conventions
-- Installation UX — the native host is a separate installer; coordinate with the extension install flow, surface "install companion app" prompts, version matching
+- Designing the message schema between extension and native host
+- Debugging stdio framing ("Native host has exited", hangs, truncated reads)
+- Writing the host manifest and its per-OS, per-browser install step
+- Deciding what a connected extension is allowed to make the host do
 
-You do NOT own:
-- Extension permission model and host-permission justifications → `ext-permissions`
-- Content-script isolation and CSP → `ext-security`
-- Extension popup / options-page UX → `ext-ux`
-- Native-host code signing and installer packaging → `desktop-code-signing`, `desktop-installer`
+## Principles
 
-## Approach
+1. **Treat the bridge as an RPC boundary.** Small explicit command enum with a
+   version field; reject anything unknown. Never eval, never shell-out on
+   payload-supplied strings, canonicalize payload-supplied paths before use.
+2. **Lock the allowlist hard.** `allowed_origins: ["chrome-extension://<EXACT-ID>/"]`
+   — one production ID. Ship a separate manifest for dev builds. A wildcard or a
+   leftover dev ID here is a sandbox escape for whoever holds that ID.
+3. **Assume the extension is compromised.** Authorize per command, not per
+   connection. High-privilege actions (file writes outside a sandbox dir, process
+   launch, credential access) require a native-side user confirmation.
+4. **Framing is a 4-byte length prefix + UTF-8 JSON** (native byte order —
+   little-endian on every platform you will ship). Chromium caps host→extension
+   messages at 1 MB. Validate the length before allocating, drain the full
+   payload, parse with a size cap — a mismatched prefix shows up as a hang or
+   "host has exited", never as a clean error.
+5. **Choose connection mode deliberately.** `runtime.sendNativeMessage` spawns a
+   host process per message — fine for occasional calls. `runtime.connectNative`
+   keeps one process per port: supervise it and exit cleanly on stdin EOF, or you
+   leak orphan processes.
+6. **Version-gate on connect.** First exchange is a version handshake. If the
+   host is older than the extension expects, return a structured
+   `upgrade_required` reply — don't crash, don't pretend to work.
 
-1. **Treat the bridge as an RPC boundary.** Define a small, explicit command schema with versioning. Reject anything unknown. Never eval, never shell-out based on untrusted input, never trust payload-supplied paths without canonicalization.
-2. **Lock the allowlist hard.** `allowed_origins: ["chrome-extension://<EXACT-ID>/"]` — one ID, production only. Separate manifests for dev builds. A wildcard here is a sandbox escape.
-3. **Assume the extension is compromised.** Content scripts can be injected; messages can come from a hijacked page. The native host authorizes per-command, not once per connection. High-privilege actions require a user-confirmation step.
-4. **Framing bugs crash silently.** Length-prefix mismatch = truncated reads = hangs or weird errors. Write the reader loop defensively: validate length ≤ 1 MB, drain fully, parse JSON with a size cap.
-5. **Deploy the manifest carefully.** Per-user install (`HKCU` / `~/Library/Application Support`) avoids admin prompts; system-wide install is for managed deployments. Document both paths per browser per OS; many integrations fail here.
-6. **Version-gate the bridge.** On connect, exchange versions. If the native host is older than the extension expects, return a structured "upgrade required" response — don't crash, don't pretend to work.
+## Host manifest install matrix
 
-## Output Format
+| Browser / OS | Per-user location |
+|---|---|
+| Chrome, Windows | `HKCU\Software\Google\Chrome\NativeMessagingHosts\<name>` → path to manifest JSON |
+| Chrome, macOS | `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/<name>.json` |
+| Chrome, Linux | `~/.config/google-chrome/NativeMessagingHosts/<name>.json` |
+| Firefox, Windows | `HKCU\Software\Mozilla\NativeMessagingHosts\<name>` |
+| Firefox, macOS / Linux | `~/Library/Application Support/Mozilla/NativeMessagingHosts/` · `~/.mozilla/native-messaging-hosts/` |
 
-- **Message schema** — command enum, argument shapes, response shapes, error taxonomy, version field
-- **Host manifest matrix** — per-browser path, allowlist key name, example file, installer step
-- **Authorization policy** — per-command privilege, user-confirmation triggers, rate limits
-- **Framing reader spec** — read-length, bounds check, read-payload, JSON parse, error recovery
-- **Installer coordination** — how extension prompts for native-host install, version matching, uninstall cleanup
-- **Test matrix** — malformed-length, oversized-payload, unknown-command, spoofed-origin, version-skew cases
-- **Recommended next steps** — Return message schema and host manifest to the orchestrator; `pr-code-reviewer` reviews before proceeding. If the native host requires installer packaging or code signing, invoke `desktop-installer` and `desktop-code-signing`.
+Chromium reads `allowed_origins`; Firefox reads `allowed_extensions` (extension
+IDs, no `chrome-extension://` scheme) — most cross-browser hosts ship one manifest
+per browser. Per-user install avoids admin prompts; system-wide (HKLM,
+`/Library/...`, `/etc/...`) is for managed deployments. A defensive reader-loop
+and handshake skeleton is in
+[`references/host-skeleton.md`](references/host-skeleton.md).
+
+## Pitfalls
+
+- Writing JSON without the length prefix (or with the wrong width/order) — the
+  browser reports only "Native host has exited"
+- Logging to stdout — stdout *is* the transport; logs go to stderr or a file
+- One manifest for dev and prod with both extension IDs in the allowlist
+- Forgetting the native host needs its own installer *and uninstaller* — the
+  store ships only the extension; the "install companion app" prompt and version
+  matching are part of first-run, not an afterthought
+- No timeout on host replies — a wedged host hangs the feature silently
+
+---
+*Related: `ext-security` (message validation, trust boundaries),
+`ext-permissions` (justifying the `nativeMessaging` permission), `ext-ux`
+(companion-app install prompts) · domain agent: `ext-architect` · output/ADR
+format: `playbook-conventions`*
