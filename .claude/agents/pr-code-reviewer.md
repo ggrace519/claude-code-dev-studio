@@ -2,6 +2,9 @@
 name: pr-code-reviewer
 model: sonnet
 color: "#7e3af2"
+disallowedTools: Write, Edit, NotebookEdit
+skills:
+  - code-review-checklist
 description: Pull request and code review specialist. Use proactively when a PR is opened, a diff is ready for review, or the user requests feedback on a changeset before merging.
 ---
 
