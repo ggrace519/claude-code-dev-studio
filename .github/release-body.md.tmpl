@@ -16,6 +16,8 @@ sudo rpm -i ccds-__VERSION_BARE__-1.noarch.rpm   # or: sudo dnf install ./ccds-_
 ccds verify
 ```
 
+> The package installs the shared library to `/usr/share/ccds` and the `ccds` launcher to `/usr/bin`. Per-user setup (the 19 agents + cross-cutting skills + `~/.claude/CLAUDE.md` block) runs automatically for the installing user. If you install from a bare root shell or a headless/CI/Docker context, run `ccds setup` once per user (it also runs automatically on first `ccds sync`).
+
 ### Windows — PowerShell 5.1 or 7+ (online installer)
 
 ```powershell
