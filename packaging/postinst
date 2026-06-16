@@ -1,8 +1,16 @@
 #!/bin/bash
 # postinst -- ccds Debian/RPM post-install script
-# Runs as root. Per-user setup (the 19 always-on agents + cross-cutting skills +
-# CLAUDE.md block) is handled lazily by 'ccds setup' or on first 'ccds sync/verify'.
-# If SUDO_USER is set (interactive sudo install), we run setup for that user now.
+# Runs as root. The package only installs the *system* library to
+# /usr/share/ccds and the 'ccds' launcher to /usr/bin. The per-user payload
+# (the 19 always-on agents + cross-cutting skills + the ~/.claude/CLAUDE.md
+# block) lives under each user's $HOME, so it is set up per-user.
+#
+# We try to run that per-user setup automatically for the human who triggered
+# the install. dpkg/apt run maintainer scripts as root and DO NOT reliably set
+# $SUDO_USER (it is empty for root shells, `sudo -i`, gdebi/GUI installers,
+# Docker/CI, unattended-upgrades), so we probe several sources. If we still
+# cannot identify a human user, we print clear instructions -- and the ccds
+# dispatcher also runs setup lazily on first use as a safety net.
 
 set -e
 
@@ -16,16 +24,57 @@ chmod 755 "$INSTALL_ROOT/bin/ccds.sh"   2>/dev/null || true
 # Agents and data files: world-readable (644)
 chmod -R a+rX "$INSTALL_ROOT"           2>/dev/null || true
 
-# If installed interactively via sudo, set up for the calling user immediately.
-if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
-    echo "==> Running per-user setup for $SUDO_USER..."
-    su - "$SUDO_USER" -c "bash '$SETUP_SCRIPT' '$INSTALL_ROOT'" || true
-else
+print_manual_instructions() {
     echo ""
     echo "ccds installed to $INSTALL_ROOT"
     echo ""
-    echo "Run the following once to set up your Claude Code environment:"
+    echo "Per-user setup did not run automatically. Each user runs once:"
     echo "  ccds setup"
     echo ""
-    echo "Or just run 'ccds sync <packs>' — setup runs automatically on first use."
+    echo "(Setup also runs automatically the first time you 'ccds sync <packs>'.)"
+}
+
+# ---------------------------------------------------------------------------
+# Identify the human user to set up for. dpkg runs us as root, so we must
+# discover the *invoking* user. Probe, in order of reliability:
+#   1. SUDO_USER  -- set by `sudo apt install ./ccds.deb` / `sudo dpkg -i`
+#   2. PKEXEC_UID -- set by polkit-based GUI installers
+#   3. logname    -- the login name on the controlling terminal
+# Reject root / empty -- root has no ~/.claude worth populating here.
+# ---------------------------------------------------------------------------
+TARGET_USER=""
+for candidate in \
+    "${SUDO_USER:-}" \
+    "$( [[ -n "${PKEXEC_UID:-}" ]] && getent passwd "$PKEXEC_UID" 2>/dev/null | cut -d: -f1 )" \
+    "$(logname 2>/dev/null || true)"
+do
+    if [[ -n "$candidate" && "$candidate" != "root" ]] && getent passwd "$candidate" >/dev/null 2>&1; then
+        TARGET_USER="$candidate"
+        break
+    fi
+done
+
+if [[ -z "$TARGET_USER" ]]; then
+    print_manual_instructions
+    exit 0
 fi
+
+echo "==> Running per-user setup for $TARGET_USER..."
+
+# runuser (util-linux) drops privileges without PAM auth and without a login
+# shell -- the correct tool for maintainer scripts. Fall back to `su -` where
+# runuser is unavailable. We deliberately do NOT mask the exit status: a failed
+# setup must be visible, not silently reported as a successful install.
+rc=0
+if command -v runuser >/dev/null 2>&1; then
+    runuser -u "$TARGET_USER" -- bash "$SETUP_SCRIPT" "$INSTALL_ROOT" || rc=$?
+else
+    su - "$TARGET_USER" -c "bash '$SETUP_SCRIPT' '$INSTALL_ROOT'" || rc=$?
+fi
+
+if (( rc != 0 )); then
+    echo "WARN: per-user setup for $TARGET_USER exited with status $rc." >&2
+    print_manual_instructions
+fi
+
+exit 0

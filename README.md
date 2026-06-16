@@ -99,6 +99,25 @@ Default prefix: `$HOME/.claude/playbook`. Override with `--prefix`, pin a versio
 
 Both installers accept `--dry-run` / `-DryRun`, `--local-zip <path>` / `-LocalZip <path>` (install from a locally built ZIP), and `--token` / `-Token` (GitHub token for rate-limited or private-repo environments).
 
+**Linux native packages (`.deb` / `.rpm`):**
+
+Each release also ships a `.deb` (Debian/Ubuntu) and `.rpm` (RHEL/Fedora) attached to the GitHub Release.
+
+```bash
+sudo apt install ./ccds_<version>_all.deb     # Debian/Ubuntu
+sudo dnf install ./ccds-<version>-1.noarch.rpm # RHEL/Fedora
+```
+
+The package installs the shared library to `/usr/share/ccds` and the `ccds` launcher to `/usr/bin/ccds`. Because the agents/skills/`CLAUDE.md` block are **per-user** (they live under `~/.claude/`), per-user setup runs for the installing user automatically when the package can identify them (`sudo`, polkit/GUI installers, or a login terminal).
+
+If you install from a bare root shell or a headless/CI/Docker context, the package cannot tell which user to set up — run setup yourself once per user:
+
+```bash
+ccds setup          # copies the 19 agents + cross-cutting skills, injects the CLAUDE.md block
+```
+
+Setup also runs automatically the first time that user runs `ccds sync <packs>` or `ccds verify`. Updates and removal go through the system package manager (`apt`/`dnf`); `ccds update` and `ccds uninstall` are no-ops for package installs and print the right command.
+
 ## Update / rollback / uninstall
 
 Once installed, the dispatcher delegates these to a fresh copy of the installer fetched from `main`, so bug fixes to the installer propagate automatically.

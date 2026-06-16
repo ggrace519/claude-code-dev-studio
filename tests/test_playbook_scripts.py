@@ -10,6 +10,7 @@ CLI tools, so the tests exercise them exactly the way CI and users do.
 Run: python3 -m unittest discover -s tests -v
 """
 
+import getpass
 import json
 import os
 import shutil
@@ -212,6 +213,120 @@ class TestBuildMarketplace(unittest.TestCase):
             # restore the checked-in (unversioned) tree
             subprocess.run(["git", "-C", REPO_ROOT, "checkout", "--", ".claude-plugin", "plugins"],
                            capture_output=True)
+
+
+PACKAGING = os.path.join(REPO_ROOT, "packaging")
+POSTINST = os.path.join(PACKAGING, "postinst")
+USER_SETUP = os.path.join(SCRIPTS, "ccds-user-setup.sh")
+BASH = shutil.which("bash")
+
+# Cross-cutting skills the per-user setup installs to ~/.claude/skills/.
+# Mirrors GLOBAL_SKILLS in scripts/ccds-user-setup.sh.
+GLOBAL_SKILLS = (
+    "playbook-conventions", "sync-agents", "api-design", "ux-design",
+    "security-checklist", "code-review-checklist", "common-a11y",
+    "common-i18n", "common-privacy", "common-notifications",
+    "common-product-analytics",
+)
+
+
+@unittest.skipUnless(BASH and sys.platform != "win32",
+                     "postinst is a bash maintainer script (POSIX shells only)")
+class TestDebPostinst(unittest.TestCase):
+    """Regression tests for the Debian/RPM postinst per-user setup.
+
+    Stages the package library exactly as build-release.sh does
+    (/usr/share/ccds layout), then drives packaging/postinst against it with
+    a patched INSTALL_ROOT and PATH stubs for the privilege-drop tools — so
+    the test never needs root and never touches the real $HOME.
+
+    Guards the bug where the postinst only populated ~/.claude when $SUDO_USER
+    was set, silently installing nothing for root-shell / GUI / CI / Docker
+    installs.
+    """
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="ccds-deb-test-")
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+
+        # Stage the package library: /usr/share/ccds/{agents,skills,scripts}
+        self.pkg = os.path.join(self.root, "usr", "share", "ccds")
+        os.makedirs(os.path.join(self.pkg, "agents"))
+        os.makedirs(os.path.join(self.pkg, "scripts"))
+        for md in os.listdir(os.path.join(REPO_ROOT, ".claude", "agents")):
+            if md.endswith(".md"):
+                shutil.copy(os.path.join(REPO_ROOT, ".claude", "agents", md),
+                            os.path.join(self.pkg, "agents", md))
+        shutil.copytree(os.path.join(REPO_ROOT, "skills"),
+                        os.path.join(self.pkg, "skills"))
+        shutil.copy(USER_SETUP, os.path.join(self.pkg, "scripts", "ccds-user-setup.sh"))
+        shutil.copy(os.path.join(SCRIPTS, "jit-claude.md"),
+                    os.path.join(self.pkg, "scripts", "jit-claude.md"))
+
+        # postinst hardcodes INSTALL_ROOT=/usr/share/ccds; point it at our stage.
+        with open(POSTINST, encoding="utf-8") as f:
+            src = f.read()
+        patched = src.replace('INSTALL_ROOT="/usr/share/ccds"',
+                              'INSTALL_ROOT="%s"' % self.pkg)
+        self.assertIn('INSTALL_ROOT="%s"' % self.pkg, patched,
+                      "postinst INSTALL_ROOT assignment changed shape")
+        self.postinst = os.path.join(self.root, "postinst")
+        with open(self.postinst, "w", encoding="utf-8", newline="\n") as f:
+            f.write(patched)
+
+        self.home = os.path.join(self.root, "home")
+        os.makedirs(self.home)
+        self.stubbin = os.path.join(self.root, "stubbin")
+        os.makedirs(self.stubbin)
+
+    def _stub(self, name, body):
+        path = os.path.join(self.stubbin, name)
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
+            f.write("#!/bin/bash\n" + body + "\n")
+        os.chmod(path, 0o755)
+
+    def _run(self, env_overrides):
+        env = {"HOME": self.home, "PATH": self.stubbin + os.pathsep + os.environ["PATH"]}
+        env.update(env_overrides)
+        return subprocess.run([BASH, self.postinst],
+                              capture_output=True, text=True, env=env)
+
+    def test_syntax_valid(self):
+        r = subprocess.run([BASH, "-n", POSTINST], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_identifiable_user_populates_home(self):
+        # runuser stub: "runuser -u USER -- bash SETUP ROOT" -> drop first 3 args,
+        # exec the rest in-process so setup runs against our fake $HOME.
+        self._stub("runuser", 'shift 3\nexec "$@"')
+        # Use the real current user so the postinst's `getent passwd` probe accepts
+        # the candidate; the runuser stub keeps execution in-process (no real drop).
+        r = self._run({"SUDO_USER": getpass.getuser()})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Running per-user setup", r.stdout)
+
+        agents = os.path.join(self.home, ".claude", "agents")
+        self.assertTrue(os.path.isdir(agents), r.stdout + r.stderr)
+        self.assertEqual(len([f for f in os.listdir(agents) if f.endswith(".md")]), 19)
+
+        skills = os.path.join(self.home, ".claude", "skills")
+        for name in GLOBAL_SKILLS:
+            self.assertTrue(os.path.isfile(os.path.join(skills, name, "SKILL.md")),
+                            "missing cross-cutting skill: " + name)
+
+        claude_md = read(os.path.join(self.home, ".claude", "CLAUDE.md"))
+        self.assertIn("# >>> ccds >>>", claude_md)
+        self.assertIn("# <<< ccds <<<", claude_md)
+
+    def test_headless_root_prints_instructions_and_no_op(self):
+        # No identifiable user: SUDO_USER/PKEXEC_UID unset, logname fails.
+        self._stub("logname", "exit 1")
+        r = self._run({})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("ccds setup", r.stdout)
+        # The bug under test: nothing must be silently half-installed, but also
+        # the install must not error out — ~/.claude stays untouched here.
+        self.assertFalse(os.path.isdir(os.path.join(self.home, ".claude", "agents")))
 
 
 if __name__ == "__main__":
