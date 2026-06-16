@@ -5,6 +5,20 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## v0.9.1 — 2026-06-16 — Fix: `.deb`/`.rpm` per-user setup
+
+### What changed
+
+Patch release fixing the Linux native packages (PR #17). The v0.9.0 (and earlier) `.deb`/`.rpm` only copied the 19 agents, cross-cutting skills, and the `~/.claude/CLAUDE.md` block when `$SUDO_USER` was set. Installing from a root shell, `sudo -i`, `gdebi`/GUI installers, Docker/CI, or unattended-upgrades left that variable empty, so the package **silently installed nothing into `~/.claude`** — the package looked installed (`ccds` on `PATH`) but Claude Code saw no agents or skills. Even when `$SUDO_USER` was set, `su - … || true` swallowed any failure, so a broken setup still reported success.
+
+### Fixes
+
+- `packaging/postinst` now probes `SUDO_USER` → `PKEXEC_UID` (polkit/GUI installers) → `logname` (login terminal) to identify the human user, validating each candidate against `passwd`; drops privileges with `runuser` (no PAM/login shell), falling back to `su -`; and **surfaces a non-zero setup exit instead of masking it**. When no user can be identified (truly headless installs) it prints clear `ccds setup` instructions — and the dispatcher's lazy first-run on `ccds sync`/`verify` remains the safety net.
+- `README.md` documents the `.deb`/`.rpm` install workflow and the per-user setup behavior (previously absent despite every release shipping both packages).
+- `tests/test_playbook_scripts.py` adds `TestDebPostinst` (3 tests, 15 total): stages the package library and drives the real `postinst` for both the identifiable-user path (asserts 19 agents + 11 cross-cutting skills + the `CLAUDE.md` block land in a fake `$HOME`) and the headless path (instructions + exit 0, nothing copied), using `PATH` stubs so it needs no root.
+
+No agent, skill, catalog, or marketplace content changed; this release is packaging-only. The ZIP installer and the plugin-marketplace channel were unaffected by the bug.
+
 ## v0.9.0 — 2026-06-12 — Native plugin marketplace, skill-voice rewrite, lint + tests
 
 ### What changed
