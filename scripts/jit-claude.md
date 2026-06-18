@@ -1,5 +1,8 @@
 # >>> ccds >>>
-# Managed by Claude Code Dev Studio. Edit via: ccds sync. Remove via: ccds uninstall
+# ⚠ ccds-managed block — do NOT edit between these markers. Everything here is
+# regenerated (your edits overwritten) on `ccds sync`/`ccds setup`. Put your own
+# instructions ABOVE or BELOW this block; that text is always preserved.
+# Update: ccds sync · Remove: ccds uninstall
 
 ## Claude Code Dev Studio
 
