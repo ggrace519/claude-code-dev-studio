@@ -5,6 +5,30 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## v0.9.2 — 2026-06-18 — Fix: warn against editing inside the ccds `CLAUDE.md` block
+
+### What changed
+
+Patch release rewording the header of the ccds-managed block injected into
+`~/.claude/CLAUDE.md` (PR #20, closes #19). The previous header — "Edit via:
+ccds sync" — read as an invitation to add personal instructions **inside** the
+markers. Everything between `# >>> ccds >>>` and `# <<< ccds <<<` is regenerated
+on every `ccds sync` / `ccds setup`, so edits placed there were silently
+overwritten on the next run.
+
+### Fixes
+
+- `scripts/jit-claude.md`: the block header now explicitly says **do not edit
+  between the markers** and directs users to put their own instructions above or
+  below the block, which is always preserved. The marker-aware injection logic is
+  unchanged — content outside the markers has always survived (verified across
+  every shipped version of `scripts/ccds-user-setup.sh`); this was a wording
+  footgun, not data loss.
+
+Documentation-only: no agent, skill, catalog, or marketplace content changed.
+Existing installs pick up the new header on their next `ccds update` followed by
+`ccds setup`/`sync`.
+
 ## v0.9.1 — 2026-06-16 — Fix: `.deb`/`.rpm` per-user setup
 
 ### What changed
