@@ -53,7 +53,7 @@ jobs:
           Write-Host "SHA256    : $actual"
 
       - name: Upload ZIP artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: zip-artifacts
           path: |
@@ -93,7 +93,7 @@ jobs:
           echo "RPM: $(du -h "$RPM" | cut -f1)  $RPM"
 
       - name: Upload package artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pkg-artifacts
           path: |
@@ -116,13 +116,13 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Download ZIP artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: zip-artifacts
           path: dist/
 
       - name: Download package artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: pkg-artifacts
           path: dist/
@@ -165,7 +165,7 @@ jobs:
           cat release-body.md
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name:               ${{ needs.build-zip.outputs.version }}
           name:                   ${{ needs.build-zip.outputs.version }}
