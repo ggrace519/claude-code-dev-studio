@@ -83,6 +83,21 @@ any coding project regardless of stack — the request they answer is "make the 
 
 ---
 
+## Unreleased — 2026-07-03 — feat: multi-harness export of the loop pack
+
+### Added
+
+- `scripts/export-harness.py --target cursor|agents-md`: exports the six `loop-*`
+  skills to foreign harness formats — Cursor project rules
+  (`.cursor/rules/<name>.mdc`, Agent-Requested form with the trigger description)
+  and a cross-tool `AGENTS.md` (Codex CLI and the AGENTS.md ecosystem). Bundled
+  `references/*.md` are inlined. Output to `dist/harness-export/<target>/`
+  (git-ignored). **Activation verified live**: Codex CLI, given the exported
+  AGENTS.md, cited `loop-verify` by name and quoted its iron law when asked to
+  claim an unverified fix. 3 structural pytest cases.
+
+---
+
 ## v0.9.2 — 2026-06-18 — Fix: warn against editing inside the ccds `CLAUDE.md` block
 
 ### What changed
