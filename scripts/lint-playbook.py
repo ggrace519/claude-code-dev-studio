@@ -23,6 +23,11 @@ This linter checks that what the files SAY is true:
   8. skill-voice       Skill bodies carry no agent-era language (persona,
                        ownership blocks, orchestrator choreography, per-skill
                        Output Format). See docs/skill-authoring.md.
+  9. process-skill     loop-* process skills carry the compliance layer:
+                       trigger-style description ("Use when/before/after ..."),
+                       exactly one '## Iron law' section, and a
+                       '## Rationalizations' table (ADR-0010,
+                       docs/skill-authoring.md "Process skills").
 
 Exit codes: 0 = pass (warnings allowed), 1 = one or more errors, 2 = config error.
 
@@ -182,6 +187,32 @@ def check_skill_voice():
                 err("skill-voice", f"skills/{d}: {label} — see docs/skill-authoring.md")
 
 
+# --- 9: process-skill layer (loop-* skills) -----------------------------------
+# Process skills encode work loops; the rules exist because wording is what
+# holds under pressure (docs/skill-authoring.md "Process skills", ADR-0010).
+PROCESS_PREFIX = "loop-"
+TRIGGER_RE = re.compile(r'\bUse (when|before|after|proactively)\b')
+
+
+def check_process_skills():
+    for d in skill_dirs():
+        if not d.startswith(PROCESS_PREFIX):
+            continue
+        content = read(os.path.join(SKILLS_DIR, d, "SKILL.md"))
+        fm = frontmatter(content)
+        desc = field(fm, "description") if fm else ""
+        if not TRIGGER_RE.search(desc):
+            err("process-skill",
+                f"skills/{d}: description is not trigger-style — needs a 'Use when/before/after …' clause")
+        body = re.sub(r'^---\s*\n.*?\n---', '', content, count=1, flags=re.DOTALL)
+        laws = len(re.findall(r'^## Iron law\s*$', body, re.MULTILINE))
+        if laws != 1:
+            err("process-skill",
+                f"skills/{d}: needs exactly one '## Iron law' section (found {laws}) — two laws is zero laws")
+        if not re.search(r'^## Rationalizations\s*$', body, re.MULTILINE):
+            err("process-skill", f"skills/{d}: missing the '## Rationalizations' table")
+
+
 # --- 5 + 6 + 7: descriptions and models --------------------------------------
 def check_descriptions_and_models():
     agent_desc_chars = 0
@@ -222,6 +253,7 @@ def main():
     check_catalog_fresh()
     check_urls()
     check_skill_voice()
+    check_process_skills()
     check_descriptions_and_models()
 
     for w in warnings:

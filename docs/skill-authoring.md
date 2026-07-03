@@ -89,6 +89,9 @@ The loop itself is the concrete artifact (rule 6 above): numbered steps an agent
 follow mechanically, with thresholds ("after 3 failed fixes", "two review rounds")
 rather than adverbs.
 
+All three rules are enforced as errors by `lint-playbook.py` (check 9,
+`process-skill`) — the same lint-as-ratchet treatment ADR-0009 gave the voice rules.
+
 ## Conversion status
 
 All 88 in-scope skills are converted (the two reference conversions

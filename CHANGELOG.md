@@ -29,6 +29,10 @@ any coding project regardless of stack — the request they answer is "make the 
 - Both installers ship the pack always-on (`GLOBAL_SKILLS` /
   `$Script:GlobalSkills`); `build-catalog.py` scopes the `loop-` prefix global;
   `lint-playbook.py` recognizes the prefix; CLAUDE.md prefix registry updated.
+- `lint-playbook.py` check 9 (`process-skill`): every `loop-*` skill must carry a
+  trigger-style description, exactly one `## Iron law`, and a `## Rationalizations`
+  table — the authoring rules become errors the day they become rules (5 new pytest
+  cases).
 
 ---
 

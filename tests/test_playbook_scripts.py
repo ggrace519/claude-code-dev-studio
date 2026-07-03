@@ -190,6 +190,55 @@ class TestLintPlaybook(FixtureCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("model-values", r.stdout)
 
+    LOOP_SKILL_BODY = """## Iron law
+
+**No completion claim without fresh evidence.**
+
+## Rationalizations
+
+| Excuse | Reality |
+|---|---|
+| "It compiled" | Stubs compile |
+"""
+
+    def write_loop_skill(self, description, body=None):
+        write(os.path.join(self.root, "skills", "loop-verify", "SKILL.md"),
+              SKILL_TMPL.format(name="loop-verify", description=description,
+                                body=body if body is not None else self.LOOP_SKILL_BODY))
+        self.regen_catalog()
+
+    def test_compliant_process_skill_passes(self):
+        self.write_loop_skill("Evidence gate. Use before claiming any task complete.")
+        r = self.lint()
+        self.assertEqual(r.returncode, 0, r.stdout)
+
+    def test_process_skill_missing_iron_law_fails(self):
+        self.write_loop_skill("Evidence gate. Use before claiming any task complete.",
+                              body="## Rationalizations\n\n| Excuse | Reality |\n|---|---|\n")
+        r = self.lint()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("process-skill", r.stdout)
+        self.assertIn("Iron law", r.stdout)
+
+    def test_process_skill_missing_rationalizations_fails(self):
+        self.write_loop_skill("Evidence gate. Use before claiming any task complete.",
+                              body="## Iron law\n\n**No claims without evidence.**\n")
+        r = self.lint()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("Rationalizations", r.stdout)
+
+    def test_process_skill_untriggered_description_fails(self):
+        self.write_loop_skill("Explains how to verify work with evidence.")
+        r = self.lint()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("trigger-style", r.stdout)
+
+    def test_domain_skill_not_held_to_process_rules(self):
+        # saas-billing has no iron law / rationalization table — that's fine.
+        r = self.lint()
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertNotIn("process-skill", r.stdout)
+
 
 @unittest.skipUnless(os.path.isfile(BUILD_MARKETPLACE),
                      "build-marketplace.py not on this branch yet")
