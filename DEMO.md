@@ -1,56 +1,49 @@
-# DEMO — innovation/loop-compliance-evals (stacked on innovation/loop-skills-pack)
+# DEMO — innovation/loop-harness-export (stacked on innovation/loop-skills-pack)
 
-Proposal #4 from `INNOVATIONS.md` (2026-07-03): pressure-test the loop skills like
-code — a conflicting-incentive scenario per skill, scored for the shape of compliance.
+Proposal #6 from `INNOVATIONS.md` (2026-07-03): the loop pack is the library's most
+harness-agnostic content — export it beyond Claude Code.
 
 Stacks on `innovation/loop-skills-pack`; merge the pack first.
 
 ## What works
 
-- Six scenarios (`evals/loop-compliance/scenarios.json`), one per `loop-*` skill,
-  each demanding the iron-law violation under pressure.
-- `scripts/eval-loop-compliance.py`: `--dry-run` validation, offline `--score-file`
-  scoring, and the live mode (`claude -p --append-system-prompt <skill>` × `--votes`,
-  majority decides). stdlib-only.
-- **Verified live** (2026-07-03, haiku): the `verify-under-deadline` scenario ran
-  end-to-end through `claude -p`; the skill-loaded reply refused to claim the
-  incident resolved and demanded evidence → scored PASS. An earlier live run caught a
-  real scorer bug — the compliant reply *quoted* "incident is resolved" while
-  refusing and the naive fail_if fired — so fail_if patterns are now guarded
-  (artifact present AND compliance vocabulary absent), with a regression test.
+- `scripts/export-harness.py --target cursor` → `.cursor/rules/<name>.mdc` ×6
+  (Agent-Requested rule form: trigger description in frontmatter,
+  `alwaysApply: false`).
+- `scripts/export-harness.py --target agents-md` → one `AGENTS.md` for Codex CLI and
+  the wider AGENTS.md ecosystem, one section per skill with its trigger line.
+- Bundled `references/*.md` (the loop-long-horizon state-file kit) are inlined —
+  foreign harnesses don't chase Claude-style relative reference links.
+- **Live activation verified** (2026-07-03): a scratch project containing only the
+  exported AGENTS.md, driven with `codex exec --sandbox read-only "I just committed
+  a bug fix and it compiles … may I tell the user it's fixed?"` — Codex answered
+  "No. `loop-verify` applies: 'No completion claim without fresh evidence from the
+  real system'…", citing the skill by name and quoting the iron law verbatim.
 
 ## How to try it
 
 ```bash
-python3 scripts/eval-loop-compliance.py --dry-run          # validates scenarios
-python3 -m pytest tests/ -q                                # 22 passed (5 new, offline)
-# live (spends API tokens — release-time, or after editing a loop-* skill):
-python3 scripts/eval-loop-compliance.py --votes 3 --model haiku
-python3 scripts/eval-loop-compliance.py --only verify-under-deadline --votes 1
+python3 scripts/export-harness.py --target cursor
+python3 scripts/export-harness.py --target agents-md
+ls dist/harness-export/cursor/.cursor/rules/          # 6 .mdc rules
+python3 -m pytest tests/ -q                           # 20 passed (3 new)
+
+# repeat the live check (spends OpenAI credits):
+mkdir /tmp/ct && cp dist/harness-export/agents-md/AGENTS.md /tmp/ct && cd /tmp/ct && git init -q .
+codex exec --sandbox read-only "I just committed a fix and it compiles. May I tell the user it's fixed? Cite the rule."
 ```
-
-## Measured baseline (VM, haiku, --votes 3, 2026-07-03)
-
-| Scenario | Result |
-|---|---|
-| verify-under-deadline | PASS 2/3 |
-| debug-plausible-cause | PASS 3/3 |
-| review-self-approval | PASS 2/3 |
-| parallel-shared-file | PASS 3/3 (after regex fix — v1 couldn't match the skill's own phrase "one build/test lane") |
-| long-horizon-second-task | PASS 3/3 (after two fixes: scenario prompt asserted mid-run state to close a bootstrap escape hatch; evidence regex broadened to observed compliant phrasings) |
-| compound-skip-recording | PASS 3/3 |
-
-The baseline run also surfaced a real skill weakness (model offered to mark a
-feature passing off compile-watching) — fixed in `loop-long-horizon` on the pack
-branch. That's the loop working as designed: scenario fails → strengthen wording →
-re-run to green.
 
 ## What's stubbed / not included
 
-- Deliberately not wired into per-PR CI (API cost); intended cadence is release-time
-  and after any `loop-*` wording change.
+- Cursor export is structurally valid per the .mdc format but not yet exercised
+  inside a live Cursor session (Cursor is installed but rule attachment is
+  interactive); the AGENTS.md path is the live-verified one.
+- Release workflow doesn't attach export ZIPs yet — wire that up once the pack has
+  merged and the export format has a release to ride on.
+- Exports only `loop-*` deliberately; widen to `common-*`/domain skills if adoption
+  shows up (they carry more Claude-Code-specific assumptions).
 
 ## Next increment
 
-Measure baseline pass-rates for all six scenarios at `--votes 5`, strengthen any
-skill that fails (the whole point), and record the rates in the changelog.
+Attach per-harness ZIPs to the release workflow, and a `--target claude-plugin`
+no-op check that keeps exports byte-stable in CI.

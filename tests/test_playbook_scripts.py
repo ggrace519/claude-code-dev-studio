@@ -402,6 +402,48 @@ class TestLoopComplianceEval(unittest.TestCase):
 
     def test_unknown_scenario_id_errors(self):
         r = self.score("no-such-scenario", "text")
+
+
+EXPORT_HARNESS = os.path.join(SCRIPTS, "export-harness.py")
+
+
+@unittest.skipUnless(os.path.isfile(EXPORT_HARNESS),
+                     "export-harness.py not on this branch yet")
+class TestExportHarness(unittest.TestCase):
+    """Structural tests for the loop-pack harness exporter. Live activation
+    was verified manually with Codex CLI reading the exported AGENTS.md
+    (2026-07-03); these tests guard the format."""
+
+    LOOP_SKILLS = ["loop-compound", "loop-debug", "loop-long-horizon",
+                   "loop-parallel", "loop-review", "loop-verify"]
+
+    def setUp(self):
+        self.out = tempfile.mkdtemp(prefix="ccds-export-test-")
+        self.addCleanup(shutil.rmtree, self.out, ignore_errors=True)
+
+    def test_cursor_export_shape(self):
+        r = run(EXPORT_HARNESS, "--target", "cursor", REPO_ROOT, "--out", self.out)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        rules = os.path.join(self.out, ".cursor", "rules")
+        self.assertEqual(sorted(os.listdir(rules)),
+                         [f"{n}.mdc" for n in self.LOOP_SKILLS])
+        mdc = read(os.path.join(rules, "loop-verify.mdc"))
+        self.assertTrue(mdc.startswith("---\ndescription: "), mdc[:60])
+        self.assertIn("alwaysApply: false", mdc)
+        self.assertIn("## Iron law", mdc)
+
+    def test_agents_md_export_shape(self):
+        r = run(EXPORT_HARNESS, "--target", "agents-md", REPO_ROOT, "--out", self.out)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        content = read(os.path.join(self.out, "AGENTS.md"))
+        for name in self.LOOP_SKILLS:
+            self.assertIn(f"## {name}", content)
+        # bundled reference must be inlined, not left as a dangling link
+        self.assertIn("feature_list.json", content)
+        self.assertNotIn("](references/", content)
+
+    def test_unknown_target_errors(self):
+        r = run(EXPORT_HARNESS, "--target", "vim", REPO_ROOT, "--out", self.out)
         self.assertEqual(r.returncode, 2)
 
 
