@@ -7,6 +7,13 @@
 # so the model keeps working; when it passes, the turn ends normally. Remove
 # the file to disarm. Claude Code's built-in consecutive-block cap
 # (CLAUDE_CODE_STOP_HOOK_BLOCK_CAP, default 8) is the runaway backstop.
+#
+# Headless runs: in `claude -p` the default permission mode denies the tools
+# the model needs to SATISFY the gate (write a file, run the fix), so it gets
+# blocked to the cap and the run ends with an empty printed result. Pass a
+# permission mode that allows the check to be satisfied, e.g.
+#   claude -p "..." --permission-mode acceptEdits
+# (measured live against the v0.10.0 GitHub-published plugin, 2026-07-03).
 set -u
 
 cat > /dev/null  # drain the hook's stdin JSON; the gate needs none of it
