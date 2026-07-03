@@ -5,31 +5,39 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
-## Unreleased — 2026-07-03 — fix: ccds.ps1 error paths now exit 2 as documented
+## v0.10.1 — 2026-07-03 — Windows parity: `ccds loop init` twin + dispatcher exit-code fix
 
-### Fixed
+### What changed
 
-- All six `Write-Error "..."; exit 2` paths in `bin/ccds.ps1` (unknown command,
-  `verify` without agents, `lint` prerequisites, sync-script resolution, the
-  top-level catch) actually exited **1**: under `$ErrorActionPreference='Stop'`
-  a bare `Write-Error` is terminating, so the `exit 2` was dead code and the
-  PowerShell dispatcher disagreed with the bash twin on every error path.
-  Now `-ErrorAction Continue` at each site; measured before/after with real
-  Windows PowerShell 5.1 (1→2 on both testable paths, happy paths unchanged).
-  Closes #33; found while building the `loop init` twin.
-
----
-
-## Unreleased — 2026-07-03 — feat: PowerShell twin for `ccds loop init`
+Patch release completing the v0.10.0 loop tooling on Windows and fixing a
+dispatcher contract bug found while building it (PRs #34, #36; also ships the
+post-release verification notes from #35).
 
 ### Added
 
-- `bin/ccds.ps1` gains the `loop init` subcommand (Windows parity for the
-  v0.10.0 scaffolder): same GNU-style `--target`/`--dry-run` flags, same
-  refuse-overwrite behavior (exit 2), and byte-identical `.loop/` templates
-  (LF, no BOM — non-ASCII injected via char codes so PS 5.1's ANSI reading of
-  BOM-less scripts can't mangle them). Verified on Windows PowerShell 5.1
-  against the bash output with `cmp`. Completion script updated.
+- **`ccds loop init` in PowerShell** (`bin/ccds.ps1`): same GNU-style
+  `--target`/`--dry-run` flags, same refuse-overwrite behavior (exit 2), and
+  **byte-identical** `.loop/` templates to the bash command (LF, no BOM;
+  non-ASCII injected via char codes so PS 5.1's ANSI reading of BOM-less
+  scripts can't mangle it). Verified on Windows PowerShell 5.1 with `cmp`
+  against bash output. Completion script updated. (#34)
+
+### Fixed
+
+- **ccds.ps1 error paths now exit 2 as documented** (closes #33): under
+  `$ErrorActionPreference='Stop'` a bare `Write-Error` is terminating, so all
+  six `Write-Error; exit 2` paths (unknown command, `verify` without agents,
+  `lint` prerequisites, sync-script resolution, top-level catch) actually
+  exited 1 — the PowerShell dispatcher disagreed with the bash twin on every
+  error path. Measured 1→2 on real PowerShell 5.1; happy paths unchanged. (#36)
+
+### Docs
+
+- Stop-gate header documents the headless footgun: `claude -p` with an armed
+  gate needs a permission mode that lets the model satisfy the check (e.g.
+  `--permission-mode acceptEdits`), otherwise it blocks to the cap and prints
+  an empty result. Cursor `.mdc` export recorded as activation-verified live
+  (Cursor 3.2.16). (#35)
 
 ---
 
