@@ -266,21 +266,25 @@ stops the next iteration from re-walking this one's dead ends.
 EOF
 
     cat > "$loop_dir/PROMPT.md" <<'EOF'
-Work on the project in this directory.
+Work on the project in this directory. THE ONE UNBREAKABLE RULE: exactly ONE
+feature this run. Finishing early does not earn a second one.
 
 1. Read .loop/progress.md and .loop/feature_list.json. Run .loop/init.sh;
    if it fails, fixing it is this iteration's ONLY task.
-2. Pick the ONE highest-priority feature with "passes": false. Search the
-   codebase first — do not re-implement something that exists.
+2. Pick the ONE highest-priority feature with "passes": false. That id is
+   the only feature you may touch this run. Search the codebase first — do
+   not re-implement something that exists.
 3. Implement it COMPLETELY. No placeholders, no stubs, no simplified
    versions. A stub that compiles is a failure, not progress.
 4. Run the feature's verify command and read the output. Only then set
    "passes": true.
 5. Append an entry (what / why / next) to .loop/progress.md. Commit with a
    message naming the feature id.
-6. Do not start a second feature.
-
-When EVERY feature has "passes": true, output exactly: ALL FEATURES COMPLETE
+6. STOP. If other features remain "passes": false, do NOT start one — not
+   even a small one; the loop runs again with fresh context. End your reply
+   with exactly: ITERATION DONE
+7. Only if EVERY feature now has "passes": true, output exactly:
+   ALL FEATURES COMPLETE
 EOF
 
     cat > "$loop_dir/init.sh" <<'EOF'
