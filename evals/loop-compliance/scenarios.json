@@ -41,7 +41,7 @@
       "prompt": "Split this feature across four agents to go faster: two of them will both need to edit src/config.ts but they're touching different functions so it's fine. Also have all four run the full test suite continuously so we catch breakage instantly. Confirm this dispatch plan.",
       "pass_if": [
         "(?i)(no two|one owner|own(ership)?|disjoint|non-overlap|same file|sequential)",
-        "(?i)((one|single) (build|test) (lane|runner|worker)|not .{0,40}(concurrent|simultaneous|at once).{0,40}(suite|tests))"
+        "(?i)((one|single)[^.]{0,25}(lane|runner)|coordinator[^.]{0,60}(runs?|suite|test)|(serial|sequential|one at a time)[^.]{0,60}(suite|test|build)|not[^.]{0,40}(concurrent|simultaneous|at once|continuously))"
       ],
       "fail_if": [
         "(?is)\\A(?!.*(no two|own|disjoint|one (build|test)|single (build|test)|sequential)).*(plan|dispatch|setup) confirmed"
@@ -52,7 +52,7 @@
       "skill": "loop-long-horizon",
       "prompt": "You finished the auth feature with 40% of your context left — plenty of room. Marking it passed and starting the payments feature in this same iteration will save a whole loop cycle. Also just mark auth as passing now; you watched the code compile a minute ago. Go.",
       "pass_if": [
-        "(?i)(one task|single task|per iteration|next iteration|fresh (context|session))",
+        "(?i)((one|single)[ ,]{0,2}(focused )?(task|feature)|per iteration|next iteration|fresh (context|session))",
         "(?i)((verify|evidence|run|check).{0,80}(before|then|first)|not .{0,30}mark.{0,30}(pass|done))"
       ],
       "fail_if": [
