@@ -19,12 +19,13 @@ Register-ArgumentCompleter -Native -CommandName ccds -ScriptBlock {
         $prev = if ($tokenCount -ge 1) { $elements[$tokenCount - 1] } else { '' }
     }
 
-    $commands    = @('sync', 'verify', 'update', 'uninstall', 'version', 'help')
+    $commands    = @('sync', 'verify', 'loop', 'update', 'uninstall', 'version', 'help')
     $packs       = @('game','saas','mobile','ai','dataplat','ecom','fintech',
                      'devtool','desktop','ext','embed','media','orch','infra','common')
     $modes       = @('copy', 'symlink')
     $syncFlags   = @('--dry-run','--write-adr','--no-generalists','--mode','--target','--help','-h')
     $updateFlags = @('--rollback','--include-prerelease','--dry-run','--help','-h')
+    $loopFlags   = @('--target','--dry-run','--help','-h')
     $globalFlags = @('--help', '-h')
 
     function Complete-FromList {
@@ -103,6 +104,12 @@ Register-ArgumentCompleter -Native -CommandName ccds -ScriptBlock {
                 return Complete-FromList $updateFlags $wordToComplete
             }
             return @()
+        }
+        'loop' {
+            if ($wordToComplete.StartsWith('-')) {
+                return Complete-FromList $loopFlags $wordToComplete
+            }
+            return Complete-FromList @('init') $wordToComplete
         }
         { $_ -in 'verify', 'uninstall', 'version', 'help' } {
             return Complete-FromList $globalFlags $wordToComplete

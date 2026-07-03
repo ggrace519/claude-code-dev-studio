@@ -27,6 +27,7 @@
     ccds sync game --dry-run
     ccds sync --clean
     ccds verify
+    ccds loop init
     ccds update
     ccds version
     ccds help
@@ -105,6 +106,12 @@ COMMANDS
                        (skill cross-refs, catalog freshness, URL/description
                        conventions). Requires a repo clone (dev layout).
 
+  loop init            Scaffold the long-horizon loop state-file kit into .\.loop\
+                       (feature_list.json, progress.md, PROMPT.md, init.sh -- see the
+                       loop-long-horizon skill)
+      --target <path>       Target project path (default: current directory)
+      --dry-run             Preview without writing
+
   update [tag]         Download and install a release (default: latest stable)
       --rollback            Restore the previous installed version
       --include-prerelease  Pick up release candidates when resolving 'latest'
@@ -121,6 +128,7 @@ EXAMPLES
   ccds sync game --dry-run
   ccds sync --clean
   ccds verify
+  ccds loop init
 
 LAYOUT
   Install location : $installRoot
@@ -262,6 +270,141 @@ function Invoke-LintCommand {
 }
 
 # ---------------------------------------------------------------------------
+# Command: loop (scaffold the long-horizon loop state-file kit -- loop-long-horizon skill)
+# ---------------------------------------------------------------------------
+function Write-LoopFile {
+    param([string]$Path, [string]$Content)
+    # Templates must stay byte-identical to the bash twin (bin/ccds.sh cmd_loop):
+    # LF line endings, UTF-8 without BOM (a BOM breaks frontmatter parsing, ADR-0001).
+    # Normalize CRLF that autocrlf checkouts can bake into the here-strings, and
+    # append the trailing newline the bash heredocs produce.
+    $lf = $Content.Replace("`r`n", "`n") + "`n"
+    [System.IO.File]::WriteAllText($Path, $lf, [System.Text.UTF8Encoding]::new($false))
+}
+
+function Invoke-LoopCommand {
+    param([hashtable]$Opts)
+
+    $sub = if ($Opts.Positional.Count -ge 1) { $Opts.Positional[0] } else { '<none>' }
+    # -ErrorAction Continue: under $ErrorActionPreference='Stop' a plain Write-Error
+    # terminates the script with exit 1 before `exit 2` runs; the bash twin (and the
+    # test suite) contract is exit 2 for loop usage/refusal errors.
+    if ($sub -ne 'init') {
+        Write-Error "unknown loop subcommand '$sub'. Usage: ccds loop init [--target <path>] [--dry-run]" -ErrorAction Continue
+        exit 2
+    }
+
+    $target  = if ($Opts.Target) { $Opts.Target } else { (Get-Location).Path }
+    $loopDir = Join-Path $target '.loop'
+
+    if (Test-Path -LiteralPath $loopDir) {
+        Write-Error "$loopDir already exists -- refusing to overwrite an existing kit. Remove or rename it first if you really want to re-init." -ErrorAction Continue
+        exit 2
+    }
+    if ($Opts.DryRun) {
+        Write-Host "DRY RUN -- would create $loopDir\ with feature_list.json, progress.md, PROMPT.md, init.sh"
+        return
+    }
+
+    New-Item -ItemType Directory -Path $loopDir -Force | Out-Null
+
+    # Non-ASCII characters are injected via [char] codes: PowerShell 5.1 reads
+    # BOM-less scripts as ANSI, which would mangle literal em-dashes/middle dots
+    # in the here-strings (and the repo forbids a BOM, ADR-0001).
+    $emDash = [string][char]0x2014   # em dash
+    $midDot = [string][char]0x00B7   # middle dot
+
+    $featureListJson = @'
+{
+  "features": [
+    {
+      "id": "example-feature",
+      "description": "Replace me: one observable behavior, phrased so its absence is detectable",
+      "verify": "replace me: the command that proves this feature works",
+      "priority": 1,
+      "passes": false
+    }
+  ]
+}
+'@
+    Write-LoopFile -Path (Join-Path $loopDir 'feature_list.json') -Content $featureListJson
+
+    $progressMd = @'
+# Loop progress log
+
+Append-only. One entry per iteration, newest last. The "why" line is the one that
+stops the next iteration from re-walking this one's dead ends.
+
+<!-- entry template:
+## <date> <<MIDDOT>> iteration <n> <<MIDDOT>> <feature-id>
+- Done: <what, with the verify evidence>
+- Why it took a detour: <the non-obvious part>
+- Next: <feature-id or note>
+-->
+'@
+    Write-LoopFile -Path (Join-Path $loopDir 'progress.md') -Content $progressMd.Replace('<<MIDDOT>>', $midDot)
+
+    $promptMd = @'
+Work on the project in this directory. THE ONE UNBREAKABLE RULE: exactly ONE
+feature this run. Finishing early does not earn a second one.
+
+1. Read .loop/progress.md and .loop/feature_list.json. Run .loop/init.sh;
+   if it fails, fixing it is this iteration's ONLY task.
+2. Pick the ONE highest-priority feature with "passes": false. That id is
+   the only feature you may touch this run. Search the codebase first <<EMDASH>> do
+   not re-implement something that exists.
+3. Implement it COMPLETELY. No placeholders, no stubs, no simplified
+   versions. A stub that compiles is a failure, not progress.
+4. Run the feature's verify command and read the output. Only then set
+   "passes": true.
+5. Append an entry (what / why / next) to .loop/progress.md. Commit with a
+   message naming the feature id.
+6. STOP. If other features remain "passes": false, do NOT start one <<EMDASH>> not
+   even a small one; the loop runs again with fresh context. End your reply
+   with exactly: ITERATION DONE
+7. Only if EVERY feature now has "passes": true, output exactly:
+   ALL FEATURES COMPLETE
+'@
+    Write-LoopFile -Path (Join-Path $loopDir 'PROMPT.md') -Content $promptMd.Replace('<<EMDASH>>', $emDash)
+
+    $initSh = @'
+#!/usr/bin/env bash
+# Health check: must prove the project still BUILDS and minimally RUNS.
+# Replace the placeholders with this project's real commands.
+set -euo pipefail
+echo "TODO: replace with this project's build command" >&2
+echo "TODO: replace with this project's smoke check (the app actually serves/runs)" >&2
+exit 1
+'@
+    Write-LoopFile -Path (Join-Path $loopDir 'init.sh') -Content $initSh
+    # Exec bit: best effort on Unix pwsh only; meaningless on Windows / NTFS mounts.
+    if ($PSVersionTable.PSEdition -eq 'Core' -and -not $IsWindows) {
+        & chmod +x (Join-Path $loopDir 'init.sh') 2>$null
+    }
+
+    $nextSteps = @'
+==> Loop kit created in <<LOOPDIR>>
+
+Next steps:
+  1. Fill .loop/feature_list.json with every unit of work (all "passes": false).
+  2. Make .loop/init.sh actually build + smoke-check this project.
+  3. Run the loop, capped -- never unbounded:
+
+     for i in $(seq 1 40); do
+       cat .loop/PROMPT.md | claude -p --dangerously-skip-permissions && \
+         grep -q '"passes": false' .loop/feature_list.json || break
+     done
+
+     or with the ralph-wiggum plugin:
+     /ralph-loop "$(cat .loop/PROMPT.md)" --max-iterations 40 --completion-promise "ALL FEATURES COMPLETE"
+
+  Unattended runs belong in a sandbox (container/VM/worktree). See the
+  loop-long-horizon skill for the full discipline.
+'@
+    Write-Host $nextSteps.Replace('<<LOOPDIR>>', $loopDir)
+}
+
+# ---------------------------------------------------------------------------
 # Command: update / uninstall (delegate to Install-Playbook.ps1 fetched from main)
 # ---------------------------------------------------------------------------
 $Script:InstallerUrlPs1 = 'https://raw.githubusercontent.com/ggrace519/claude-code-dev-studio/main/Install-Playbook.ps1'
@@ -373,6 +516,7 @@ switch ($Command) {
     'sync'       { Invoke-SyncCommand -Opts $opts }
     'verify'     { Invoke-VerifyCommand -Opts $opts }
     'lint'       { Invoke-LintCommand }
+    'loop'       { Invoke-LoopCommand -Opts $opts }
     'update'     { Invoke-UpdateCommand -Opts $opts }
     'uninstall'  { Invoke-UninstallCommand }
     default {
