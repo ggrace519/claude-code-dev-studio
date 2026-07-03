@@ -5,6 +5,19 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## Unreleased — 2026-07-03 — feat: PowerShell twin for `ccds loop init`
+
+### Added
+
+- `bin/ccds.ps1` gains the `loop init` subcommand (Windows parity for the
+  v0.10.0 scaffolder): same GNU-style `--target`/`--dry-run` flags, same
+  refuse-overwrite behavior (exit 2), and byte-identical `.loop/` templates
+  (LF, no BOM — non-ASCII injected via char codes so PS 5.1's ANSI reading of
+  BOM-less scripts can't mangle them). Verified on Windows PowerShell 5.1
+  against the bash output with `cmp`. Completion script updated.
+
+---
+
 ## v0.10.0 — 2026-07-03 — The `loop-` pack: agent-loop process skills, enforced and measured
 
 ### What changed
