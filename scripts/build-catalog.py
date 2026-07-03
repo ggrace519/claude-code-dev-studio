@@ -6,7 +6,7 @@ Indexes two artifact kinds (ADR-0007):
   - agents:  .claude/agents/*.md            (kind=agent,  scope=global, always loaded)
   - skills:  skills/<name>/SKILL.md         (kind=skill,  scope=global|project)
 
-Cross-cutting skills (common-*, playbook-conventions, sync-agents, api-design,
+Cross-cutting skills (common-*, loop-*, playbook-conventions, sync-agents, api-design,
 ux-design, security-checklist, code-review-checklist) are scope=global (installed once
 to ~/.claude/skills/). Domain skills are scope=project (JIT-copied per project).
 
@@ -89,7 +89,8 @@ def skill_entries():
         if fm is None:
             print(f"Warning: no frontmatter in skills/{name}/SKILL.md", file=sys.stderr)
             continue
-        scope = "global" if (name in GLOBAL_META_SKILLS or name.startswith("common-")) else "project"
+        scope = "global" if (name in GLOBAL_META_SKILLS
+                             or name.startswith(("common-", "loop-"))) else "project"
         out.append({
             "name": field(fm, "name") or name,
             "pack": pack_of(name),

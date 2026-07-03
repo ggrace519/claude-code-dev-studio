@@ -106,6 +106,17 @@ class TestBuildCatalog(FixtureCase):
         self.assertEqual(by_name["saas-billing"]["scope"], "project")
         self.assertEqual(by_name["playbook-conventions"]["scope"], "global")
 
+    def test_loop_prefix_is_global_scope(self):
+        write(os.path.join(self.root, "skills", "loop-verify", "SKILL.md"),
+              SKILL_TMPL.format(name="loop-verify",
+                                description="Evidence-before-done gate. Use before claiming a task complete.",
+                                body="Run the real check, read the output, then claim."))
+        self.regen_catalog()
+        cat = json.loads(read(os.path.join(self.root, "catalog.json")))
+        by_name = {e["name"]: e for e in cat}
+        self.assertEqual(by_name["loop-verify"]["scope"], "global")
+        self.assertEqual(by_name["loop-verify"]["pack"], "core")
+
     def test_deterministic(self):
         first = read(os.path.join(self.root, "catalog.json"))
         self.regen_catalog()
@@ -195,12 +206,25 @@ class TestBuildMarketplace(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         m = json.loads(read(os.path.join(REPO_ROOT, ".claude-plugin", "marketplace.json")))
         self.assertEqual(m["name"], "ccds")
-        self.assertEqual(len(m["plugins"]), 15)
+        self.assertEqual(len(m["plugins"]), 16)
         for p in m["plugins"]:
             self.assertNotIn("version", p, "default tree must be unversioned")
             pdir = os.path.join(REPO_ROOT, p["source"].lstrip("./"))
             manifest = json.loads(read(os.path.join(pdir, ".claude-plugin", "plugin.json")))
             self.assertNotIn("version", manifest, p["name"])
+
+    def test_loops_plugin_is_skills_only_workflow_pack(self):
+        r = run(BUILD_MARKETPLACE, REPO_ROOT)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        m = json.loads(read(os.path.join(REPO_ROOT, ".claude-plugin", "marketplace.json")))
+        loops = next(p for p in m["plugins"] if p["name"] == "ccds-loops")
+        self.assertEqual(loops["category"], "workflow")
+        pdir = os.path.join(REPO_ROOT, "plugins", "ccds-loops")
+        self.assertFalse(os.path.isdir(os.path.join(pdir, "agents")),
+                         "loop pack is skills-only (ADR-0010)")
+        shipped = sorted(os.listdir(os.path.join(pdir, "skills")))
+        self.assertEqual(shipped, ["loop-compound", "loop-debug", "loop-long-horizon",
+                                   "loop-parallel", "loop-review", "loop-verify"])
 
     def test_explicit_version_pins_plugins(self):
         try:
@@ -226,7 +250,8 @@ GLOBAL_SKILLS = (
     "playbook-conventions", "sync-agents", "api-design", "ux-design",
     "security-checklist", "code-review-checklist", "common-a11y",
     "common-i18n", "common-privacy", "common-notifications",
-    "common-product-analytics",
+    "common-product-analytics", "loop-verify", "loop-debug", "loop-review",
+    "loop-parallel", "loop-long-horizon", "loop-compound",
 )
 
 

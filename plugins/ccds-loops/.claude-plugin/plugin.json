@@ -1,0 +1,10 @@
+{
+  "name": "ccds-loops",
+  "description": "Transferable agent-loop process skills: verification, root-cause debugging, adversarial review, parallel dispatch, long-horizon runs, and compounding. Skills-only — works alongside any stack or pack.",
+  "author": {
+    "name": "Greg Grace",
+    "email": "contact@519lab.com"
+  },
+  "homepage": "https://github.com/ggrace519/claude-code-dev-studio",
+  "license": "PolyForm-Noncommercial-1.0.0"
+}
