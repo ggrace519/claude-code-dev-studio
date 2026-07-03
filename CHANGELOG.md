@@ -5,6 +5,33 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## Unreleased — 2026-07-03 — feat: `loop-` pack — six transferable agent-loop process skills
+
+### What changed
+
+Added a new cross-cutting skill family encoding agent work loops (ADR-0010), the
+library's first process-knowledge pack: `loop-verify` (evidence-before-done gate),
+`loop-debug` (root-cause loop with hypothesis ledger), `loop-review` (adversarial
+fresh-context review loop), `loop-parallel` (parallel dispatch with file-ownership
+discipline), `loop-long-horizon` (multi-session/unattended loop kit, with bundled
+state-file templates in `references/state-files.md`), and `loop-compound`
+(corrections → permanent rules/tests/ADRs). Why it matters: these loops transfer to
+any coding project regardless of stack — the request they answer is "make the agent
+*work* well, not just *know* things."
+
+### Added
+
+- `skills/loop-*` ×6, written to ADR-0009 voice plus new process-skill rules
+  (trigger-style description, one iron law, rationalization table) documented in
+  `docs/skill-authoring.md`.
+- `ccds-loops` marketplace plugin (skills-only, category `workflow`) — installable
+  standalone via `/plugin install ccds-loops@ccds`.
+- Both installers ship the pack always-on (`GLOBAL_SKILLS` /
+  `$Script:GlobalSkills`); `build-catalog.py` scopes the `loop-` prefix global;
+  `lint-playbook.py` recognizes the prefix; CLAUDE.md prefix registry updated.
+
+---
+
 ## v0.9.2 — 2026-06-18 — Fix: warn against editing inside the ccds `CLAUDE.md` block
 
 ### What changed

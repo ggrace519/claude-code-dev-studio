@@ -141,6 +141,12 @@ $Script:GlobalSkills = @(
     'common-privacy'
     'common-notifications'
     'common-product-analytics'
+    'loop-verify'
+    'loop-debug'
+    'loop-review'
+    'loop-parallel'
+    'loop-long-horizon'
+    'loop-compound'
 )
 
 # ---------------------------------------------------------------------------

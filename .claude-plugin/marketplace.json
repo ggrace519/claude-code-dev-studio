@@ -20,6 +20,17 @@
       ]
     },
     {
+      "name": "ccds-loops",
+      "source": "./plugins/ccds-loops",
+      "description": "Transferable agent-loop process skills: verification, root-cause debugging, adversarial review, parallel dispatch, long-horizon runs, and compounding. Skills-only — works alongside any stack or pack.",
+      "category": "workflow",
+      "tags": [
+        "ccds",
+        "playbook",
+        "loops"
+      ]
+    },
+    {
       "name": "ccds-ai",
       "source": "./plugins/ccds-ai",
       "description": "AI / LLM application domain specialist. Ships the ai-architect agent and 6 ai-* skills it composes.",

@@ -672,6 +672,54 @@
     "description": "SRE specialist. Owns SLOs, error budgets, incident response, postmortems, on-call rotation, and reliability engineering practice. Auto-invoked when setting up SLOs, responding to incidents, or improving reliability."
   },
   {
+    "name": "loop-compound",
+    "pack": "core",
+    "kind": "skill",
+    "scope": "global",
+    "model": "",
+    "description": "Compounding loop. Use after any user correction, review finding, bug postmortem, or second occurrence of a mistake — write the learning into a permanent home (rule, skill, test, ADR, hook) so the next session doesn't repeat it."
+  },
+  {
+    "name": "loop-debug",
+    "pack": "core",
+    "kind": "skill",
+    "scope": "global",
+    "model": "",
+    "description": "Root-cause debugging loop. Use when a bug, failing test, or unexpected behavior appears and the cause is not yet proven — before proposing any fix, and again whenever a previous fix did not stick."
+  },
+  {
+    "name": "loop-long-horizon",
+    "pack": "core",
+    "kind": "skill",
+    "scope": "global",
+    "model": "",
+    "description": "Long-horizon loop kit. Use when a task will outlive one context window — unattended runs, multi-session features, or any \"keep going until it's all done\" request; sets up durable state files and a one-task-per-iteration loop."
+  },
+  {
+    "name": "loop-parallel",
+    "pack": "core",
+    "kind": "skill",
+    "scope": "global",
+    "model": "",
+    "description": "Parallel dispatch loop. Use when work splits into 3 or more independent pieces — scope non-overlapping file ownership per worker, keep one build/test lane as backpressure, and merge through a single owner."
+  },
+  {
+    "name": "loop-review",
+    "pack": "core",
+    "kind": "skill",
+    "scope": "global",
+    "model": "",
+    "description": "Adversarial review loop. Use when an implementation is ready for review before merge — dispatch a fresh-context reviewer on the diff and criteria, gate on verdicts, and iterate fixes until no blockers remain."
+  },
+  {
+    "name": "loop-verify",
+    "pack": "core",
+    "kind": "skill",
+    "scope": "global",
+    "model": "",
+    "description": "Evidence-before-done gate. Use before claiming any task complete, fixed, or working — run the real check, read the output, then claim; also use when reporting the status of tests, builds, or deploys."
+  },
+  {
     "name": "media-ad-insertion",
     "pack": "media",
     "kind": "skill",

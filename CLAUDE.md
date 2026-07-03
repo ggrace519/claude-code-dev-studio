@@ -16,7 +16,7 @@ its `<pack>-*` skills in a single coherent context. See `DECISIONS.md` ADR-0007.
 | Layer | Location | Loaded | Notes |
 |---|---|---|---|
 | 19 agents | `~/.claude/agents/` | always (session start) | 14 domain + 5 core; ~850 tokens of descriptions |
-| Cross-cutting skills | `~/.claude/skills/` | descriptions always; body JIT | `playbook-conventions`, `api-design`, `ux-design`, `security-checklist`, `code-review-checklist`, `common-*` |
+| Cross-cutting skills | `~/.claude/skills/` | descriptions always; body JIT | `playbook-conventions`, `api-design`, `ux-design`, `security-checklist`, `code-review-checklist`, `common-*`, `loop-*` |
 | Domain skills | `~/.claude/playbook/skills/` → `.claude/skills/` | per project (JIT) | `<pack>-*`; copied in by the `sync-agents` skill |
 | Index | `~/.claude/playbook/catalog.json` | read during activation | `name, pack, kind, scope, model, description` |
 
@@ -85,9 +85,11 @@ should always be deployable.
 Each domain agent's body lists the skills it pulls. The full, authoritative list of
 skills (with triggers) is `catalog.json` — do not duplicate it here. Cross-cutting
 skills available everywhere: `playbook-conventions` (output/handoff/ADR format),
-`api-design`, `ux-design`, `security-checklist`, `code-review-checklist`, and the
+`api-design`, `ux-design`, `security-checklist`, `code-review-checklist`, the
 `common-*` set (`common-a11y`, `common-i18n`, `common-privacy`,
-`common-notifications`, `common-product-analytics`).
+`common-notifications`, `common-product-analytics`), and the `loop-*` set of
+agent-loop process skills (`loop-verify`, `loop-debug`, `loop-review`,
+`loop-parallel`, `loop-long-horizon`, `loop-compound` — ADR-0010).
 
 ### Composition rules
 
@@ -100,8 +102,9 @@ skills available everywhere: `playbook-conventions` (output/handoff/ADR format),
 ### Prefix registry
 
 `game-`, `saas-`, `mobile-`, `ai-`, `dataplat-`, `ecom-`, `fintech-`, `devtool-`,
-`desktop-`, `ext-`, `embed-`, `media-`, `orch-`, `infra-`, and `common-` (cross-archetype
-skills only — no `common` domain agent).
+`desktop-`, `ext-`, `embed-`, `media-`, `orch-`, `infra-`, `common-` (cross-archetype
+skills only — no `common` domain agent), and `loop-` (cross-cutting agent-loop process
+skills — no domain agent; skills-only, like `common-`).
 
 ---
 

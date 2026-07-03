@@ -96,7 +96,7 @@ def skill_dirs():
 def check_skill_refs():
     skills = set(skill_dirs())
     agents = {f[:-3] for f in agent_files()}
-    prefix_re = re.compile(r'^(' + '|'.join(sorted(PACKS)) + r'|common)-')
+    prefix_re = re.compile(r'^(' + '|'.join(sorted(PACKS)) + r'|common|loop)-')
 
     for fname in agent_files():
         body = read(os.path.join(AGENTS_DIR, fname))

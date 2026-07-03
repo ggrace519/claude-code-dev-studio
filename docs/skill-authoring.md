@@ -67,6 +67,28 @@ description: <unchanged routing sentence>
 output/ADR format: `playbook-conventions`*
 ```
 
+## Process skills (`loop-*`) — additional rules
+
+The `loop-*` pack (ADR-0010) encodes agent work loops, not domain knowledge. Process
+skills follow the template above **plus** three requirements borrowed from the most
+effective process-skill libraries (superpowers' compliance findings — wording changes
+moved compliance 33%→72%):
+
+1. **Trigger-style description.** The description says *when* to invoke, never *what
+   the skill contains* — "what" descriptions cause the model to claim the skill and
+   improvise without reading it. Lead with the artifact ("Evidence-before-done gate."),
+   then "Use when/before …".
+2. **One iron law.** An `## Iron law` section with a single bright-line rule in bold.
+   Bright lines work because they eliminate case-by-case rationalization; two laws is
+   zero laws.
+3. **A rationalization table.** A `## Rationalizations` section pre-empting the excuses
+   the model will generate under pressure ("just this once", "it's trivial"), each with
+   the one-line reality. This is the section that holds when incentives conflict.
+
+The loop itself is the concrete artifact (rule 6 above): numbered steps an agent can
+follow mechanically, with thresholds ("after 3 failed fixes", "two review rounds")
+rather than adverbs.
+
 ## Conversion status
 
 All 88 in-scope skills are converted (the two reference conversions

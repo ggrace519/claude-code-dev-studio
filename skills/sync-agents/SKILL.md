@@ -13,8 +13,9 @@ and those skills load only when present in the project. This flow copies the rel
 ones into `./.claude/skills/`.
 
 Cross-cutting skills (`playbook-conventions`, `api-design`, `ux-design`,
-`security-checklist`, `code-review-checklist`, and the `common-*` set) are installed once
-in `~/.claude/skills/` and are always available — do not copy them per project.
+`security-checklist`, `code-review-checklist`, the `common-*` set, and the `loop-*`
+agent-loop set) are installed once in `~/.claude/skills/` and are always available — do
+not copy them per project.
 
 ## When to run
 
@@ -84,7 +85,7 @@ Present what was staged:
 | saas-auth-sso | Login, SSO/SAML/SCIM, RBAC/ABAC |
 | ai-rag | Retrieval, chunking, embeddings, reranking |
 
-Always-available: playbook-conventions, api-design, ux-design, common-* (global)
+Always-available: playbook-conventions, api-design, ux-design, common-*, loop-* (global)
 
 > Newly copied skills are discovered at session start. Restart or refresh the session
 > so the domain agents can compose them.
