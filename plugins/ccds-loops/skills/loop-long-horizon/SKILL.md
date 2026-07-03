@@ -46,7 +46,9 @@ Create the state kit — templates in [references/state-files.md](references/sta
    now" — stubbing is the documented long-run failure mode (compiling code is the
    model's reward signal, not working code).
 5. **Verify with fresh evidence** (`loop-verify`), then flip the item to
-   `"passes": true` — evidence first, flip second, never the reverse.
+   `"passes": true` — evidence first, flip second, never the reverse. Only the
+   item's own verify command counts as evidence; "I watched it compile" or "I
+   wrote it carefully" flips nothing.
 6. **Append to `progress.md`** (what / why / next) and **commit**.
 7. **End the context.** Fresh context per iteration beats compaction for long runs —
    compaction feeds "context anxiety": premature wrap-up as the window fills.
