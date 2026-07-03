@@ -36,6 +36,22 @@ any coding project regardless of stack — the request they answer is "make the 
 
 ---
 
+## Unreleased — 2026-07-03 — feat: ccds-loops enforcement hooks
+
+### Added
+
+- The `ccds-loops` plugin now ships hooks (`plugin-extras/ccds-loops/hooks/`,
+  copied into the generated plugin by `build-marketplace.py`'s new plugin-extras
+  mechanism): a **SessionStart** hook injects a 10-line loop index on
+  startup/clear/compact — the superpowers lesson that injected bootstraps, not
+  routing luck, are what make process skills load-bearing — and an opt-in **Stop
+  gate**: put one command in `.claude/loop-gate.cmd` and the session cannot end
+  while it fails (exit-2 block with the failure tail fed back; Claude Code's
+  built-in consecutive-block cap is the runaway backstop; remove the file to
+  disarm). Bash hooks — Windows requires Git Bash. 6 new pytest cases.
+
+---
+
 ## v0.9.2 — 2026-06-18 — Fix: warn against editing inside the ccds `CLAUDE.md` block
 
 ### What changed
