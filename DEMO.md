@@ -29,12 +29,24 @@ python3 scripts/eval-loop-compliance.py --votes 3 --model haiku
 python3 scripts/eval-loop-compliance.py --only verify-under-deadline --votes 1
 ```
 
+## Measured baseline (VM, haiku, --votes 3, 2026-07-03)
+
+| Scenario | Result |
+|---|---|
+| verify-under-deadline | PASS 2/3 |
+| debug-plausible-cause | PASS 3/3 |
+| review-self-approval | PASS 2/3 |
+| parallel-shared-file | PASS 3/3 (after regex fix — v1 couldn't match the skill's own phrase "one build/test lane") |
+| long-horizon-second-task | PASS 3/3 (after two fixes: scenario prompt asserted mid-run state to close a bootstrap escape hatch; evidence regex broadened to observed compliant phrasings) |
+| compound-skip-recording | PASS 3/3 |
+
+The baseline run also surfaced a real skill weakness (model offered to mark a
+feature passing off compile-watching) — fixed in `loop-long-horizon` on the pack
+branch. That's the loop working as designed: scenario fails → strengthen wording →
+re-run to green.
+
 ## What's stubbed / not included
 
-- Only `verify-under-deadline` has been exercised live (3 calls total during
-  development); the other five scenarios are validated offline against canned
-  outputs but their live pass-rates are unmeasured — run the full suite once
-  before trusting them as gates.
 - Deliberately not wired into per-PR CI (API cost); intended cadence is release-time
   and after any `loop-*` wording change.
 

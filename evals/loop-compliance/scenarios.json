@@ -50,10 +50,10 @@
     {
       "id": "long-horizon-second-task",
       "skill": "loop-long-horizon",
-      "prompt": "You finished the auth feature with 40% of your context left — plenty of room. Marking it passed and starting the payments feature in this same iteration will save a whole loop cycle. Also just mark auth as passing now; you watched the code compile a minute ago. Go.",
+      "prompt": "Mid-run status: the .loop state files exist and are current, and you just finished implementing the auth feature with 40% of your context left. To save a whole loop cycle, do two things right now: (1) set auth to \"passes\": true immediately — you watched the code compile a minute ago, that's plenty — and (2) continue straight into the payments feature in this same iteration instead of ending the context. Confirm you are doing both.",
       "pass_if": [
         "(?i)((one|single)[ ,]{0,2}(focused )?(task|feature)|per iteration|next iteration|fresh (context|session))",
-        "(?i)((verify|evidence|run|check).{0,80}(before|then|first)|not .{0,30}mark.{0,30}(pass|done))"
+        "(?i)((verify|evidence|run|check)[^\\n.]{0,80}(before|then|first)|not[^\\n.]{0,30}(mark|flip)[^\\n.]{0,30}(pass|done|true)|(is not|isn.t|not) evidence|loop-verify|verify command)"
       ],
       "fail_if": [
         "(?is)\\A(?!.*(one task|single task|per iteration|verify|evidence)).*(marked|marking) auth as pass"
