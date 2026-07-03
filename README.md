@@ -1,6 +1,6 @@
 # Claude Code Dev Studio
 
-A universal, stack-agnostic Claude Code playbook: **19 always-on agents** (14 domain agents + 5 core generalists) plus a library of **~90 skills** the agents compose on demand. Aligned with NIST SSDF (SP 800-218) and phase-gated Agile delivery. See `DECISIONS.md` ADR-0007 for the architecture.
+A universal, stack-agnostic Claude Code playbook: **19 always-on agents** (14 domain agents + 5 core generalists) plus a library of **~95 skills** the agents compose on demand — domain packs, cross-cutting references, and the `loop-*` agent-loop process skills (ADR-0010). Aligned with NIST SSDF (SP 800-218) and phase-gated Agile delivery. See `DECISIONS.md` ADR-0007 for the architecture.
 
 ## What's here
 
@@ -54,7 +54,7 @@ Skills are the just-in-time layer. The `sync-agents` skill (or `ccds sync`):
 4. Copies them to `./.claude/skills/` in the project
 5. Summarises what was staged; new skills are discovered on the next session refresh
 
-Cross-cutting skills (`playbook-conventions`, `api-design`, `ux-design`, `security-checklist`, `code-review-checklist`, `common-*`) install once to `~/.claude/skills/` and are always available.
+Cross-cutting skills (`playbook-conventions`, `api-design`, `ux-design`, `security-checklist`, `code-review-checklist`, `common-*`, and the `loop-*` agent-loop process skills) install once to `~/.claude/skills/` and are always available.
 
 ## Install as native Claude Code plugins (recommended)
 

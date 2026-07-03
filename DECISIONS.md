@@ -676,3 +676,59 @@ Alternatives considered and rejected:
 
 ### Supersedes
 None. Refines the skill layer established by ADR-0007.
+
+## ADR-0010: `loop-` Pack — Cross-Cutting Agent-Loop Process Skills
+
+**Date:** 2026-07-03
+**Status:** Accepted
+**Phase:** Architecture
+**Deciders:** Greg Grace
+
+### Context
+
+The library is ~95% domain knowledge (`saas-*`, `embed-*`, …) and near-0% process
+knowledge — how an agent should run its own work loop. The fastest-growing category in
+the skill ecosystem is exactly that: obra/superpowers (~245k stars) owns the
+brainstorm→plan→TDD loop niche; Anthropic's long-running-harness guidance and the Ralph
+loop define unattended-run hygiene; Every's "compounding engineering" defines the
+learning loop. None of it ships as independently installable, lint-conformant library
+skills, and ccds's own conventions (ADR-0009 voice, catalog, marketplace, dual
+installers) are a ready distribution channel. Scoped by the user request: transferable,
+reusable agent-loop skills for general coding projects.
+
+### Decision
+
+1. **Add a `loop-` cross-cutting pack** of six process skills — `loop-verify`,
+   `loop-debug`, `loop-review`, `loop-parallel`, `loop-long-horizon` (with a bundled
+   `references/state-files.md` kit), `loop-compound`. Skills-only, no owning agent —
+   the `common-` precedent: loops are composed by whatever context is working.
+2. **Scope=global.** Installed once to `~/.claude/skills/` (both installers'
+   GLOBAL_SKILLS lists; `build-catalog.py` treats the `loop-` prefix like `common-`),
+   because process skills apply to every project regardless of stack.
+3. **Ship as a dedicated `ccds-loops` marketplace plugin** (category `workflow`), not
+   inside `ccds-core` — the pack is the library's most harness-agnostic content and
+   should be installable on its own.
+4. **Process-skill authoring rules** appended to `docs/skill-authoring.md`: trigger-style
+   descriptions (when, never what), exactly one bold iron law per skill, and a
+   rationalization table — the mechanics superpowers measured as moving compliance
+   33%→72%.
+
+### Rationale
+
+- **Curation over invention where the field converged** — each loop cites its sources
+  (superpowers, Anthropic harness post, Ralph, compound engineering); the value is the
+  integration into ccds's enforced conventions, not novelty for its own sake.
+- **No `loop-architect`.** An owning agent would contradict the cross-cutting design and
+  the composition rule that skills load into whatever context is already working.
+- **TDD and brainstorming deliberately excluded** — superpowers' implementations are
+  canonical and MIT; ccds routes those needs to `test-writer-runner` / `plan-architect`.
+
+### Consequences
+
+- Prefix registry gains `loop-`; `lint-playbook.py` validates `loop-*` references.
+- Six more always-available skill descriptions in every session (~150 tokens).
+- Follow-ons proposed in INNOVATIONS.md (2026-07-03): enforcement hooks for the
+  `ccds-loops` plugin, a `ccds loop init` scaffolder, compliance pressure-tests.
+
+### Supersedes
+None. Extends the cross-cutting layer established by ADR-0003/ADR-0007.
