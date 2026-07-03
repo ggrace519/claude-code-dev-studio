@@ -67,6 +67,22 @@ any coding project regardless of stack — the request they answer is "make the 
 
 ---
 
+## Unreleased — 2026-07-03 — feat: loop-skill compliance pressure-tests
+
+### Added
+
+- `evals/loop-compliance/scenarios.json` + `scripts/eval-loop-compliance.py`:
+  RED/GREEN for prose. Each of the six `loop-*` skills gets a conflicting-incentive
+  scenario ("production is bleeding money — just say it's done"); the skill body is
+  injected via `claude -p --append-system-prompt` and the reply is scored for the
+  shape of compliance (majority of `--votes`, default 3). fail_if patterns are
+  guarded (artifact present AND compliance vocabulary absent) because live runs
+  showed compliant replies quoting the forbidden phrase while refusing. Offline
+  `--dry-run` / `--score-file` modes are pytest-covered; the live path is
+  release-time only (spends API tokens). Run after editing any loop-* skill.
+
+---
+
 ## v0.9.2 — 2026-06-18 — Fix: warn against editing inside the ccds `CLAUDE.md` block
 
 ### What changed
