@@ -1,54 +1,41 @@
-# DEMO — innovation/loop-hooks (stacked on innovation/loop-skills-pack)
+# DEMO — innovation/loop-init-scaffolder
 
-Proposal #2 from `INNOVATIONS.md` (2026-07-03): make the loop skills mandatory
-instead of advisory — hooks in the `ccds-loops` plugin.
-
-Stacks on `innovation/loop-skills-pack`; merge the pack first.
+Proposal #3 from `INNOVATIONS.md` (2026-07-03, on branch
+`innovation/loop-skills-pack`): `ccds loop init` — one command that scaffolds the
+long-horizon loop state-file kit the `loop-long-horizon` skill teaches.
 
 ## What works
 
-- **SessionStart hook** (`startup|clear|compact`): injects a compact loop index into
-  context — which loop is non-optional in which situation, plus how to arm the stop
-  gate. Injected bootstrap, not routing luck (the superpowers load-bearing trick).
-- **Stop gate** (opt-in per project): put one command in `.claude/loop-gate.cmd`
-  (e.g. `npm test -- --reporter dot`) and the session cannot end while it fails —
-  exit-2 block with the failure tail fed back to the model. No gate file = no-op.
-  Only the first line of the file is executed. Claude Code's built-in
-  consecutive-block cap (default 8, `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`) is the
-  runaway backstop.
-- **`plugin-extras/` mechanism** in `build-marketplace.py`: hand-authored plugin
-  components survive the `plugins/` regeneration (copied verbatim per plugin).
-- Hook JSON format verified against current docs (hooks.json at plugin root,
-  `${CLAUDE_PLUGIN_ROOT}` command paths, plain-stdout context injection, exit-2
-  Stop blocking).
+- `ccds loop init [--target <path>] [--dry-run]` creates `./.loop/` with
+  `feature_list.json` (sample entry, `"passes": false`), `progress.md` (append-only
+  log with entry template), `PROMPT.md` (one-task rule + `ALL FEATURES COMPLETE`
+  completion promise), and an `init.sh` health-check stub (deliberately `exit 1`
+  until the user fills in real build/smoke commands).
+- Prints the capped while-loop one-liner and the `/ralph-loop` equivalent, with the
+  sandbox warning.
+- Refuses to overwrite an existing `.loop/` (exit 2); `--dry-run` writes nothing;
+  unknown subcommands error cleanly. Shell completion knows `loop` / `init`.
 
 ## How to try it
 
 ```bash
-python3 -m pytest tests/ -q     # 23 passed (6 new hook/behavior cases)
-python3 scripts/lint-playbook.py
-
-# behavioral, by hand:
-bash plugins/ccds-loops/hooks/session-start.sh
-mkdir -p /tmp/p/.claude && echo false > /tmp/p/.claude/loop-gate.cmd
-echo '{}' | CLAUDE_PROJECT_DIR=/tmp/p bash plugins/ccds-loops/hooks/stop-gate.sh; echo $?   # 2 (blocks)
-echo true > /tmp/p/.claude/loop-gate.cmd
-echo '{}' | CLAUDE_PROJECT_DIR=/tmp/p bash plugins/ccds-loops/hooks/stop-gate.sh; echo $?   # 0
-
-# live: /plugin install ccds-loops@ccds, restart, and the loop index appears in context
+bash bin/ccds.sh loop init --target /tmp/some-project && ls /tmp/some-project/.loop
+python3 -m pytest tests/ -q     # 19 passed (4 new TestLoopInit cases)
+bash -n bin/ccds.sh             # syntax-clean (ShellCheck runs in CI)
 ```
 
-All script paths above were exercised on this branch (block/pass/no-gate/first-line-only).
+All of the above verified on this branch (create / refuse / dry-run / bad-subcommand
+each exercised against a scratch directory).
 
 ## What's stubbed / not included
 
-- Hooks are bash: Windows users need Git Bash on PATH (documented posture; PS twins
-  are a follow-up if demand shows).
-- Not verified end-to-end inside a live plugin-installed session (requires
-  install + restart); the hook scripts and shipped hooks.json are verified directly,
-  and the JSON contract was confirmed against current docs.
+- PowerShell twin (`ccds.ps1`) — follows the repo's bash-first convention for new
+  subcommands; noted for a follow-up.
+- Independent of the `innovation/loop-skills-pack` branch: the command works without
+  the skill pack (it references the skill by name in output text only). Both
+  branches add a `## Unreleased` changelog entry — trivial merge overlap.
 
 ## Next increment
 
-A `/loop-gate <command>` slash command in the plugin to arm/disarm the gate without
-hand-editing `.claude/loop-gate.cmd`.
+PowerShell `cmd_loop` twin, and `ccds loop status` (summarize `feature_list.json`
+pass counts + last progress entry).

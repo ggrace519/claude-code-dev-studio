@@ -52,6 +52,21 @@ any coding project regardless of stack — the request they answer is "make the 
 
 ---
 
+## Unreleased — 2026-07-03 — feat: `ccds loop init` — long-horizon loop scaffolder
+
+### Added
+
+- New dispatcher subcommand `ccds loop init [--target <path>] [--dry-run]`
+  (bash; PowerShell twin to follow): scaffolds the long-horizon loop state-file
+  kit into `./.loop/` — `feature_list.json` (all `"passes": false`),
+  `progress.md`, `PROMPT.md` (one-task rule + completion promise), and an
+  `init.sh` health-check stub — then prints the capped while-loop and
+  `/ralph-loop` invocations. Refuses to overwrite an existing `.loop/`.
+  Companion to the `loop-long-horizon` skill (INNOVATIONS.md 2026-07-03 #3);
+  shell completion updated; covered by 4 new pytest cases.
+
+---
+
 ## v0.9.2 — 2026-06-18 — Fix: warn against editing inside the ccds `CLAUDE.md` block
 
 ### What changed
