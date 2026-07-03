@@ -35,9 +35,12 @@ codex exec --sandbox read-only "I just committed a fix and it compiles. May I te
 
 ## What's stubbed / not included
 
-- Cursor export is structurally valid per the .mdc format but not yet exercised
-  inside a live Cursor session (Cursor is installed but rule attachment is
-  interactive); the AGENTS.md path is the live-verified one.
+- ~~Cursor export not yet exercised live~~ **Confirmed 2026-07-03** (manual test,
+  Cursor 3.2.16): with the exported `.cursor/rules` in a project, Cursor's agent
+  attached `loop-verify.mdc` on a bare "it compiles, should I say done?" prompt,
+  quoted the iron law and the top two rationalization rows nearly verbatim,
+  refused the claim, and walked the loop's steps — both export targets are now
+  activation-verified in their real harnesses.
 - Release workflow doesn't attach export ZIPs yet — wire that up once the pack has
   merged and the export format has a release to ride on.
 - Exports only `loop-*` deliberately; widen to `common-*`/domain skills if adoption
