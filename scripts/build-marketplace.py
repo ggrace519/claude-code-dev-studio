@@ -51,6 +51,10 @@ AGENTS_DIR = os.path.join(REPO_ROOT, ".claude", "agents")
 SKILLS_DIR = os.path.join(REPO_ROOT, "skills")
 PLUGINS_DIR = os.path.join(REPO_ROOT, "plugins")
 MARKETPLACE_DIR = os.path.join(REPO_ROOT, ".claude-plugin")
+# Hand-authored per-plugin components (hooks/, commands/, ...) that survive
+# the plugins/ regeneration: plugin-extras/<plugin-name>/ is copied verbatim
+# into the generated plugin directory.
+EXTRAS_DIR = os.path.join(REPO_ROOT, "plugin-extras")
 
 CORE_AGENTS = ["plan-architect", "pr-code-reviewer", "secure-auditor",
                "test-writer-runner", "deploy-checklist"]
@@ -119,6 +123,9 @@ def build_plugin(name, description, agents, skill_names, version):
         copy_agent(a, plugin_dir)
     for s in skill_names:
         copy_skill(s, plugin_dir)
+    extras = os.path.join(EXTRAS_DIR, name)
+    if os.path.isdir(extras):
+        shutil.copytree(extras, plugin_dir, dirs_exist_ok=True)
     entry = {
         "name": name,
         # Explicit relative path rather than pluginRoot + bare name: identical

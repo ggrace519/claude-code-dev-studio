@@ -275,6 +275,15 @@ class TestBuildMarketplace(unittest.TestCase):
         self.assertEqual(shipped, ["loop-compound", "loop-debug", "loop-long-horizon",
                                    "loop-parallel", "loop-review", "loop-verify"])
 
+    def test_loops_plugin_ships_hooks(self):
+        r = run(BUILD_MARKETPLACE, REPO_ROOT)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        hooks_dir = os.path.join(REPO_ROOT, "plugins", "ccds-loops", "hooks")
+        hooks = json.loads(read(os.path.join(hooks_dir, "hooks.json")))
+        self.assertEqual(sorted(hooks["hooks"].keys()), ["SessionStart", "Stop"])
+        for script in ("session-start.sh", "stop-gate.sh"):
+            self.assertTrue(os.path.isfile(os.path.join(hooks_dir, script)), script)
+
     def test_explicit_version_pins_plugins(self):
         try:
             r = run(BUILD_MARKETPLACE, REPO_ROOT, "--version", "0.0.0-test")
@@ -286,6 +295,60 @@ class TestBuildMarketplace(unittest.TestCase):
             # restore the checked-in (unversioned) tree
             subprocess.run(["git", "-C", REPO_ROOT, "checkout", "--", ".claude-plugin", "plugins"],
                            capture_output=True)
+
+
+HOOKS_SRC = os.path.join(REPO_ROOT, "plugin-extras", "ccds-loops", "hooks")
+
+
+@unittest.skipUnless(shutil.which("bash") and sys.platform != "win32"
+                     and os.path.isdir(HOOKS_SRC),
+                     "hook scripts are bash (POSIX shells only)")
+class TestLoopHooks(unittest.TestCase):
+    """Behavioral tests for the ccds-loops hook scripts (source tree —
+    plugins/ is a generated copy of these)."""
+
+    def setUp(self):
+        self.proj = tempfile.mkdtemp(prefix="ccds-hooks-test-")
+        self.addCleanup(shutil.rmtree, self.proj, ignore_errors=True)
+        os.makedirs(os.path.join(self.proj, ".claude"))
+
+    def hook(self, script):
+        return subprocess.run(
+            ["bash", os.path.join(HOOKS_SRC, script)],
+            input="{}", capture_output=True, text=True,
+            env={**os.environ, "CLAUDE_PROJECT_DIR": self.proj})
+
+    def set_gate(self, line):
+        write(os.path.join(self.proj, ".claude", "loop-gate.cmd"), line + "\n")
+
+    def test_session_start_emits_loop_index(self):
+        r = self.hook("session-start.sh")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        for name in ("loop-verify", "loop-debug", "loop-review", "loop-parallel",
+                     "loop-long-horizon", "loop-compound"):
+            self.assertIn(name, r.stdout)
+
+    def test_stop_gate_noop_without_gate_file(self):
+        self.assertEqual(self.hook("stop-gate.sh").returncode, 0)
+
+    def test_stop_gate_blocks_on_failing_check(self):
+        self.set_gate("echo boom >&2; exit 3")
+        r = self.hook("stop-gate.sh")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("loop-gate: check failed (exit 3)", r.stderr)
+        self.assertIn("boom", r.stderr)
+
+    def test_stop_gate_allows_on_passing_check(self):
+        self.set_gate("true")
+        self.assertEqual(self.hook("stop-gate.sh").returncode, 0)
+
+    def test_stop_gate_runs_first_line_only(self):
+        canary = os.path.join(self.proj, "canary")
+        write(os.path.join(self.proj, ".claude", "loop-gate.cmd"),
+              f"true\ntouch {canary}\n")
+        r = self.hook("stop-gate.sh")
+        self.assertEqual(r.returncode, 0)
+        self.assertFalse(os.path.exists(canary), "second line must not run")
 
 
 PACKAGING = os.path.join(REPO_ROOT, "packaging")
