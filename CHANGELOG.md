@@ -5,96 +5,73 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
-## Unreleased — 2026-07-03 — feat: `loop-` pack — six transferable agent-loop process skills
+## v0.10.0 — 2026-07-03 — The `loop-` pack: agent-loop process skills, enforced and measured
 
 ### What changed
 
-Added a new cross-cutting skill family encoding agent work loops (ADR-0010), the
-library's first process-knowledge pack: `loop-verify` (evidence-before-done gate),
-`loop-debug` (root-cause loop with hypothesis ledger), `loop-review` (adversarial
-fresh-context review loop), `loop-parallel` (parallel dispatch with file-ownership
-discipline), `loop-long-horizon` (multi-session/unattended loop kit, with bundled
-state-file templates in `references/state-files.md`), and `loop-compound`
-(corrections → permanent rules/tests/ADRs). Why it matters: these loops transfer to
-any coding project regardless of stack — the request they answer is "make the agent
-*work* well, not just *know* things."
+Minor release adding the library's first **process-knowledge pack** (ADR-0010):
+six cross-cutting `loop-*` skills that encode how an agent should run its work
+loops, transferable to any project regardless of stack — plus the enforcement,
+measurement, and distribution layers around them. Landed as PRs #26–#31 from the
+2026-07-03 INNOVATIONS round; every surface was live-tested on a clean Debian 13
+VM before merge, and three defects found by that testing were fixed pre-release.
 
 ### Added
 
-- `skills/loop-*` ×6, written to ADR-0009 voice plus new process-skill rules
-  (trigger-style description, one iron law, rationalization table) documented in
-  `docs/skill-authoring.md`.
-- `ccds-loops` marketplace plugin (skills-only, category `workflow`) — installable
-  standalone via `/plugin install ccds-loops@ccds`.
-- Both installers ship the pack always-on (`GLOBAL_SKILLS` /
-  `$Script:GlobalSkills`); `build-catalog.py` scopes the `loop-` prefix global;
-  `lint-playbook.py` recognizes the prefix; CLAUDE.md prefix registry updated.
-- `lint-playbook.py` check 9 (`process-skill`): every `loop-*` skill must carry a
-  trigger-style description, exactly one `## Iron law`, and a `## Rationalizations`
-  table — the authoring rules become errors the day they become rules (5 new pytest
-  cases).
+- **The `loop-` pack** (`skills/loop-*`, always-on, skills-only like `common-*`):
+  `loop-verify` (evidence-before-done gate), `loop-debug` (root-cause loop with
+  hypothesis ledger), `loop-review` (adversarial fresh-context review loop),
+  `loop-parallel` (parallel dispatch with written file ownership and one
+  build/test lane), `loop-long-horizon` (multi-session/unattended loop kit with
+  bundled `references/state-files.md` templates), `loop-compound` (corrections →
+  permanent rules/tests/ADRs/hooks). Each carries a trigger-style description,
+  one iron law, and a rationalization table — the process-skill authoring rules
+  now documented in `docs/skill-authoring.md`. (#26)
+- **Enforcement hooks** in the `ccds-loops` plugin: a SessionStart hook injects
+  the loop index (startup/clear/compact), and an opt-in Stop gate — one command
+  in `.claude/loop-gate.cmd` — blocks turn-end while the check fails.
+  `build-marketplace.py` gained the `plugin-extras/` mechanism so hand-authored
+  plugin components survive regeneration. Bash hooks; Windows needs Git Bash. (#29)
+- **`ccds loop init`** — scaffolds the long-horizon state-file kit
+  (`feature_list.json`, `progress.md`, `PROMPT.md` with the one-task rule and a
+  completion promise, `init.sh` stub) and prints the capped loop invocations.
+  Bash dispatcher first; PowerShell twin is a follow-up. (#28)
+- **Compliance pressure-tests** (`evals/loop-compliance/` +
+  `scripts/eval-loop-compliance.py`): one conflicting-incentive scenario per
+  skill, scored via `claude -p` with the skill injected, majority-of-votes.
+  Measured baseline on the VM: 6/6 scenarios pass at 3 votes (haiku).
+  Release-time cadence — not per-PR CI. (#30)
+- **Multi-harness export** (`scripts/export-harness.py --target
+  cursor|agents-md`): the loop pack as Cursor project rules or a cross-tool
+  `AGENTS.md`. Codex CLI, given only the exported file, cited `loop-verify` by
+  name and quoted its iron law — live activation confirmed. (#31)
+- **Lint check 9 (`process-skill`)**: every `loop-*` skill must carry the
+  trigger description, exactly one `## Iron law`, and a `## Rationalizations`
+  table — ADR-0010's authoring rules are errors from day one. (#27)
+- New marketplace plugin **`ccds-loops`** (16 plugins total); both installers
+  ship the pack always-on; `loop-` added to the prefix registry.
 
----
+### Fixed (found by live VM testing, before release)
 
-## Unreleased — 2026-07-03 — feat: ccds-loops enforcement hooks
+- The scaffolded/`state-files.md` PROMPT template's one-task rule was soft
+  enough that a haiku run completed two features in one iteration — promoted to
+  a bright-line header plus an explicit STOP step with an `ITERATION DONE`
+  sentinel, re-tested to exactly one feature per iteration.
+- `loop-long-horizon` let "I watched it compile" read as flip-worthy evidence —
+  now states only the item's own verify command counts.
+- Two eval scorer defects: a regex that could not match the skill's own phrase
+  ("one build/test lane"), and a scenario prompt that let the model escape into
+  bootstrap questions instead of engaging the baits.
 
-### Added
+### Verification
 
-- The `ccds-loops` plugin now ships hooks (`plugin-extras/ccds-loops/hooks/`,
-  copied into the generated plugin by `build-marketplace.py`'s new plugin-extras
-  mechanism): a **SessionStart** hook injects a 10-line loop index on
-  startup/clear/compact — the superpowers lesson that injected bootstraps, not
-  routing luck, are what make process skills load-bearing — and an opt-in **Stop
-  gate**: put one command in `.claude/loop-gate.cmd` and the session cannot end
-  while it fails (exit-2 block with the failure tail fed back; Claude Code's
-  built-in consecutive-block cap is the runaway backstop; remove the file to
-  disarm). Bash hooks — Windows requires Git Bash. 6 new pytest cases.
-
----
-
-## Unreleased — 2026-07-03 — feat: `ccds loop init` — long-horizon loop scaffolder
-
-### Added
-
-- New dispatcher subcommand `ccds loop init [--target <path>] [--dry-run]`
-  (bash; PowerShell twin to follow): scaffolds the long-horizon loop state-file
-  kit into `./.loop/` — `feature_list.json` (all `"passes": false`),
-  `progress.md`, `PROMPT.md` (one-task rule + completion promise), and an
-  `init.sh` health-check stub — then prints the capped while-loop and
-  `/ralph-loop` invocations. Refuses to overwrite an existing `.loop/`.
-  Companion to the `loop-long-horizon` skill (INNOVATIONS.md 2026-07-03 #3);
-  shell completion updated; covered by 4 new pytest cases.
-
----
-
-## Unreleased — 2026-07-03 — feat: loop-skill compliance pressure-tests
-
-### Added
-
-- `evals/loop-compliance/scenarios.json` + `scripts/eval-loop-compliance.py`:
-  RED/GREEN for prose. Each of the six `loop-*` skills gets a conflicting-incentive
-  scenario ("production is bleeding money — just say it's done"); the skill body is
-  injected via `claude -p --append-system-prompt` and the reply is scored for the
-  shape of compliance (majority of `--votes`, default 3). fail_if patterns are
-  guarded (artifact present AND compliance vocabulary absent) because live runs
-  showed compliant replies quoting the forbidden phrase while refusing. Offline
-  `--dry-run` / `--score-file` modes are pytest-covered; the live path is
-  release-time only (spends API tokens). Run after editing any loop-* skill.
-
----
-
-## Unreleased — 2026-07-03 — feat: multi-harness export of the loop pack
-
-### Added
-
-- `scripts/export-harness.py --target cursor|agents-md`: exports the six `loop-*`
-  skills to foreign harness formats — Cursor project rules
-  (`.cursor/rules/<name>.mdc`, Agent-Requested form with the trigger description)
-  and a cross-tool `AGENTS.md` (Codex CLI and the AGENTS.md ecosystem). Bundled
-  `references/*.md` are inlined. Output to `dist/harness-export/<target>/`
-  (git-ignored). **Activation verified live**: Codex CLI, given the exported
-  AGENTS.md, cited `loop-verify` by name and quoted its iron law when asked to
-  claim an unverified fix. 3 structural pytest cases.
+30–40 pytest cases per branch (all green), `lint-playbook.py` 0/0, ShellCheck +
+PSScriptAnalyzer green, marketplace regen byte-stable. Live on the VM: plugin
+install from the generated marketplace, SessionStart injection quoted back by a
+real session, the Stop gate driving a real `claude -p` run to satisfy its check,
+a two-feature Ralph loop to `ALL FEATURES COMPLETE` with genuinely passing
+tests, packaged-layout install (19 agents + 17 global skills), and the 6/6 eval
+baseline.
 
 ---
 
