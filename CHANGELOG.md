@@ -5,6 +5,21 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## Unreleased — 2026-07-03 — fix: ccds.ps1 error paths now exit 2 as documented
+
+### Fixed
+
+- All six `Write-Error "..."; exit 2` paths in `bin/ccds.ps1` (unknown command,
+  `verify` without agents, `lint` prerequisites, sync-script resolution, the
+  top-level catch) actually exited **1**: under `$ErrorActionPreference='Stop'`
+  a bare `Write-Error` is terminating, so the `exit 2` was dead code and the
+  PowerShell dispatcher disagreed with the bash twin on every error path.
+  Now `-ErrorAction Continue` at each site; measured before/after with real
+  Windows PowerShell 5.1 (1→2 on both testable paths, happy paths unchanged).
+  Closes #33; found while building the `loop init` twin.
+
+---
+
 ## Unreleased — 2026-07-03 — feat: PowerShell twin for `ccds loop init`
 
 ### Added

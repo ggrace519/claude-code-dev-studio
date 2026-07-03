@@ -45,6 +45,9 @@ param(
     $RemainingArgs
 )
 
+# Error paths use `Write-Error ... -ErrorAction Continue; exit 2` — under
+# ErrorActionPreference='Stop' a bare Write-Error is TERMINATING (script dies
+# with exit 1 and the exit 2 is dead code). See #33.
 $ErrorActionPreference = 'Stop'
 
 # ---------------------------------------------------------------------------
@@ -72,7 +75,7 @@ if (Test-Path -LiteralPath $installedSync) {
     $libraryRoot  = $installRoot   # Sync-AgentPacks.ps1 looks for .\claude\agents under this
     $layoutKind   = 'dev'
 } else {
-    Write-Error "Cannot locate Sync-AgentPacks.ps1. Checked: $installedSync, $devSync"
+    Write-Error "Cannot locate Sync-AgentPacks.ps1. Checked: $installedSync, $devSync" -ErrorAction Continue
     exit 2
 }
 
@@ -242,7 +245,7 @@ function Invoke-VerifyCommand {
     $agentsPath = Join-Path $target '.claude\agents'
 
     if (-not (Test-Path -LiteralPath $agentsPath)) {
-        Write-Error "No .claude\agents\ found under $target"
+        Write-Error "No .claude\agents\ found under $target" -ErrorAction Continue
         exit 2
     }
 
@@ -256,13 +259,13 @@ function Invoke-VerifyCommand {
 function Invoke-LintCommand {
     $lintScript = Join-Path $installRoot 'scripts\lint-playbook.py'
     if (-not (Test-Path -LiteralPath $lintScript)) {
-        Write-Error "lint-playbook.py not found at $lintScript. 'ccds lint' validates the library source; run it from a repo clone."
+        Write-Error "lint-playbook.py not found at $lintScript. 'ccds lint' validates the library source; run it from a repo clone." -ErrorAction Continue
         exit 2
     }
     $python = Get-Command python3 -ErrorAction SilentlyContinue
     if (-not $python) { $python = Get-Command python -ErrorAction SilentlyContinue }
     if (-not $python) {
-        Write-Error "python3 is required for lint"
+        Write-Error "python3 is required for lint" -ErrorAction Continue
         exit 2
     }
     & $python.Source $lintScript $installRoot
@@ -508,7 +511,7 @@ try {
     $argList = if ($null -eq $RemainingArgs) { @() } else { Expand-RemainingArgs -InputArgs $RemainingArgs }
     $opts = ConvertTo-Hashtable -Arguments $argList
 } catch {
-    Write-Error $_
+    Write-Error $_ -ErrorAction Continue
     exit 2
 }
 
@@ -520,7 +523,7 @@ switch ($Command) {
     'update'     { Invoke-UpdateCommand -Opts $opts }
     'uninstall'  { Invoke-UninstallCommand }
     default {
-        Write-Error "Unknown command: $Command. Run 'ccds help' for usage."
+        Write-Error "Unknown command: $Command. Run 'ccds help' for usage." -ErrorAction Continue
         exit 2
     }
 }
