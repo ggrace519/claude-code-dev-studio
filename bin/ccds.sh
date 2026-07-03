@@ -86,6 +86,12 @@ COMMANDS
   setup                Install the 19 agents + cross-cutting skills, inject CLAUDE.md block
       --dry-run             Preview without writing
 
+  loop init            Scaffold the long-horizon loop state-file kit into ./.loop/
+                       (feature_list.json, progress.md, PROMPT.md, init.sh — see the
+                       loop-long-horizon skill)
+      --target <path>       Target project path (default: current directory)
+      --dry-run             Preview without writing
+
   update [tag]         Download and install a release (default: latest stable)
       --rollback            Restore the previous installed version
       --include-prerelease  Pick up release candidates when resolving 'latest'
@@ -103,6 +109,7 @@ EXAMPLES
   ccds sync --clean
   ccds verify
   ccds setup
+  ccds loop init
 
 LAYOUT
   Install location : $INSTALL_ROOT
@@ -208,6 +215,110 @@ cmd_lint() {
     exec python3 "$lint_script" "$INSTALL_ROOT"
 }
 
+# Scaffold the long-horizon loop state-file kit (loop-long-horizon skill).
+cmd_loop() {
+    local sub="${POSITIONAL[0]:-}"
+    if [[ "$sub" != "init" ]]; then
+        echo "ERROR: unknown loop subcommand '${sub:-<none>}'. Usage: ccds loop init [--target <path>] [--dry-run]" >&2
+        exit 2
+    fi
+    local target="${TARGET:-$PWD}"
+    local loop_dir="$target/.loop"
+
+    if [[ -e "$loop_dir" ]]; then
+        echo "ERROR: $loop_dir already exists -- refusing to overwrite an existing kit." >&2
+        echo "       Remove or rename it first if you really want to re-init." >&2
+        exit 2
+    fi
+    if (( DRY_RUN )); then
+        echo "DRY RUN -- would create $loop_dir/ with feature_list.json, progress.md, PROMPT.md, init.sh"
+        return
+    fi
+
+    mkdir -p "$loop_dir"
+
+    cat > "$loop_dir/feature_list.json" <<'EOF'
+{
+  "features": [
+    {
+      "id": "example-feature",
+      "description": "Replace me: one observable behavior, phrased so its absence is detectable",
+      "verify": "replace me: the command that proves this feature works",
+      "priority": 1,
+      "passes": false
+    }
+  ]
+}
+EOF
+
+    cat > "$loop_dir/progress.md" <<'EOF'
+# Loop progress log
+
+Append-only. One entry per iteration, newest last. The "why" line is the one that
+stops the next iteration from re-walking this one's dead ends.
+
+<!-- entry template:
+## <date> · iteration <n> · <feature-id>
+- Done: <what, with the verify evidence>
+- Why it took a detour: <the non-obvious part>
+- Next: <feature-id or note>
+-->
+EOF
+
+    cat > "$loop_dir/PROMPT.md" <<'EOF'
+Work on the project in this directory. THE ONE UNBREAKABLE RULE: exactly ONE
+feature this run. Finishing early does not earn a second one.
+
+1. Read .loop/progress.md and .loop/feature_list.json. Run .loop/init.sh;
+   if it fails, fixing it is this iteration's ONLY task.
+2. Pick the ONE highest-priority feature with "passes": false. That id is
+   the only feature you may touch this run. Search the codebase first — do
+   not re-implement something that exists.
+3. Implement it COMPLETELY. No placeholders, no stubs, no simplified
+   versions. A stub that compiles is a failure, not progress.
+4. Run the feature's verify command and read the output. Only then set
+   "passes": true.
+5. Append an entry (what / why / next) to .loop/progress.md. Commit with a
+   message naming the feature id.
+6. STOP. If other features remain "passes": false, do NOT start one — not
+   even a small one; the loop runs again with fresh context. End your reply
+   with exactly: ITERATION DONE
+7. Only if EVERY feature now has "passes": true, output exactly:
+   ALL FEATURES COMPLETE
+EOF
+
+    cat > "$loop_dir/init.sh" <<'EOF'
+#!/usr/bin/env bash
+# Health check: must prove the project still BUILDS and minimally RUNS.
+# Replace the placeholders with this project's real commands.
+set -euo pipefail
+echo "TODO: replace with this project's build command" >&2
+echo "TODO: replace with this project's smoke check (the app actually serves/runs)" >&2
+exit 1
+EOF
+    chmod +x "$loop_dir/init.sh" 2>/dev/null || true  # exec bits unreliable on NTFS mounts
+
+    cat <<EOF
+==> Loop kit created in $loop_dir
+
+Next steps:
+  1. Fill .loop/feature_list.json with every unit of work (all "passes": false).
+  2. Make .loop/init.sh actually build + smoke-check this project.
+  3. Run the loop, capped -- never unbounded:
+
+     for i in \$(seq 1 40); do
+       cat .loop/PROMPT.md | claude -p --dangerously-skip-permissions && \\
+         grep -q '"passes": false' .loop/feature_list.json || break
+     done
+
+     or with the ralph-wiggum plugin:
+     /ralph-loop "\$(cat .loop/PROMPT.md)" --max-iterations 40 --completion-promise "ALL FEATURES COMPLETE"
+
+  Unattended runs belong in a sandbox (container/VM/worktree). See the
+  loop-long-horizon skill for the full discipline.
+EOF
+}
+
 INSTALLER_URL_SH='https://raw.githubusercontent.com/ggrace519/claude-code-dev-studio/main/install-playbook.sh'
 
 fetch_installer() {
@@ -276,6 +387,7 @@ if   [[ "$COMMAND" == "setup"     ]]; then cmd_setup
 elif [[ "$COMMAND" == "sync"      ]]; then cmd_sync
 elif [[ "$COMMAND" == "verify"    ]]; then cmd_verify
 elif [[ "$COMMAND" == "lint"      ]]; then cmd_lint
+elif [[ "$COMMAND" == "loop"      ]]; then cmd_loop
 elif [[ "$COMMAND" == "update"    ]]; then cmd_update
 elif [[ "$COMMAND" == "uninstall" ]]; then cmd_uninstall
 else

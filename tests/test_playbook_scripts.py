@@ -368,6 +368,47 @@ GLOBAL_SKILLS = (
 
 
 @unittest.skipUnless(BASH and sys.platform != "win32",
+                     "ccds.sh is a bash dispatcher (POSIX shells only)")
+class TestLoopInit(unittest.TestCase):
+    """`ccds loop init` scaffolds the loop-long-horizon state-file kit."""
+
+    CCDS = os.path.join(REPO_ROOT, "bin", "ccds.sh")
+
+    def setUp(self):
+        self.target = tempfile.mkdtemp(prefix="ccds-loop-test-")
+        self.addCleanup(shutil.rmtree, self.target, ignore_errors=True)
+
+    def ccds(self, *args):
+        return subprocess.run([BASH, self.CCDS, *args],
+                              capture_output=True, text=True)
+
+    def test_scaffolds_kit(self):
+        r = self.ccds("loop", "init", "--target", self.target)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        loop = os.path.join(self.target, ".loop")
+        for f in ("feature_list.json", "progress.md", "PROMPT.md", "init.sh"):
+            self.assertTrue(os.path.isfile(os.path.join(loop, f)), f)
+        features = json.loads(read(os.path.join(loop, "feature_list.json")))
+        self.assertFalse(features["features"][0]["passes"])
+        self.assertIn("ALL FEATURES COMPLETE", read(os.path.join(loop, "PROMPT.md")))
+
+    def test_refuses_existing_kit(self):
+        self.assertEqual(self.ccds("loop", "init", "--target", self.target).returncode, 0)
+        r = self.ccds("loop", "init", "--target", self.target)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("refusing to overwrite", r.stderr)
+
+    def test_dry_run_writes_nothing(self):
+        r = self.ccds("loop", "init", "--dry-run", "--target", self.target)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.target, ".loop")))
+
+    def test_unknown_subcommand_fails(self):
+        r = self.ccds("loop", "bogus")
+        self.assertEqual(r.returncode, 2)
+
+
+@unittest.skipUnless(BASH and sys.platform != "win32",
                      "postinst is a bash maintainer script (POSIX shells only)")
 class TestDebPostinst(unittest.TestCase):
     """Regression tests for the Debian/RPM postinst per-user setup.
