@@ -22,7 +22,7 @@ _ccds_completion() {
         cword=$COMP_CWORD
     }
 
-    local commands="sync verify loop update uninstall version help"
+    local commands="sync verify doctor loop update uninstall version help"
     local packs="game saas mobile ai dataplat ecom fintech devtool desktop ext embed media orch infra common"
     local sync_flags="--dry-run --write-adr --no-generalists --mode --target --help -h"
     local update_flags="--rollback --include-prerelease --dry-run --help -h"
@@ -34,7 +34,7 @@ _ccds_completion() {
     local i
     for ((i=1; i < cword; i++)); do
         case "${words[i]}" in
-            sync|verify|loop|update|uninstall|version|help)
+            sync|verify|doctor|loop|update|uninstall|version|help)
                 command="${words[i]}"
                 break
                 ;;
@@ -97,7 +97,7 @@ _ccds_completion() {
             fi
             return 0
             ;;
-        verify|uninstall|version|help)
+        verify|doctor|uninstall|version|help)
             mapfile -t COMPREPLY < <(compgen -W "$global_flags" -- "$cur")
             return 0
             ;;
