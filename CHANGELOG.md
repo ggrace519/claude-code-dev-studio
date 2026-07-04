@@ -5,6 +5,38 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## Unreleased — 2026-07-03 — feat: routing evals
+
+### Added
+
+- **Routing-eval harness** (`scripts/eval-routing.py` +
+  `evals/routing/golden.json`): the library's core convention — "descriptions
+  are the routing surface" — finally has tests. 53 golden prompts written the
+  way users actually phrase tasks ("our checkout double-charges people on
+  retry"), 3 per domain pack plus core/loop coverage and 5 should-route-nowhere
+  negatives, are scored against all 115 catalog entries by TF-IDF cosine.
+  A description edit that breaks routing for a realistic task now fails CI
+  instead of being discovered by a mis-routed agent in the field. Current
+  baseline: 53/53 pass (48 positive in top-3, 5 negatives under the floor).
+- **Ambiguity lint** (`eval-routing.py --ambiguity`): reports catalog
+  description pairs whose lexical overlap exceeds a calibrated threshold — the
+  pairs most likely to steal each other's traffic. Today's honest list is 13
+  pairs, headed by desktop-autoupdate↔embed-ota (0.38),
+  ext-architect↔ext-native-messaging (0.37) and
+  ai-prompt-engineer↔orch-prompt-engineer (0.36) — known siblings, now
+  measured instead of assumed.
+- **`--llm` mode** (release-time, spends API tokens): asks `claude -p` to pick
+  the single catalog entry per golden prompt, majority of `--votes`. This is
+  the true routing-accuracy measurement; the deterministic mode is the cheap
+  per-PR lexical proxy. Plumbing proven live on 2 prompts (haiku): positive
+  routed correctly, negative returned NONE.
+- CI: new `routing-eval` job runs the deterministic golden suite plus the
+  informational ambiguity report on every PR; 8 new fixture tests cover the
+  runner (obvious-match pass, wrong-expect fail, known-gap WARN, unknown
+  expect name → exit 2).
+
+---
+
 ## Unreleased — 2026-07-04 — feat: repo hook makes the eval-cadence rule deterministic
 
 ### Added
