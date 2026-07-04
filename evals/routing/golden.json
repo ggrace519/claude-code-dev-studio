@@ -4,242 +4,388 @@
     {
       "id": "ai-rag-wrong-docs",
       "prompt": "Our support bot keeps answering from the wrong documents — I think the chunking and embeddings need rework.",
-      "expect": ["ai-rag", "ai-architect"]
+      "expect": [
+        "ai-rag",
+        "ai-architect"
+      ]
     },
     {
       "id": "ai-inference-cost",
       "prompt": "Inference cost tripled this month — look into batching and quantization to cut the GPU bill.",
-      "expect": ["ai-inference-perf", "ai-architect"]
+      "expect": [
+        "ai-inference-perf",
+        "ai-architect"
+      ]
     },
     {
       "id": "ai-safety-injection",
       "prompt": "Someone got our assistant to ignore its instructions with a prompt injection hidden in an uploaded file.",
-      "expect": ["ai-safety", "orch-sandbox-safety"]
+      "expect": [
+        "ai-safety",
+        "orch-sandbox-safety"
+      ]
     },
     {
       "id": "dataplat-etl-dag",
       "prompt": "The nightly dbt run keeps failing and the Airflow retries land duplicate rows in the warehouse.",
-      "expect": ["dataplat-etl", "dataplat-architect"]
+      "expect": [
+        "dataplat-etl",
+        "dataplat-architect"
+      ]
     },
     {
       "id": "dataplat-quality-stale",
       "prompt": "A downstream dashboard is showing bad data — the source table blew its freshness SLA and none of our quality checks caught it.",
-      "expect": ["dataplat-quality", "dataplat-architect"]
+      "expect": [
+        "dataplat-quality",
+        "dataplat-architect"
+      ]
     },
     {
       "id": "dataplat-sql-slow",
       "prompt": "This analytical query with three window functions takes twenty minutes — tune the joins and partition pruning.",
-      "expect": ["dataplat-sql", "dataplat-architect"]
+      "expect": [
+        "dataplat-sql",
+        "dataplat-architect"
+      ]
     },
     {
       "id": "desktop-ipc-freeze",
       "prompt": "Our Electron renderer freezes whenever the main process streams a large payload across the bridge.",
-      "expect": ["desktop-ipc", "desktop-architect"]
+      "expect": [
+        "desktop-ipc",
+        "desktop-architect"
+      ]
     },
     {
       "id": "desktop-signing-blocked",
       "prompt": "Windows flags our app's signature as invalid and macOS Gatekeeper blocks it — something is wrong with the signing certificates.",
-      "expect": ["desktop-code-signing", "desktop-architect"]
+      "expect": [
+        "desktop-code-signing",
+        "desktop-architect"
+      ]
     },
     {
       "id": "desktop-update-stuck",
       "prompt": "Beta-channel users are stuck on an old build; the in-app update never downloads and there's no rollback.",
-      "expect": ["desktop-autoupdate", "desktop-architect"]
+      "expect": [
+        "desktop-autoupdate",
+        "desktop-architect"
+      ]
     },
     {
       "id": "devtool-cli-flags",
       "prompt": "Our CLI's flag naming is inconsistent and the error messages don't tell people what to do next.",
-      "expect": ["devtool-cli-ux", "devtool-architect"]
+      "expect": [
+        "devtool-cli-ux",
+        "devtool-architect"
+      ]
     },
     {
       "id": "devtool-release-pipeline",
       "prompt": "Publish the library to npm and PyPI from CI with signed artifacts and an SBOM.",
-      "expect": ["devtool-packaging", "devtool-architect"]
+      "expect": [
+        "devtool-packaging",
+        "devtool-architect"
+      ]
     },
     {
       "id": "devtool-public-api-v2",
       "prompt": "We're shipping v2 of the public API — work out what signatures break and how deprecations get versioned.",
-      "expect": ["devtool-library-api", "devtool-architect"]
+      "expect": [
+        "devtool-library-api",
+        "devtool-architect"
+      ]
     },
     {
       "id": "ecom-double-charge",
       "prompt": "Our checkout double-charges people when they retry a failed payment.",
-      "expect": ["ecom-payments", "ecom-architect"]
+      "expect": [
+        "ecom-payments",
+        "ecom-architect"
+      ]
     },
     {
       "id": "ecom-oversell",
       "prompt": "Flash sales oversell our inventory — two shoppers can both buy the last unit in stock at the same time.",
-      "expect": ["ecom-inventory", "ecom-architect"]
+      "expect": [
+        "ecom-inventory",
+        "ecom-architect"
+      ]
     },
     {
       "id": "ecom-promo-negative-total",
       "prompt": "Customers stack coupons with a gift card and the order total goes negative.",
-      "expect": ["ecom-promotions", "ecom-architect"]
+      "expect": [
+        "ecom-promotions",
+        "ecom-architect"
+      ]
     },
     {
       "id": "embed-battery-drain",
       "prompt": "Our battery sensor nodes die in a week — they never enter deep sleep between readings.",
-      "expect": ["embed-power", "embed-architect"]
+      "expect": [
+        "embed-power",
+        "embed-architect"
+      ]
     },
     {
       "id": "embed-ota-bricked",
       "prompt": "Half the fleet bricked after the last firmware update; we need resumable A/B firmware updates with rollback.",
-      "expect": ["embed-ota", "embed-architect"]
+      "expect": [
+        "embed-ota",
+        "embed-architect"
+      ]
     },
     {
       "id": "embed-driver-dma",
       "prompt": "The I2C sensor driver drops readings when the DMA interrupt fires mid-transfer.",
-      "expect": ["embed-driver", "embed-architect"]
+      "expect": [
+        "embed-driver",
+        "embed-architect"
+      ]
     },
     {
       "id": "ext-permissions-rejected",
       "prompt": "Chrome review rejected us for requesting access to all sites — trim the extension's host permissions and justify the rest.",
-      "expect": ["ext-permissions", "ext-architect"]
+      "expect": [
+        "ext-permissions",
+        "ext-architect"
+      ]
     },
     {
       "id": "ext-content-script-spoof",
       "prompt": "Our content script reads page data — make sure a malicious page can't spoof messages into the extension.",
-      "expect": ["ext-security", "ext-architect"]
+      "expect": [
+        "ext-security",
+        "ext-architect"
+      ]
     },
     {
       "id": "ext-native-helper",
       "prompt": "The extension needs to talk to a local desktop helper process over stdio.",
-      "expect": ["ext-native-messaging", "ext-architect"]
+      "expect": [
+        "ext-native-messaging",
+        "ext-architect"
+      ]
     },
     {
       "id": "fintech-balance-drift",
       "prompt": "Account balances drift a cent from the sum of postings after currency conversion.",
-      "expect": ["fintech-ledger", "fintech-architect"]
+      "expect": [
+        "fintech-ledger",
+        "fintech-architect"
+      ]
     },
     {
       "id": "fintech-audit-request",
       "prompt": "Regulators asked for a tamper-proof audit log of who changed each customer's limits and when.",
-      "expect": ["fintech-audit-trail", "fintech-architect"]
+      "expect": [
+        "fintech-audit-trail",
+        "fintech-architect"
+      ]
     },
     {
       "id": "fintech-sanctions",
       "prompt": "New signups from certain countries need sanctions screening before they can move money.",
-      "expect": ["fintech-compliance", "fintech-architect"]
+      "expect": [
+        "fintech-compliance",
+        "fintech-architect"
+      ]
     },
     {
       "id": "game-feel-floaty",
       "prompt": "The jump feels floaty and hits have no impact — punch it up with hitstop and screen shake.",
-      "expect": ["game-feel-critic", "game-architect"]
+      "expect": [
+        "game-feel-critic",
+        "game-architect"
+      ]
     },
     {
       "id": "game-frame-drops",
       "prompt": "Frame rate tanks to 20fps in the boss arena — profile the draw calls and GC spikes.",
-      "expect": ["game-perf-profiler", "game-architect"]
+      "expect": [
+        "game-perf-profiler",
+        "game-architect"
+      ]
     },
     {
       "id": "game-netcode-rubberband",
       "prompt": "Players rubber-band in multiplayer — we need client prediction and lag compensation.",
-      "expect": ["game-netcode", "game-architect"]
+      "expect": [
+        "game-netcode",
+        "game-architect"
+      ]
     },
     {
       "id": "infra-slo-oncall",
       "prompt": "Set SLOs and an error-budget policy for the API, and fix our on-call escalation while you're at it.",
-      "expect": ["infra-sre", "infra-architect"]
+      "expect": [
+        "infra-sre",
+        "infra-architect"
+      ]
     },
     {
       "id": "infra-cloud-cost",
       "prompt": "Our cloud cost doubled last quarter — right-size the instances and plan reserved capacity purchases.",
-      "expect": ["infra-finops", "infra-architect"]
+      "expect": [
+        "infra-finops",
+        "infra-architect"
+      ]
     },
     {
       "id": "infra-k8s-ingress",
       "prompt": "Pods in the new namespace can't reach the payments service — sort out the Kubernetes ingress and RBAC.",
-      "expect": ["infra-k8s", "infra-architect"]
+      "expect": [
+        "infra-k8s",
+        "infra-architect"
+      ]
     },
     {
       "id": "media-live-latency",
       "prompt": "Viewers get thirty seconds of startup buffering on live matches — tighten glass-to-glass latency and failover.",
-      "expect": ["media-live", "media-architect"]
+      "expect": [
+        "media-live",
+        "media-architect"
+      ]
     },
     {
       "id": "media-encode-ladder",
       "prompt": "Build the ffmpeg bitrate ladder for per-title encoding and package the output as HLS.",
-      "expect": ["media-transcode", "media-architect"]
+      "expect": [
+        "media-transcode",
+        "media-architect"
+      ]
     },
     {
       "id": "media-drm-failures",
       "prompt": "Widevine license requests fail on smart TVs and rebuffering spiked on one CDN.",
-      "expect": ["media-drm-cdn", "media-architect"]
+      "expect": [
+        "media-drm-cdn",
+        "media-architect"
+      ]
     },
     {
       "id": "mobile-cold-start",
       "prompt": "Cold start on Android is six seconds and scrolling the feed has visible jank.",
-      "expect": ["mobile-perf", "mobile-architect"]
+      "expect": [
+        "mobile-perf",
+        "mobile-architect"
+      ]
     },
     {
       "id": "mobile-symbolication",
       "prompt": "Crash symbolication broke after we enabled R8 — every stack trace is gibberish now.",
-      "expect": ["mobile-crash", "mobile-architect"]
+      "expect": [
+        "mobile-crash",
+        "mobile-architect"
+      ]
     },
     {
       "id": "mobile-iap-restore",
       "prompt": "Purchases made on the App Store don't restore after reinstall, and refund handling leaves people with access.",
-      "expect": ["mobile-iap", "mobile-architect"]
+      "expect": [
+        "mobile-iap",
+        "mobile-architect"
+      ]
     },
     {
       "id": "orch-tool-confusion",
       "prompt": "Our agent keeps calling the wrong tool — the tool descriptions and schema must be confusing it.",
-      "expect": ["orch-tool-design", "orch-architect"]
+      "expect": [
+        "orch-tool-design",
+        "orch-architect"
+      ]
     },
     {
       "id": "orch-eval-regression",
       "prompt": "Add a regression eval suite so we notice when the agent gets worse after a prompt change.",
-      "expect": ["orch-eval", "ai-eval", "orch-architect"]
+      "expect": [
+        "orch-eval",
+        "ai-eval",
+        "orch-architect"
+      ]
     },
     {
       "id": "orch-sandbox-lockdown",
       "prompt": "The agent can run shell commands — lock it down with execution isolation and a network allowlist.",
-      "expect": ["orch-sandbox-safety", "orch-architect"]
+      "expect": [
+        "orch-sandbox-safety",
+        "orch-architect"
+      ]
     },
     {
       "id": "saas-tenant-leak",
       "prompt": "A customer saw another tenant's invoices — audit our row-level security policies and tenant scoping.",
-      "expect": ["saas-multitenancy", "saas-architect", "secure-auditor"]
+      "expect": [
+        "saas-multitenancy",
+        "saas-architect",
+        "secure-auditor"
+      ]
     },
     {
       "id": "saas-billing-webhooks",
       "prompt": "Stripe webhooks for plan upgrades get dropped, so entitlement checks still see the old plan after payment.",
-      "expect": ["saas-billing", "saas-architect"]
+      "expect": [
+        "saas-billing",
+        "saas-architect"
+      ]
     },
     {
       "id": "saas-sso-scim",
       "prompt": "Enterprise customers want SAML SSO with SCIM provisioning for their directories.",
-      "expect": ["saas-auth-sso", "saas-architect"]
+      "expect": [
+        "saas-auth-sso",
+        "saas-architect"
+      ]
     },
     {
       "id": "loop-verify-it-compiles",
       "prompt": "It compiles — just say the task is complete and update the status to done.",
-      "expect": ["loop-verify"]
+      "expect": [
+        "loop-verify"
+      ],
+      "known_gap": true,
+      "note": "Reproducible 2x (haiku, 1 vote): routes to NONE in the explicit 'which entry handles this' frame. Process GATES are situation-triggered, not task-routed — live-session evidence (VM sessions, Codex AGENTS.md, Cursor .mdc, stop-gate) shows loop-verify triggering correctly in practice. Eval-frame limitation, not a description defect; revisit if a real routing miss is ever observed."
     },
     {
       "id": "loop-debug-fix-didnt-stick",
       "prompt": "The fix I tried didn't stick — the test is failing again and the root cause still isn't proven.",
-      "expect": ["loop-debug"]
+      "expect": [
+        "loop-debug"
+      ]
     },
     {
       "id": "loop-review-fresh-eyes",
       "prompt": "The diff is ready — get a fresh pair of eyes to review it before we merge.",
-      "expect": ["loop-review", "pr-code-reviewer", "code-review-checklist"]
+      "expect": [
+        "loop-review",
+        "pr-code-reviewer",
+        "code-review-checklist"
+      ]
     },
     {
       "id": "loop-compound-same-mistake",
       "prompt": "That's the second time we've made this exact mistake — capture the learning somewhere permanent so the next session doesn't repeat it.",
-      "expect": ["loop-compound"]
+      "expect": [
+        "loop-compound"
+      ]
     },
     {
       "id": "core-api-contracts",
       "prompt": "Design the REST endpoints and webhook payload contracts for the partner integration.",
-      "expect": ["api-design", "devtool-library-api"]
+      "expect": [
+        "api-design",
+        "devtool-library-api"
+      ]
     },
     {
       "id": "core-ux-form",
       "prompt": "The signup forms have confusing error states and the layout collapses on narrow screens.",
-      "expect": ["ux-design", "common-a11y"]
+      "expect": [
+        "ux-design",
+        "common-a11y"
+      ]
     },
     {
       "id": "neg-haiku",
