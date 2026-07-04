@@ -74,6 +74,21 @@ command surface, forever, in the same PR.
 
 ---
 
+## Unreleased — 2026-07-04 — fix: loop-long-horizon holds the one-task rule under a verification-heavy environment
+
+### Fixed
+
+- `loop-long-horizon` measured consistently marginal (1/3) on a host whose
+  user-level CLAUDE.md carries a strong verification ethos: the model would
+  honor the evidence rule, then *bargain away* the one-task rule ("verify
+  properly, then continue to the next feature — best of both"). The iron law
+  now states the two halves do not trade, with a matching rationalization row.
+  Measured 1/3 → 3/3 and 5/5 post-fix on the same host; committed baseline
+  refreshed to 6/6 (the drift-compare workflow from #42, used end-to-end for
+  the first time).
+
+---
+
 ## Unreleased — 2026-07-04 — feat: repo hook makes the eval-cadence rule deterministic
 
 ### Added

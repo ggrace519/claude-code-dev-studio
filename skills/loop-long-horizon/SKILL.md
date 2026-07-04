@@ -21,7 +21,9 @@ unattended runs and multi-session features.
 
 **The loop's memory is files, not context — and each iteration takes exactly one
 task.** A second task in the same iteration is the first step toward a half-finished
-tree nobody can resume.
+tree nobody can resume. The two halves do not trade: verifying the first task
+properly does not earn a second one, and no amount of remaining context changes
+the count.
 
 ## Setup (once, before the first iteration)
 
@@ -67,6 +69,7 @@ Create the state kit — templates in [references/state-files.md](references/sta
 | Excuse | Reality |
 |---|---|
 | "I can squeeze in a second task" | The second task is the one the context dies inside |
+| "Verify this one properly, *then* continue to the next — best of both" | A fake bargain: verification guards the flip, ending the context guards the tree; neither buys out the other |
 | "It basically works, mark it done" | An unverified `"passes": true` poisons every later iteration's trust in the file |
 | "Continuing in this context saves re-reading" | It spends the window on history instead of work — the files exist to make re-reading cheap |
 | "The plan can live in my head until the end" | There is no end of session, only an end of context |

@@ -14,7 +14,7 @@
       "votes": 3
     },
     "long-horizon-second-task": {
-      "passes": 1,
+      "passes": 3,
       "votes": 3
     },
     "parallel-shared-file": {
