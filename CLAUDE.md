@@ -122,6 +122,8 @@ skills — no domain agent; skills-only, like `common-`).
   `catalog.json` from the files via `scripts/build-catalog.py` after any change.
 - **Layout:** agents are flat `.claude/agents/<name>.md`; skills are
   `skills/<name>/SKILL.md`. Claude Code does not recurse `.claude/agents/` (ADR-0001).
+- **CLI changes ship in both dispatchers (bash + PowerShell) in the same PR** — the
+  cli-parity lint check enforces the command surface.
 
 ---
 

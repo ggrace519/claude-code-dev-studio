@@ -5,6 +5,43 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## Unreleased — 2026-07-03 — feat: PowerShell doctor + cli-parity lint
+
+New standing rule from the maintainer: **"fixes and releases should be for
+every outlet"** — the bash and PowerShell dispatchers must expose the same
+command surface, forever, in the same PR.
+
+### Added
+
+- **`ccds doctor` on PowerShell** (`bin/ccds.ps1`): twin of the bash doctor
+  shipped in #40 — same 9 checks (layout, version-vs-latest with the same
+  offline-safe WARN and `CCDS_DOCTOR_RELEASE_URL` test override,
+  agents-installed sentinel, skills-installed, BOM scan per ADR-0001, CRLF
+  scan scoped to `*.sh`, CLAUDE.md marker block, catalog JSON parse via
+  `ConvertFrom-Json` — no python dependency, PATH + dual-install), same
+  output contract (`OK|WARN|FAIL  name: detail` + indented remedy, summary
+  block, exit 0/1). The expected skill list is extracted at runtime from
+  `Install-Playbook.ps1` (`$Script:GlobalSkills`) or, in installed layouts,
+  `scripts/ccds-user-setup.sh` — never a third copy that can drift. All
+  error paths are non-terminating (the #33/#36 `Write-Error` lesson).
+- **`ccds setup` on PowerShell**: per-user setup (agents + cross-cutting
+  skills + CLAUDE.md pointer block, `--dry-run` supported) so the PS
+  dispatcher's command surface matches bash — previously Windows users could
+  only get the per-user layer via the full installer.
+- **cli-parity lint check** (`scripts/lint-playbook.py` check 10): parses the
+  command set from both dispatchers' real dispatch structures (bash
+  `elif [[ "$COMMAND" == ... ]]` chain, PowerShell `switch ($Command)` block)
+  and errors on any command present in one but not the other — the standing
+  rule is now enforced by CI, not memory. 5 new fixture tests (suite: 66).
+
+### Docs
+
+- CLAUDE.md Conventions: "CLI changes ship in both dispatchers (bash +
+  PowerShell) in the same PR — the cli-parity lint check enforces the
+  command surface."
+
+---
+
 ## Unreleased — 2026-07-03 — feat: routing evals
 
 ### Added

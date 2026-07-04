@@ -240,6 +240,73 @@ class TestLintPlaybook(FixtureCase):
         self.assertNotIn("process-skill", r.stdout)
 
 
+class TestCliParity(FixtureCase):
+    """Check 10: bin/ccds.sh and bin/ccds.ps1 must dispatch the same command
+    set ("fixes and releases should be for every outlet").
+
+    The fixture writes minimal fake dispatchers carrying only the structures
+    the parser anchors to — the bash `elif [[ "$COMMAND" == "..." ]]` chain
+    and the PowerShell `switch ($Command)` block — with deliberately uneven
+    whitespace to prove the parser tolerates formatting.
+    """
+
+    def write_dispatchers(self, bash_cmds, ps1_cmds):
+        chain = []
+        for i, cmd in enumerate(bash_cmds):
+            kw = "if  " if i == 0 else "elif"
+            pad = " " * (10 - len(cmd))  # ragged alignment like the real file
+            chain.append(f'{kw} [[ "$COMMAND" == "{cmd}"{pad}]]; then cmd_{cmd}')
+        write(os.path.join(self.root, "bin", "ccds.sh"),
+              "#!/usr/bin/env bash\nCOMMAND=\"$1\"\n"
+              + "\n".join(chain)
+              + "\nelse\n    exit 2\nfi\n")
+
+        cases = "\n".join(f"    '{cmd}'  {{ Invoke-Command -Name {cmd} }}"
+                          for cmd in ps1_cmds)
+        write(os.path.join(self.root, "bin", "ccds.ps1"),
+              "param([string]$Command)\n"
+              "switch ($Command) {\n"
+              + cases
+              + "\n    default { exit 2 }\n}\n")
+
+    def test_no_dispatchers_is_exempt(self):
+        # Library-only fixture trees ship no bin/; parity must not fire.
+        r = self.lint()
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertNotIn("cli-parity", r.stdout)
+
+    def test_matching_surfaces_pass(self):
+        self.write_dispatchers(["sync", "verify", "doctor"],
+                               ["sync", "verify", "doctor"])
+        r = self.lint()
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertNotIn("cli-parity", r.stdout)
+
+    def test_bash_only_command_fails_naming_it(self):
+        self.write_dispatchers(["sync", "doctor"], ["sync"])
+        r = self.lint()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("cli-parity", r.stdout)
+        self.assertIn("'doctor'", r.stdout)
+        self.assertIn("missing from bin/ccds.ps1", r.stdout)
+
+    def test_ps1_only_command_fails_naming_it(self):
+        self.write_dispatchers(["sync"], ["sync", "setup"])
+        r = self.lint()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("cli-parity", r.stdout)
+        self.assertIn("'setup'", r.stdout)
+        self.assertIn("missing from bin/ccds.sh", r.stdout)
+
+    def test_missing_twin_dispatcher_fails(self):
+        self.write_dispatchers(["sync"], ["sync"])
+        os.remove(os.path.join(self.root, "bin", "ccds.ps1"))
+        r = self.lint()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("cli-parity", r.stdout)
+        self.assertIn("bin/ccds.ps1 is missing", r.stdout)
+
+
 @unittest.skipUnless(os.path.isfile(BUILD_MARKETPLACE),
                      "build-marketplace.py not on this branch yet")
 class TestBuildMarketplace(unittest.TestCase):
