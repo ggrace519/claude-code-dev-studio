@@ -5,6 +5,22 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## Unreleased — 2026-07-04 — feat: repo hook makes the eval-cadence rule deterministic
+
+### Added
+
+- Repo-level PostToolUse hook (`.claude/settings.json` +
+  `scripts/hooks/loop-skill-edited.py`): editing any `loop-*` skill or the
+  compliance-eval scenarios injects a reminder that the live 6/6 baseline is
+  now unmeasured and must be re-run (`eval-loop-compliance.py --votes 3`)
+  before the next release. The loop-compound escalation ratchet applied to our
+  own process — the "re-run evals after wording changes" habit was prose; now
+  the trigger is deterministic. Tripwire, not gate: always exits 0; the live
+  eval itself stays release-time (API cost). Contributors approve the hook
+  once on first session in the repo.
+
+---
+
 ## v0.10.1 — 2026-07-03 — Windows parity: `ccds loop init` twin + dispatcher exit-code fix
 
 ### What changed

@@ -447,6 +447,42 @@ class TestExportHarness(unittest.TestCase):
         self.assertEqual(r.returncode, 2)
 
 
+LOOP_EDIT_HOOK = os.path.join(SCRIPTS, "hooks", "loop-skill-edited.py")
+
+
+@unittest.skipUnless(os.path.isfile(LOOP_EDIT_HOOK),
+                     "loop-skill-edited.py not on this branch yet")
+class TestLoopSkillEditedHook(unittest.TestCase):
+    """PostToolUse tripwire: reminds that the live compliance baseline goes
+    stale when loop-* wording changes. Tripwire, not gate: always exit 0."""
+
+    def hook(self, stdin_text):
+        return subprocess.run([sys.executable, LOOP_EDIT_HOOK],
+                              input=stdin_text, capture_output=True, text=True)
+
+    def test_fires_on_loop_skill_edit(self):
+        r = self.hook(json.dumps(
+            {"tool_input": {"file_path": "/x/skills/loop-verify/SKILL.md"}}))
+        self.assertEqual(r.returncode, 0)
+        out = json.loads(r.stdout)
+        self.assertIn("eval-loop-compliance.py",
+                      out["hookSpecificOutput"]["additionalContext"])
+
+    def test_fires_on_scenario_edit_windows_path(self):
+        r = self.hook(json.dumps(
+            {"tool_input": {"file_path": "D:\\r\\evals\\loop-compliance\\scenarios.json"}}))
+        self.assertIn("additionalContext", r.stdout)
+
+    def test_silent_on_non_loop_edit(self):
+        r = self.hook(json.dumps(
+            {"tool_input": {"file_path": "/x/skills/saas-billing/SKILL.md"}}))
+        self.assertEqual((r.returncode, r.stdout), (0, ""))
+
+    def test_silent_on_malformed_input(self):
+        r = self.hook("not json at all")
+        self.assertEqual((r.returncode, r.stdout), (0, ""))
+
+
 PACKAGING = os.path.join(REPO_ROOT, "packaging")
 POSTINST = os.path.join(PACKAGING, "postinst")
 USER_SETUP = os.path.join(SCRIPTS, "ccds-user-setup.sh")
