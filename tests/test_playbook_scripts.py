@@ -644,7 +644,11 @@ class TestMarketplaceFreshLint(unittest.TestCase):
                                 "skills", "loop-verify", "SKILL.md")
 
     def tearDown(self):
-        subprocess.run(["git", "-C", REPO_ROOT, "checkout", "--", "plugins"],
+        # Restore by REGENERATING, never `git checkout -- plugins`: checkout
+        # restores HEAD, which silently reverts a developer's correct-but-
+        # uncommitted regen (that exact clobber shipped a stale tree in the
+        # first version of this very fix — PR #45 round 1).
+        subprocess.run([sys.executable, BUILD_MARKETPLACE, REPO_ROOT],
                        capture_output=True)
 
     def test_stale_plugin_copy_fails_then_selfheals(self):
