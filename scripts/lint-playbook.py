@@ -33,6 +33,10 @@ This linter checks that what the files SAY is true:
                        a command added to one dispatcher must ship in the
                        other, in the same PR. Skipped when a tree ships
                        neither dispatcher (test fixtures).
+ 11. marketplace-fresh plugins/ + marketplace.json are byte-identical to what
+                       build-marketplace.py regenerates — catches skill edits
+                       that forget the regen locally, instead of in CI.
+                       Skipped when the tree has no plugins/ (test fixtures).
 
 Exit codes: 0 = pass (warnings allowed), 1 = one or more errors, 2 = config error.
 
@@ -284,6 +288,49 @@ def check_cli_parity():
                           f"from bin/ccds.sh — CLI changes ship in both dispatchers")
 
 
+# --- 11: marketplace freshness -------------------------------------------------
+def _tree_digest(*paths):
+    import hashlib
+    h = {}
+    for base in paths:
+        if os.path.isfile(base):
+            h[base] = hashlib.sha256(open(base, "rb").read()).hexdigest()
+        elif os.path.isdir(base):
+            for dirpath, _, files in os.walk(base):
+                for f in sorted(files):
+                    fp = os.path.join(dirpath, f)
+                    h[fp] = hashlib.sha256(open(fp, "rb").read()).hexdigest()
+    return h
+
+
+def check_marketplace_fresh():
+    """Same contract as catalog-fresh, for the generated plugin tree: the
+    committed-or-working plugins/ must be byte-identical to a fresh regen.
+    Git-free (hashes before/after regen), so a correct-but-uncommitted regen
+    passes. CI has always enforced this remotely; a local lint failure beats
+    a red main (added after a skill edit merged without the regen, 2026-07-04)."""
+    plugins_dir = os.path.join(REPO_ROOT, "plugins")
+    mp_json = os.path.join(REPO_ROOT, ".claude-plugin", "marketplace.json")
+    builder = os.path.join(SCRIPT_DIR, "build-marketplace.py")
+    if not os.path.isdir(plugins_dir) or not os.path.isfile(builder):
+        return  # test fixtures / partial trees
+    before = _tree_digest(plugins_dir, mp_json)
+    r = subprocess.run([sys.executable, builder, REPO_ROOT],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        err("marketplace-fresh", f"build-marketplace.py failed: {r.stderr.strip()[:150]}")
+        return
+    after = _tree_digest(plugins_dir, mp_json)
+    changed = sorted(os.path.relpath(k, REPO_ROOT)
+                     for k in set(before) | set(after)
+                     if before.get(k) != after.get(k))
+    if changed:
+        err("marketplace-fresh",
+            "plugins/ or marketplace.json was stale -- the regen just refreshed it; "
+            "commit the regenerated tree (changed: " + ", ".join(changed[:3])
+            + (", ..." if len(changed) > 3 else ")"))
+
+
 # --- 5 + 6 + 7: descriptions and models --------------------------------------
 def check_descriptions_and_models():
     agent_desc_chars = 0
@@ -326,6 +373,7 @@ def main():
     check_skill_voice()
     check_process_skills()
     check_cli_parity()
+    check_marketplace_fresh()
     check_descriptions_and_models()
 
     for w in warnings:

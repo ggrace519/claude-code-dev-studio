@@ -636,6 +636,32 @@ class TestRoutingEval(unittest.TestCase):
         self.assertNotIn("RESULT:", r.stdout)
 
 
+class TestMarketplaceFreshLint(unittest.TestCase):
+    """Lint check 11: a stale generated plugin copy is a local lint error,
+    not just a CI failure (added after a skill edit merged red, 2026-07-04)."""
+
+    STALE_TARGET = os.path.join(REPO_ROOT, "plugins", "ccds-loops",
+                                "skills", "loop-verify", "SKILL.md")
+
+    def tearDown(self):
+        # Restore by REGENERATING, never `git checkout -- plugins`: checkout
+        # restores HEAD, which silently reverts a developer's correct-but-
+        # uncommitted regen (that exact clobber shipped a stale tree in the
+        # first version of this very fix — PR #45 round 1).
+        subprocess.run([sys.executable, BUILD_MARKETPLACE, REPO_ROOT],
+                       capture_output=True)
+
+    def test_stale_plugin_copy_fails_then_selfheals(self):
+        with open(self.STALE_TARGET, "a", encoding="utf-8") as f:
+            f.write("<!-- stale-probe -->\n")
+        r = run(LINT_PLAYBOOK, REPO_ROOT)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("marketplace-fresh", r.stdout)
+        # the check regenerates in place: a second run must pass
+        r2 = run(LINT_PLAYBOOK, REPO_ROOT)
+        self.assertEqual(r2.returncode, 0, r2.stdout)
+
+
 EXPORT_HARNESS = os.path.join(SCRIPTS, "export-harness.py")
 
 

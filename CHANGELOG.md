@@ -74,6 +74,19 @@ command surface, forever, in the same PR.
 
 ---
 
+## Unreleased — 2026-07-04 — fix: regenerate stale plugin tree + local marketplace-freshness lint
+
+### Fixed
+
+- PR #44 merged with a stale `plugins/ccds-loops` copy of the edited
+  `loop-long-horizon` skill, turning main's marketplace-freshness CI check red —
+  the regen step was forgotten locally and nothing local caught it. Tree
+  regenerated, and lint check 11 (`marketplace-fresh`) now catches the class on
+  every local lint run: git-free before/after hash comparison, self-healing (the
+  failing run also refreshes the tree, so the remedy is just committing it).
+
+---
+
 ## Unreleased — 2026-07-04 — fix: loop-long-horizon holds the one-task rule under a verification-heavy environment
 
 ### Fixed
