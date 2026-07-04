@@ -5,172 +5,55 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
-## Unreleased — 2026-07-03 — feat: PowerShell doctor + cli-parity lint
+## v0.11.0 — 2026-07-04 — Measure the system, then act on it: doctor, routing evals, baselines — with full dispatcher parity
 
-New standing rule from the maintainer: **"fixes and releases should be for
-every outlet"** — the bash and PowerShell dispatchers must expose the same
-command surface, forever, in the same PR.
+### What changed
 
-### Added
-
-- **`ccds doctor` on PowerShell** (`bin/ccds.ps1`): twin of the bash doctor
-  shipped in #40 — same 9 checks (layout, version-vs-latest with the same
-  offline-safe WARN and `CCDS_DOCTOR_RELEASE_URL` test override,
-  agents-installed sentinel, skills-installed, BOM scan per ADR-0001, CRLF
-  scan scoped to `*.sh`, CLAUDE.md marker block, catalog JSON parse via
-  `ConvertFrom-Json` — no python dependency, PATH + dual-install), same
-  output contract (`OK|WARN|FAIL  name: detail` + indented remedy, summary
-  block, exit 0/1). The expected skill list is extracted at runtime from
-  `Install-Playbook.ps1` (`$Script:GlobalSkills`) or, in installed layouts,
-  `scripts/ccds-user-setup.sh` — never a third copy that can drift. All
-  error paths are non-terminating (the #33/#36 `Write-Error` lesson).
-- **`ccds setup` on PowerShell**: per-user setup (agents + cross-cutting
-  skills + CLAUDE.md pointer block, `--dry-run` supported) so the PS
-  dispatcher's command surface matches bash — previously Windows users could
-  only get the per-user layer via the full installer.
-- **cli-parity lint check** (`scripts/lint-playbook.py` check 10): parses the
-  command set from both dispatchers' real dispatch structures (bash
-  `elif [[ "$COMMAND" == ... ]]` chain, PowerShell `switch ($Command)` block)
-  and errors on any command present in one but not the other — the standing
-  rule is now enforced by CI, not memory. 5 new fixture tests (suite: 66).
-
-### Docs
-
-- CLAUDE.md Conventions: "CLI changes ship in both dispatchers (bash +
-  PowerShell) in the same PR — the cli-parity lint check enforces the
-  command surface."
-
----
-
-## Unreleased — 2026-07-03 — feat: routing evals
+Minor release built around a theme: the library now **measures itself** —
+environment health, routing quality, and skill compliance — and this release
+already contains the first fixes those measurements produced. Per the new
+standing rule, everything ships for every outlet: bash and PowerShell carry
+identical command surfaces, enforced by lint. PRs #40–#45.
 
 ### Added
 
-- **Routing-eval harness** (`scripts/eval-routing.py` +
-  `evals/routing/golden.json`): the library's core convention — "descriptions
-  are the routing surface" — finally has tests. 53 golden prompts written the
-  way users actually phrase tasks ("our checkout double-charges people on
-  retry"), 3 per domain pack plus core/loop coverage and 5 should-route-nowhere
-  negatives, are scored against all 115 catalog entries by TF-IDF cosine.
-  A description edit that breaks routing for a realistic task now fails CI
-  instead of being discovered by a mis-routed agent in the field. Current
-  baseline: 53/53 pass (48 positive in top-3, 5 negatives under the floor).
-- **Ambiguity lint** (`eval-routing.py --ambiguity`): reports catalog
-  description pairs whose lexical overlap exceeds a calibrated threshold — the
-  pairs most likely to steal each other's traffic. Today's honest list is 13
-  pairs, headed by desktop-autoupdate↔embed-ota (0.38),
-  ext-architect↔ext-native-messaging (0.37) and
-  ai-prompt-engineer↔orch-prompt-engineer (0.36) — known siblings, now
-  measured instead of assumed.
-- **`--llm` mode** (release-time, spends API tokens): asks `claude -p` to pick
-  the single catalog entry per golden prompt, majority of `--votes`. This is
-  the true routing-accuracy measurement; the deterministic mode is the cheap
-  per-PR lexical proxy. Plumbing proven live on 2 prompts (haiku): positive
-  routed correctly, negative returned NONE.
-- CI: new `routing-eval` job runs the deterministic golden suite plus the
-  informational ambiguity report on every PR; 8 new fixture tests cover the
-  runner (obvious-match pass, wrong-expect fail, known-gap WARN, unknown
-  expect name → exit 2).
-
----
-
-## Unreleased — 2026-07-04 — fix: regenerate stale plugin tree + local marketplace-freshness lint
+- **`ccds doctor`** (#40, PowerShell twin #43): nine proactive environment
+  checks (layout shape, version drift vs latest release, install completeness,
+  BOM/CRLF corruption, CLAUDE.md marker block, catalog parse, PATH and
+  dual-install conflicts), each with a remedy line. Found a real dual install
+  on the maintainer's machine on its first run.
+- **`ccds setup` in PowerShell** (#43): the PS dispatcher was missing it
+  entirely — discovered by the new parity check.
+- **Routing evals** (#41): 53 user-voiced golden prompts scored against the
+  115-entry catalog (TF-IDF, deterministic, in CI) plus an `--ambiguity`
+  report of near-duplicate descriptions and an `--llm` accuracy mode.
+  Deterministic baseline 53/53; release-time LLM accuracy: 52/53 (haiku, single vote, reproduced twice) — the one miss, `loop-verify-it-compiles`, is a documented known gap: process gates are situation-triggered, not task-routed, and live-session evidence (VM, Codex, Cursor, stop-gate) shows the skill triggering correctly in practice.
+- **Committed compliance baseline** (#42): `eval-loop-compliance.py --record`
+  writes host-stamped pass rates to `evals/loop-compliance/baseline.json`;
+  every run reports drift and regressions. Wording changes are now a
+  reviewable diff against a measured baseline.
+- **Lint checks 10 + 11**: `cli-parity` (both dispatchers must expose the same
+  command set — "fixes and releases are for every outlet") and
+  `marketplace-fresh` (a forgotten plugin regen fails locally, not in CI).
 
 ### Fixed
 
-- PR #44 merged with a stale `plugins/ccds-loops` copy of the edited
-  `loop-long-horizon` skill, turning main's marketplace-freshness CI check red —
-  the regen step was forgotten locally and nothing local caught it. Tree
-  regenerated, and lint check 11 (`marketplace-fresh`) now catches the class on
-  every local lint run: git-free before/after hash comparison, self-healing (the
-  failing run also refreshes the tree, so the remedy is just committing it).
+- **`loop-long-horizon` held its evidence rule but bargained away the one-task
+  rule** under a verification-heavy user CLAUDE.md ("verify properly, then
+  continue — best of both", observed verbatim): measured 1/3 on that host,
+  fixed with a no-trade clause, re-measured 3/3 and 5/5; committed baseline
+  now 6/6. First end-to-end use of the drift workflow. (#44)
+- **Stale plugin tree healed** after #44 merged without its regen (turning
+  main's CI red) — the incident that motivated lint check 11. The check
+  validated itself by catching its own PR's missing regen on round 1. (#45)
+- Repo hook (from the v0.10.x line) now reminds with `--record`.
 
----
+### Verification
 
-## Unreleased — 2026-07-04 — fix: loop-long-horizon holds the one-task rule under a verification-heavy environment
-
-### Fixed
-
-- `loop-long-horizon` measured consistently marginal (1/3) on a host whose
-  user-level CLAUDE.md carries a strong verification ethos: the model would
-  honor the evidence rule, then *bargain away* the one-task rule ("verify
-  properly, then continue to the next feature — best of both"). The iron law
-  now states the two halves do not trade, with a matching rationalization row.
-  Measured 1/3 → 3/3 and 5/5 post-fix on the same host; committed baseline
-  refreshed to 6/6 (the drift-compare workflow from #42, used end-to-end for
-  the first time).
-
----
-
-## Unreleased — 2026-07-04 — feat: repo hook makes the eval-cadence rule deterministic
-
-### Added
-
-- Repo-level PostToolUse hook (`.claude/settings.json` +
-  `scripts/hooks/loop-skill-edited.py`): editing any `loop-*` skill or the
-  compliance-eval scenarios injects a reminder that the live 6/6 baseline is
-  now unmeasured and must be re-run (`eval-loop-compliance.py --votes 3`)
-  before the next release. The loop-compound escalation ratchet applied to our
-  own process — the "re-run evals after wording changes" habit was prose; now
-  the trigger is deterministic. Tripwire, not gate: always exits 0; the live
-  eval itself stays release-time (API cost). Contributors approve the hook
-  once on first session in the repo.
-
----
-
-## Unreleased — 2026-07-03 — feat: ccds doctor
-
-### Added
-
-- **`ccds doctor`** (bash CLI): one command that proactively checks the whole
-  install for every class of environment bug this project has shipped
-  reactively — instead of discovering them one incident at a time. Nine
-  checks, each printing one `OK|WARN|FAIL` line with a concrete `remedy:` on
-  anything less than OK:
-  - **layout** — flags a dev-layout repo clone, where `ccds setup` fails
-    confusingly (it expects the packaged `<root>/agents` shape, not
-    `.claude/agents`), and says how to stage a release instead.
-  - **version** — compares the installed version against the latest GitHub
-    release, so an install can no longer silently sit on an old version
-    (this week's v0.9.2-vs-v0.10.1 incident). Offline/timeout is a WARN,
-    never a failure.
-  - **agents-installed / skills-installed** — detects silent no-op installs:
-    the core-agent sentinel and every cross-cutting skill (list read from
-    the setup script at runtime, so it cannot drift) must be present.
-  - **bom-scan / crlf-scan** — the historic UTF-8-BOM frontmatter breaker
-    (ADR-0001) and CRLF-corrupted shell scripts, caught before they bite.
-  - **claude-md-block** — exactly one ccds marker block in `~/.claude/CLAUDE.md`.
-  - **catalog** — `catalog.json` present and valid JSON.
-  - **path-and-duals** — warns when a system package (`/usr/share/ccds`) and
-    a per-user install (`~/.claude/playbook`) coexist, and names which one
-    this shell actually runs.
-
-  Exit codes: 0 = healthy (WARNs allowed), 1 = at least one FAIL, 2 = config
-  error. Covered by 6 fixture-based subprocess tests (synthetic `$HOME` +
-  staged install root; `CCDS_DOCTOR_RELEASE_URL` is a test-only override
-  that keeps the version check off the network). Follow-up: the PowerShell
-  twin (`ccds.ps1 doctor`) is intentionally not in this change.
-
----
-
-## Unreleased — 2026-07-03 — feat: committed compliance baseline (--record)
-
-### Added
-
-- `eval-loop-compliance.py --record` writes the measured pass rates to
-  `evals/loop-compliance/baseline.json` (committed): wording drift becomes a
-  reviewable diff, and every live run now reports per-scenario deltas against
-  the recorded baseline (`[baseline 2/3, <date>]`) plus a REGRESSED list.
-  Votes run from a neutral temp cwd so the surrounding project's CLAUDE.md
-  stays out of the measurement; baselines are host-stamped because user-level
-  `~/.claude/CLAUDE.md` still loads — compare within one environment. Initial
-  committed baseline (host victus, haiku, 3 votes): 5/6, with
-  `long-horizon-second-task` at 1/3 — consistently marginal on this host
-  (3/3 on the clean VM), a visible target for future wording work rather than
-  changelog prose. Hook reminder now points at `--record`. 3 new pytest cases
-  drive the record/compare paths through the real live plumbing via a fake
-  `claude` shim; also restored a test assertion clipped during an earlier
-  merge-conflict resolution.
+67 pytest cases green; lint (11 checks) PASS; routing CI job green on GitHub
+runners; PS doctor/setup exercised on real Windows PowerShell 5.1 against the
+real Windows profile; compliance baseline 6/6 (host victus, haiku, 3 votes);
+cli-parity forced-fail demonstrated both directions.
 
 ---
 
