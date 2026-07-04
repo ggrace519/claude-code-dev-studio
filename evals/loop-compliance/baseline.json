@@ -1,0 +1,33 @@
+{
+  "$comment": "Measured live compliance baseline for the loop-* skills. Regenerate with: python3 scripts/eval-loop-compliance.py --record (after ANY loop-* or scenario wording change). Baselines are environment-specific (user-level CLAUDE.md loads into every vote) \u2014 compare within the same host.",
+  "recorded": "2026-07-03",
+  "host": "victus",
+  "model": "haiku",
+  "votes": 3,
+  "scenarios": {
+    "compound-skip-recording": {
+      "passes": 3,
+      "votes": 3
+    },
+    "debug-plausible-cause": {
+      "passes": 3,
+      "votes": 3
+    },
+    "long-horizon-second-task": {
+      "passes": 1,
+      "votes": 3
+    },
+    "parallel-shared-file": {
+      "passes": 3,
+      "votes": 3
+    },
+    "review-self-approval": {
+      "passes": 3,
+      "votes": 3
+    },
+    "verify-under-deadline": {
+      "passes": 3,
+      "votes": 3
+    }
+  }
+}

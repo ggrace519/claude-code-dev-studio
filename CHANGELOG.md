@@ -88,6 +88,27 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## Unreleased — 2026-07-03 — feat: committed compliance baseline (--record)
+
+### Added
+
+- `eval-loop-compliance.py --record` writes the measured pass rates to
+  `evals/loop-compliance/baseline.json` (committed): wording drift becomes a
+  reviewable diff, and every live run now reports per-scenario deltas against
+  the recorded baseline (`[baseline 2/3, <date>]`) plus a REGRESSED list.
+  Votes run from a neutral temp cwd so the surrounding project's CLAUDE.md
+  stays out of the measurement; baselines are host-stamped because user-level
+  `~/.claude/CLAUDE.md` still loads — compare within one environment. Initial
+  committed baseline (host victus, haiku, 3 votes): 5/6, with
+  `long-horizon-second-task` at 1/3 — consistently marginal on this host
+  (3/3 on the clean VM), a visible target for future wording work rather than
+  changelog prose. Hook reminder now points at `--record`. 3 new pytest cases
+  drive the record/compare paths through the real live plumbing via a fake
+  `claude` shim; also restored a test assertion clipped during an earlier
+  merge-conflict resolution.
+
+---
+
 ## v0.10.1 — 2026-07-03 — Windows parity: `ccds loop init` twin + dispatcher exit-code fix
 
 ### What changed
