@@ -19,7 +19,7 @@ Register-ArgumentCompleter -Native -CommandName ccds -ScriptBlock {
         $prev = if ($tokenCount -ge 1) { $elements[$tokenCount - 1] } else { '' }
     }
 
-    $commands    = @('sync', 'verify', 'loop', 'update', 'uninstall', 'version', 'help')
+    $commands    = @('sync', 'verify', 'doctor', 'loop', 'update', 'uninstall', 'version', 'help')
     $packs       = @('game','saas','mobile','ai','dataplat','ecom','fintech',
                      'devtool','desktop','ext','embed','media','orch','infra','common')
     $modes       = @('copy', 'symlink')
@@ -111,7 +111,7 @@ Register-ArgumentCompleter -Native -CommandName ccds -ScriptBlock {
             }
             return Complete-FromList @('init') $wordToComplete
         }
-        { $_ -in 'verify', 'uninstall', 'version', 'help' } {
+        { $_ -in 'verify', 'doctor', 'uninstall', 'version', 'help' } {
             return Complete-FromList $globalFlags $wordToComplete
         }
     }

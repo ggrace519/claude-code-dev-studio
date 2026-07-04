@@ -28,6 +28,11 @@ This linter checks that what the files SAY is true:
                        exactly one '## Iron law' section, and a
                        '## Rationalizations' table (ADR-0010,
                        docs/skill-authoring.md "Process skills").
+ 10. cli-parity        bin/ccds.sh and bin/ccds.ps1 dispatch the same command
+                       set ("fixes and releases should be for every outlet") —
+                       a command added to one dispatcher must ship in the
+                       other, in the same PR. Skipped when a tree ships
+                       neither dispatcher (test fixtures).
 
 Exit codes: 0 = pass (warnings allowed), 1 = one or more errors, 2 = config error.
 
@@ -213,6 +218,72 @@ def check_process_skills():
             err("process-skill", f"skills/{d}: missing the '## Rationalizations' table")
 
 
+# --- 10: cli-parity ------------------------------------------------------------
+# The two dispatchers must expose the same command surface forever ("fixes and
+# releases should be for every outlet"). Both parsers anchor to the real
+# dispatch structures — the bash `elif [[ "$COMMAND" == "..." ]]` chain and the
+# PowerShell `switch ($Command)` block — and tolerate whitespace/formatting.
+# version/help are handled before either structure and are exempt by design.
+BASH_DISPATCH_RE = re.compile(
+    r'\[\[\s*"\$COMMAND"\s*==\s*"([a-z][a-z0-9-]*)"\s*\]\]\s*;?\s*then')
+PS1_CASE_LABEL_RE = re.compile(r"^\s*'([a-z][a-z0-9-]*)'\s*\{", re.MULTILINE)
+PS1_SWITCH_RE = re.compile(r'switch\s*\(\s*\$Command\s*\)\s*\{')
+
+
+def parse_bash_commands(path):
+    return set(BASH_DISPATCH_RE.findall(read(path)))
+
+
+def parse_ps1_commands(path):
+    src = read(path)
+    m = PS1_SWITCH_RE.search(src)
+    if m is None:
+        return None
+    # Take the balanced-brace region of the switch statement, then collect its
+    # quoted case labels ('default' is unquoted and thus ignored).
+    start = m.end() - 1
+    depth = 0
+    end = len(src)
+    for i in range(start, len(src)):
+        if src[i] == "{":
+            depth += 1
+        elif src[i] == "}":
+            depth -= 1
+            if depth == 0:
+                end = i + 1
+                break
+    return set(PS1_CASE_LABEL_RE.findall(src[start:end]))
+
+
+def check_cli_parity():
+    bash_path = os.path.join(REPO_ROOT, "bin", "ccds.sh")
+    ps1_path = os.path.join(REPO_ROOT, "bin", "ccds.ps1")
+    if not os.path.isfile(bash_path) and not os.path.isfile(ps1_path):
+        return  # fixture/library-only trees ship no dispatchers
+    if not os.path.isfile(bash_path):
+        err("cli-parity", "bin/ccds.ps1 present but bin/ccds.sh is missing")
+        return
+    if not os.path.isfile(ps1_path):
+        err("cli-parity", "bin/ccds.sh present but bin/ccds.ps1 is missing")
+        return
+    bash_cmds = parse_bash_commands(bash_path)
+    ps1_cmds = parse_ps1_commands(ps1_path)
+    if not bash_cmds:
+        err("cli-parity", 'could not parse any commands from the bin/ccds.sh '
+                          'dispatch chain (elif [[ "$COMMAND" == "..." ]])')
+        return
+    if not ps1_cmds:
+        err("cli-parity", "could not parse any commands from the bin/ccds.ps1 "
+                          "switch ($Command) dispatch block")
+        return
+    for cmd in sorted(bash_cmds - ps1_cmds):
+        err("cli-parity", f"command '{cmd}' is dispatched in bin/ccds.sh but missing "
+                          f"from bin/ccds.ps1 — CLI changes ship in both dispatchers")
+    for cmd in sorted(ps1_cmds - bash_cmds):
+        err("cli-parity", f"command '{cmd}' is dispatched in bin/ccds.ps1 but missing "
+                          f"from bin/ccds.sh — CLI changes ship in both dispatchers")
+
+
 # --- 5 + 6 + 7: descriptions and models --------------------------------------
 def check_descriptions_and_models():
     agent_desc_chars = 0
@@ -254,6 +325,7 @@ def main():
     check_urls()
     check_skill_voice()
     check_process_skills()
+    check_cli_parity()
     check_descriptions_and_models()
 
     for w in warnings:
