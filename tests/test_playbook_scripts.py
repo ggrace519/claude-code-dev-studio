@@ -404,6 +404,104 @@ class TestLoopComplianceEval(unittest.TestCase):
         r = self.score("no-such-scenario", "text")
 
 
+EVAL_ROUTING = os.path.join(SCRIPTS, "eval-routing.py")
+
+
+@unittest.skipUnless(os.path.isfile(EVAL_ROUTING),
+                     "eval-routing.py not on this branch yet")
+class TestRoutingEval(unittest.TestCase):
+    """Deterministic (TF-IDF) paths of the routing eval. The --llm path
+    spends API tokens and is release-time only; its plumbing was proven live
+    once (2026-07-03, 2 prompts) and shares load/rank code with these."""
+
+    def synthetic_root(self, golden_cases):
+        """Tiny catalog + golden.json in a temp root shaped like the repo."""
+        root = tempfile.mkdtemp(prefix="ccds-routing-test-")
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        catalog = [
+            {"name": "saas-billing", "pack": "saas", "kind": "skill",
+             "scope": "project", "model": "",
+             "description": "Billing integration specialist. Auto-invoked "
+                            "when Stripe webhooks are handled or proration "
+                            "logic is added."},
+            {"name": "game-netcode", "pack": "game", "kind": "skill",
+             "scope": "project", "model": "",
+             "description": "Multiplayer netcode specialist. Auto-invoked for "
+                            "client prediction, rollback, and lag "
+                            "compensation."},
+            {"name": "embed-power", "pack": "embed", "kind": "skill",
+             "scope": "project", "model": "",
+             "description": "Power management specialist. Owns sleep modes, "
+                            "duty cycling, and battery-life budgeting."},
+        ]
+        write(os.path.join(root, "catalog.json"), json.dumps(catalog))
+        write(os.path.join(root, "evals", "routing", "golden.json"),
+              json.dumps({"cases": golden_cases}))
+        return root
+
+    OBVIOUS = {"id": "billing-webhooks",
+               "prompt": "Stripe webhooks keep failing so billing proration "
+                         "is wrong.",
+               "expect": ["saas-billing"]}
+
+    def test_real_repo_deterministic_green(self):
+        r = run(EVAL_ROUTING, REPO_ROOT)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("RESULT: PASS", r.stdout)
+        self.assertIn("Failures  : 0", r.stdout)
+
+    def test_real_repo_ambiguity_mode_is_informational(self):
+        r = run(EVAL_ROUTING, REPO_ROOT, "--ambiguity")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("summary (ambiguity)", r.stdout)
+
+    def test_obvious_match_passes(self):
+        root = self.synthetic_root([self.OBVIOUS])
+        r = run(EVAL_ROUTING, root, "--top-k", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS  billing-webhooks", r.stdout)
+
+    def test_wrong_expect_fails(self):
+        wrong = dict(self.OBVIOUS, id="billing-mislabeled",
+                     expect=["game-netcode"])
+        root = self.synthetic_root([wrong])
+        r = run(EVAL_ROUTING, root, "--top-k", "1")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("FAIL  billing-mislabeled", r.stdout)
+        self.assertIn("RESULT: FAIL", r.stdout)
+
+    def test_known_gap_warns_but_passes(self):
+        gap = dict(self.OBVIOUS, id="billing-gap", expect=["game-netcode"])
+        gap["known_gap"] = True
+        gap["note"] = "documented for the test"
+        root = self.synthetic_root([gap])
+        r = run(EVAL_ROUTING, root, "--top-k", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("WARN  billing-gap", r.stdout)
+        self.assertIn("Known gaps: 1", r.stdout)
+
+    def test_unknown_expect_name_exits_2(self):
+        bad = dict(self.OBVIOUS, expect=["saas-billing", "no-such-skill"])
+        root = self.synthetic_root([bad])
+        r = run(EVAL_ROUTING, root)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("no-such-skill", r.stderr)
+
+    def test_negative_prompt_passes_under_floor(self):
+        neg = {"id": "neg-poem", "prompt": "Write a sonnet about the ocean.",
+               "expect": [], "negative": True}
+        root = self.synthetic_root([neg])
+        r = run(EVAL_ROUTING, root)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS  neg-poem", r.stdout)
+
+    def test_dry_run_validates_only(self):
+        r = run(EVAL_ROUTING, REPO_ROOT, "--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("case(s) valid", r.stdout)
+        self.assertNotIn("RESULT:", r.stdout)
+
+
 EXPORT_HARNESS = os.path.join(SCRIPTS, "export-harness.py")
 
 

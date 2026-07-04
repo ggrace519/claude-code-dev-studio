@@ -49,6 +49,19 @@ jobs:
       - name: Run lint-playbook.py
         run: python3 scripts/lint-playbook.py
 
+  routing-eval:
+    name: Routing eval (deterministic)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Run eval-routing.py (golden prompts)
+        run: python3 scripts/eval-routing.py
+
+      - name: Report description-ambiguity pairs (informational)
+        run: python3 scripts/eval-routing.py --ambiguity
+
   python-tests:
     name: Script tests
     runs-on: ubuntu-latest
