@@ -28,3 +28,6 @@ dist/
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Project-staged domain skills (ccds sync / sync-agents output — per-clone state)
+.claude/skills/
