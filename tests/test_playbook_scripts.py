@@ -402,6 +402,73 @@ class TestLoopComplianceEval(unittest.TestCase):
 
     def test_unknown_scenario_id_errors(self):
         r = self.score("no-such-scenario", "text")
+        # assertion restored: it was clipped during a merge-conflict resolution
+        self.assertEqual(r.returncode, 2)
+
+
+@unittest.skipUnless(os.path.isfile(EVAL_COMPLIANCE) and shutil.which("bash")
+                     and sys.platform != "win32",
+                     "claude shim is a bash script (POSIX shells only)")
+class TestLoopComplianceBaseline(unittest.TestCase):
+    """--record / baseline-compare paths, exercised through the REAL live-run
+    plumbing with a fake `claude` on PATH (no API calls). Runs against a
+    synthetic root so the repo's committed baseline is never touched."""
+
+    COMPLIANT = ("I can't call the incident resolved yet. I ran npm test and "
+                 "read the output: 42/42 pass; running the smoke check now - "
+                 "evidence first, then the status update.")
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="ccds-baseline-test-")
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        # Minimal fixture root: the real scenarios file + the one skill it needs.
+        scenarios = json.loads(read(os.path.join(
+            REPO_ROOT, "evals", "loop-compliance", "scenarios.json")))
+        scenarios["scenarios"] = [s for s in scenarios["scenarios"]
+                                  if s["id"] == "verify-under-deadline"]
+        write(os.path.join(self.root, "evals", "loop-compliance", "scenarios.json"),
+              json.dumps(scenarios))
+        shutil.copytree(os.path.join(REPO_ROOT, "skills", "loop-verify"),
+                        os.path.join(self.root, "skills", "loop-verify"))
+        # claude shim: prints a canned compliant reply whatever the args.
+        bindir = os.path.join(self.root, "bin")
+        shim = os.path.join(bindir, "claude")
+        write(shim, "#!/usr/bin/env bash\nprintf '%s' \"$CLAUDE_SHIM_REPLY\"\n")
+        os.chmod(shim, 0o755)
+        self.env = {**os.environ,
+                    "PATH": bindir + os.pathsep + os.environ["PATH"],
+                    "CLAUDE_SHIM_REPLY": self.COMPLIANT}
+
+    def eval_(self, *args):
+        return subprocess.run([sys.executable, EVAL_COMPLIANCE, self.root, *args],
+                              capture_output=True, text=True, env=self.env)
+
+    def baseline(self):
+        return json.loads(read(os.path.join(
+            self.root, "evals", "loop-compliance", "baseline.json")))
+
+    def test_record_writes_baseline(self):
+        r = self.eval_("--votes", "1", "--record")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        b = self.baseline()
+        self.assertEqual(b["scenarios"]["verify-under-deadline"],
+                         {"passes": 1, "votes": 1})
+        self.assertEqual(b["votes"], 1)
+
+    def test_second_run_compares_against_baseline(self):
+        self.eval_("--votes", "1", "--record")
+        r = self.eval_("--votes", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("[baseline 1/1", r.stdout)
+        self.assertIn("no regressions", r.stdout)
+
+    def test_regression_is_named(self):
+        self.eval_("--votes", "1", "--record")
+        self.env["CLAUDE_SHIM_REPLY"] = ("Status update: the incident is "
+                                         "resolved. Everything is fine.")
+        r = self.eval_("--votes", "1")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("REGRESSED: verify-under-deadline", r.stdout)
 
 
 EVAL_ROUTING = os.path.join(SCRIPTS, "eval-routing.py")
