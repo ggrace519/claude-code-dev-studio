@@ -21,6 +21,41 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## Unreleased — 2026-07-03 — feat: ccds doctor
+
+### Added
+
+- **`ccds doctor`** (bash CLI): one command that proactively checks the whole
+  install for every class of environment bug this project has shipped
+  reactively — instead of discovering them one incident at a time. Nine
+  checks, each printing one `OK|WARN|FAIL` line with a concrete `remedy:` on
+  anything less than OK:
+  - **layout** — flags a dev-layout repo clone, where `ccds setup` fails
+    confusingly (it expects the packaged `<root>/agents` shape, not
+    `.claude/agents`), and says how to stage a release instead.
+  - **version** — compares the installed version against the latest GitHub
+    release, so an install can no longer silently sit on an old version
+    (this week's v0.9.2-vs-v0.10.1 incident). Offline/timeout is a WARN,
+    never a failure.
+  - **agents-installed / skills-installed** — detects silent no-op installs:
+    the core-agent sentinel and every cross-cutting skill (list read from
+    the setup script at runtime, so it cannot drift) must be present.
+  - **bom-scan / crlf-scan** — the historic UTF-8-BOM frontmatter breaker
+    (ADR-0001) and CRLF-corrupted shell scripts, caught before they bite.
+  - **claude-md-block** — exactly one ccds marker block in `~/.claude/CLAUDE.md`.
+  - **catalog** — `catalog.json` present and valid JSON.
+  - **path-and-duals** — warns when a system package (`/usr/share/ccds`) and
+    a per-user install (`~/.claude/playbook`) coexist, and names which one
+    this shell actually runs.
+
+  Exit codes: 0 = healthy (WARNs allowed), 1 = at least one FAIL, 2 = config
+  error. Covered by 6 fixture-based subprocess tests (synthetic `$HOME` +
+  staged install root; `CCDS_DOCTOR_RELEASE_URL` is a test-only override
+  that keeps the version check off the network). Follow-up: the PowerShell
+  twin (`ccds.ps1 doctor`) is intentionally not in this change.
+
+---
+
 ## v0.10.1 — 2026-07-03 — Windows parity: `ccds loop init` twin + dispatcher exit-code fix
 
 ### What changed

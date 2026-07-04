@@ -541,6 +541,112 @@ class TestLoopInit(unittest.TestCase):
 
 
 @unittest.skipUnless(BASH and sys.platform != "win32",
+                     "ccds.sh is a bash dispatcher (POSIX shells only)")
+class TestCcdsDoctor(unittest.TestCase):
+    """`ccds doctor` proactive environment checks.
+
+    Stages an installed-layout copy of the dispatcher (bin/ + scripts/ +
+    catalog.json + version.txt) in a temp dir and points HOME at a synthetic
+    healthy ~/.claude, so every check runs against a controlled environment.
+    CCDS_DOCTOR_RELEASE_URL (test-only override, documented in bin/ccds.sh)
+    points the version check at an unreachable local port so tests never
+    touch the network and deterministically exercise the offline WARN path.
+    """
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="ccds-doctor-test-")
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+
+        # Stage an installed-layout root (scripts/Sync-AgentPacks.sh present,
+        # not under /usr/share/ccds -> LAYOUT_KIND="installed").
+        self.inst = os.path.join(self.root, "playbook")
+        os.makedirs(os.path.join(self.inst, "bin"))
+        os.makedirs(os.path.join(self.inst, "scripts"))
+        shutil.copy(os.path.join(REPO_ROOT, "bin", "ccds.sh"),
+                    os.path.join(self.inst, "bin", "ccds.sh"))
+        shutil.copy(os.path.join(REPO_ROOT, "Sync-AgentPacks.sh"),
+                    os.path.join(self.inst, "scripts", "Sync-AgentPacks.sh"))
+        shutil.copy(os.path.join(REPO_ROOT, "verify-agents.sh"),
+                    os.path.join(self.inst, "scripts", "verify-agents.sh"))
+        shutil.copy(os.path.join(SCRIPTS, "ccds-user-setup.sh"),
+                    os.path.join(self.inst, "scripts", "ccds-user-setup.sh"))
+        shutil.copy(os.path.join(REPO_ROOT, "catalog.json"),
+                    os.path.join(self.inst, "catalog.json"))
+        write(os.path.join(self.inst, "version.txt"), "0.0.1\n")
+
+        # Synthetic healthy HOME: core-agent sentinel, every global skill,
+        # exactly one ccds marker block.
+        self.home = os.path.join(self.root, "home")
+        write(os.path.join(self.home, ".claude", "agents", "plan-architect.md"),
+              "---\nname: plan-architect\ndescription: test\n---\nbody\n")
+        for name in self._global_skills():
+            write(os.path.join(self.home, ".claude", "skills", name, "SKILL.md"),
+                  f"---\nname: {name}\ndescription: test\n---\nbody\n")
+        write(os.path.join(self.home, ".claude", "CLAUDE.md"),
+              "# my own notes\n\n# >>> ccds >>>\nblock body\n# <<< ccds <<<\n")
+
+    @staticmethod
+    def _global_skills():
+        """Parse GLOBAL_SKILLS out of the setup script (same source doctor uses)."""
+        src = read(os.path.join(SCRIPTS, "ccds-user-setup.sh"))
+        block = src.split("GLOBAL_SKILLS=(", 1)[1].split(")", 1)[0]
+        return [ln.strip() for ln in block.splitlines()
+                if ln.strip() and not ln.strip().startswith("#")]
+
+    def doctor(self):
+        env = {**os.environ,
+               "HOME": self.home,
+               # unreachable (discard-port) URL: forces the offline WARN path
+               "CCDS_DOCTOR_RELEASE_URL": "http://127.0.0.1:9/releases/latest"}
+        return subprocess.run(
+            [BASH, os.path.join(self.inst, "bin", "ccds.sh"), "doctor"],
+            capture_output=True, text=True, env=env)
+
+    def test_healthy_home_passes(self):
+        r = self.doctor()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("RESULT: PASS", r.stdout)
+        self.assertIn("FAIL  : 0", r.stdout)
+
+    def test_missing_core_agent_fails(self):
+        os.remove(os.path.join(self.home, ".claude", "agents", "plan-architect.md"))
+        r = self.doctor()
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("FAIL  agents-installed", r.stdout)
+        self.assertIn("remedy: run 'ccds setup'", r.stdout)
+
+    def test_missing_global_skill_fails(self):
+        shutil.rmtree(os.path.join(self.home, ".claude", "skills", "loop-compound"))
+        r = self.doctor()
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("FAIL  skills-installed", r.stdout)
+        self.assertIn("loop-compound", r.stdout)
+
+    def test_bom_in_skill_fails(self):
+        p = os.path.join(self.home, ".claude", "skills", "loop-verify", "SKILL.md")
+        with open(p, "rb") as f:
+            content = f.read()
+        with open(p, "wb") as f:
+            f.write(b"\xef\xbb\xbf" + content)
+        r = self.doctor()
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("FAIL  bom-scan", r.stdout)
+
+    def test_duplicate_marker_block_fails(self):
+        md = os.path.join(self.home, ".claude", "CLAUDE.md")
+        write(md, read(md) + "\n# >>> ccds >>>\ndupe\n# <<< ccds <<<\n")
+        r = self.doctor()
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("FAIL  claude-md-block", r.stdout)
+
+    def test_offline_version_check_warns_not_fails(self):
+        r = self.doctor()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("WARN  version", r.stdout)
+        self.assertIn("could not check", r.stdout)
+
+
+@unittest.skipUnless(BASH and sys.platform != "win32",
                      "postinst is a bash maintainer script (POSIX shells only)")
 class TestDebPostinst(unittest.TestCase):
     """Regression tests for the Debian/RPM postinst per-user setup.
