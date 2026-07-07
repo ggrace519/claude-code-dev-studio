@@ -25,6 +25,19 @@ that lives only in a prompt is wishful thinking. New ADR-0011 records the layer.
   no proof. Model-agnostic by construction — the proof lives in a file, so a
   silent model reroute cannot bypass it. Runs alongside the existing
   command-based `stop-gate.sh`.
+- **Risk guard** (`ccds-loops` PreToolUse hook on `Bash`,
+  `pretooluse-risk-guard.py`): reversible-first backstop. Blocks (exit 2, with
+  the reason fed back to the model) a deny-list of catastrophic, irreversible
+  commands — `rm -rf /` and `rm -rf *`, `mkfs`, `dd of=/dev/…`, the classic
+  forkbomb, `zpool destroy`, and `DROP DATABASE` / `DROP TABLE` / `TRUNCATE`.
+  Wide-but-reversible fleet fan-out (a for-loop running `ssh` across hosts,
+  `parallel-ssh`) is a non-blocking WARN (exit 1) instead. The deny-list is a
+  separate editable data file (`risk-deny-list.txt`) — tune it without touching
+  logic. High-signal by design: it targets whole-system / whole-database blast
+  radius, not ordinary risky work, and fails open if its table is unreadable so
+  a broken data file never freezes the shell (permission modes remain the outer
+  guard). Benign look-alikes (`rm -rf ./build`, `truncate -s 0 log`,
+  `dd of=./img`, a single `ssh host`) pass untouched.
 
 ---
 

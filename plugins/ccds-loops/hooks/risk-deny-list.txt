@@ -1,0 +1,43 @@
+# ccds-loops PreToolUse risk guard — pattern table (data, not logic).
+#
+# The hook (pretooluse-risk-guard.py) reads this file; editing it tunes the
+# guard without touching code. One rule per line:
+#
+#   deny: <python-regex>        [ # inline label ]
+#   warn: <python-regex>        [ # inline label ]
+#
+#   deny -> block the Bash call (exit 2) and feed the reason back to the model.
+#   warn -> non-blocking advisory (exit 1): the operator sees it, the call runs.
+#
+# Regexes are matched case-insensitively against the Bash command string.
+# `[^\n;|&]*` inside a pattern keeps a match within a single command segment so
+# a benign command after `;`/`|`/`&&` can't drag an earlier one into a match.
+# An inline label is the text after the FIRST " # " (space-hash-space); the
+# regexes below contain no " # ", so nothing is accidentally truncated.
+#
+# Reversible-first: this is a backstop for catastrophic, irreversible,
+# whole-system / whole-database blast-radius commands — NOT a linter for
+# ordinary risky work. Keep it small and high-signal.
+
+# --- Filesystem: recursive force-delete of root or the whole working dir ---
+deny: \brm\b(?=[^\n;|&]*-[a-z]*r)(?=[^\n;|&]*-[a-z]*f)[^\n;|&]*\s/(?:\s|$|\*)   # rm -rf on / (root)
+deny: \brm\b(?=[^\n;|&]*-[a-z]*r)(?=[^\n;|&]*-[a-z]*f)[^\n;|&]*\s\*(?:\s|$)      # rm -rf * (wipe cwd)
+
+# --- Disk / device destruction ---
+deny: \bmkfs(?:\.[a-z0-9]+)?\b                                                  # mkfs (reformat a filesystem)
+deny: \bdd\b[^\n;|&]*\bof=/dev/                                                 # dd writing to a raw device
+deny: \bzpool\s+destroy\b                                                       # zpool destroy (ZFS pool)
+
+# --- Forkbomb ---
+deny: :\s*\(\s*\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:                            # classic :(){ :|:& };:
+
+# --- Databases: unrecoverable schema / data drops ---
+deny: \bdrop\s+database\b                                                       # DROP DATABASE
+deny: \bdrop\s+table\b                                                          # DROP TABLE
+deny: \btruncate\s+table\b                                                      # TRUNCATE TABLE
+deny: \btruncate\s+[\w.\"]+\s*;                                                 # TRUNCATE <name>;  (Postgres form)
+
+# --- Fleet blast radius: warn, don't block (reversible per host, but wide) ---
+warn: \bfor\s+\w+\s+in\b[^\n]*;\s*do\b[^\n]*\bssh\b                             # for-loop running ssh across many hosts
+warn: \b(?:pssh|parallel-ssh)\b                                                 # parallel-ssh fan-out
+warn: \bparallel\b[^\n]*\bssh\b                                                 # GNU parallel driving ssh

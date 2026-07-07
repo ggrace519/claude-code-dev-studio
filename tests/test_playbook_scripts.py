@@ -519,6 +519,92 @@ class TestEvidenceGate(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
 
 
+RISK_GUARD = os.path.join(HOOKS_SRC, "pretooluse-risk-guard.py")
+
+
+@unittest.skipUnless(os.path.isfile(RISK_GUARD),
+                     "pretooluse-risk-guard.py not on this branch yet")
+class TestRiskGuard(unittest.TestCase):
+    """Primitive 2: PreToolUse Bash guard. Deny-list hit -> exit 2 (block);
+    fleet-SSH loop -> exit 1 (non-blocking WARN); benign -> exit 0. Runs the
+    real hook against the real shipped risk-deny-list.txt."""
+
+    def guard(self, command, tool_name="Bash"):
+        payload = {"tool_name": tool_name, "tool_input": {"command": command}}
+        return subprocess.run([sys.executable, RISK_GUARD],
+                              input=json.dumps(payload),
+                              capture_output=True, text=True)
+
+    # --- deny-list: every mandated pattern must block (exit 2) ---
+    DENY = [
+        "rm -rf /",
+        "rm -rf /*",
+        "sudo rm -fr  /  ",
+        "rm -rf *",
+        "mkfs.ext4 /dev/sda1",
+        "dd if=/dev/zero of=/dev/sda bs=1M",
+        ":(){ :|:& };:",
+        'psql -c "DROP DATABASE prod"',
+        "DROP TABLE users",
+        "TRUNCATE TABLE sessions",
+        'psql -c "TRUNCATE users;"',
+        "zpool destroy tank",
+    ]
+
+    def test_denylist_patterns_block(self):
+        for cmd in self.DENY:
+            r = self.guard(cmd)
+            self.assertEqual(r.returncode, 2, "should BLOCK: %r\n%s" % (cmd, r.stderr))
+            self.assertIn("BLOCKED", r.stderr)
+
+    # --- benign commands must pass untouched (exit 0) ---
+    ALLOW = [
+        "ls -la",
+        "git status",
+        "rm -rf ./build",
+        "rm -rf /tmp/mycache",
+        "dd if=/dev/zero of=./disk.img bs=1M count=100",
+        "truncate -s 0 app.log",
+        "ssh web1 uptime",
+        "grep -rf patterns.txt src/",
+        'psql -h localhost -c "SELECT * FROM users"',
+    ]
+
+    def test_benign_commands_allowed(self):
+        for cmd in self.ALLOW:
+            r = self.guard(cmd)
+            self.assertEqual(r.returncode, 0, "should ALLOW: %r\n%s" % (cmd, r.stderr))
+
+    # --- fleet SSH loops: non-blocking WARN (exit 1) ---
+    def test_fleet_ssh_loop_warns_nonblocking(self):
+        r = self.guard("for h in web1 web2 web3; do ssh $h uptime; done")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("WARN", r.stderr)
+
+    def test_parallel_ssh_warns(self):
+        r = self.guard("parallel-ssh -h hosts.txt uptime")
+        self.assertEqual(r.returncode, 1)
+
+    # --- robustness: never block on our own failure / non-Bash / empty ---
+    def test_deny_beats_warn_when_both_match(self):
+        # a fleet loop that also drops a table must BLOCK, not merely warn
+        r = self.guard("for h in db1 db2; do ssh $h 'psql -c \"DROP TABLE t\"'; done")
+        self.assertEqual(r.returncode, 2, r.stderr)
+
+    def test_non_bash_tool_is_inert(self):
+        r = self.guard("rm -rf /", tool_name="Read")
+        self.assertEqual(r.returncode, 0)
+
+    def test_empty_command_allowed(self):
+        r = self.guard("   ")
+        self.assertEqual(r.returncode, 0)
+
+    def test_malformed_stdin_fails_open(self):
+        r = subprocess.run([sys.executable, RISK_GUARD],
+                           input="not json", capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0)
+
+
 EVAL_COMPLIANCE = os.path.join(SCRIPTS, "eval-loop-compliance.py")
 
 
