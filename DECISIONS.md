@@ -732,3 +732,113 @@ reusable agent-loop skills for general coding projects.
 
 ### Supersedes
 None. Extends the cross-cutting layer established by ADR-0003/ADR-0007.
+
+---
+
+## ADR-0011: Loop Enforcement Layer — File-Enforced Control Primitives
+
+**Date:** 2026-07-06
+**Status:** Accepted
+**Phase:** Hardening
+**Deciders:** Greg Grace
+
+### Context
+
+ADR-0010 shipped the `loop-` process skills as prose contracts (iron laws +
+rationalization tables) and named, as explicit follow-on work, "enforcement
+hooks for the `ccds-loops` plugin." Prose sets intent; it does not survive
+session death, a model reroute, or a mid-task incentive to cut a corner. The
+`ccds-loops` plugin already carried exactly one real gate (`stop-gate.sh`, an
+opt-in *command* gate) and a SessionStart context injector — everything else the
+loops assert (verify before done, reversible-first, files-not-context, learn on
+repeat) lived only in the model's head.
+
+The governing question for this ADR was applied to every candidate change:
+**"Which file enforces this tomorrow?"** Anything answerable only with "the
+prompt" or "the model will remember" was rejected as wishful thinking.
+Enforcement had to live in a hook, a schema, an eval, or a data file.
+
+### Decision
+
+Add an enforcement layer to the `ccds-loops` plugin (hooks) plus one repo
+script, converting the load-bearing loop contracts into file invariants. Six
+primitives were specified; five were built, one deferred:
+
+1. **Delivery gate** — `stop-evidence-gate.py` (Stop hook). A tracked cycle may
+   not end without `.claude/evidence/<cycle_id>.json` carrying a `PASS`/`FAIL`
+   verdict; missing/invalid → `exit 2` with the required shape fed back.
+   Opt-in and cycle-scoped (armed by `CCDS_LOOP_CYCLE` env or a
+   `.claude/loop-cycle` marker) so ad-hoc sessions are untouched. `FAIL`
+   satisfies the gate — honest failure is compliance; the blocked anti-pattern
+   is a silent done-claim. Runs beside the existing command gate.
+2. **Pre-tool risk guard** — `pretooluse-risk-guard.py` (PreToolUse, matcher
+   `Bash`). Blocks (`exit 2`) an irreversible/blast-radius deny-list (`rm -rf /`,
+   `rm -rf *`, `mkfs`, `dd of=/dev/…`, forkbomb, `zpool destroy`,
+   `DROP DATABASE`/`DROP TABLE`/`TRUNCATE`); non-blocking WARN (`exit 1`) for
+   fleet-wide SSH fan-out. Deny-list is a separate data file
+   (`risk-deny-list.txt`); fails open if unreadable.
+3. **Pre-compact handoff writer** — `precompact-handoff.py` (PreCompact). Snapshots
+   open cycle id, last-N evidence verdicts, `git status --short`, and last-5
+   commits to `.claude/handoff.md`; `loop-long-horizon`'s bootstrap ritual reads
+   it back. Always `exit 0`.
+4. **Evidence sink, dual-tier** — fast tier is the `.claude/evidence/*.json`
+   files the delivery gate reads; durable tier is `posttooluse-evidence-log.py`
+   (PostToolUse, matcher `Write|Edit`) which validates + **secret-scans** each
+   evidence write (`exit 2` on a planted secret) and mirrors it to Postgres via
+   `psql` — optional, env-only DSN, no-op without `CCDS_EVIDENCE_DSN`/`psql`,
+   idempotent DDL in `agent-evidence.sql`.
+5. **Failures → evals** — `scripts/evidence-to-evals.py`. Scans recurring `FAIL`
+   verdicts by task (Postgres or local) and emits stubs in the *existing*
+   `scenarios.json` schema to a separate review file, deduped against promoted
+   ids. No new eval schema.
+6. **Budget governor** — **DEFERRED, not built.** A reliable token counter is not
+   available to hooks, and there is no always-on per-tool-call hook to cheaply
+   piggyback a call counter without adding one solely for this. Recorded here
+   rather than half-built, per the "don't gold-plate / don't half-build" rule.
+
+All new hook/enforcement files are BOM-less UTF-8 and comply with ADR-0001;
+hooks are python3 (matching the repo's existing `loop-skill-edited.py`
+PostToolUse hook, and because JSON-on-stdin parsing in bash is fragile). The
+plugin's original `stop-gate.sh`/`session-start.sh` are unchanged.
+
+### Rationale
+
+- **Model-agnostic by construction.** Every gate decides from a file (evidence
+  JSON, deny-list, handoff) rather than from the model's prose, so a silent
+  model reroute cannot break the `PASS`/`FAIL` contract or the risk guard. This
+  was a hard constraint, and files are precisely how it is met.
+- **Opt-in where blunt enforcement would harm.** The delivery gate arms only on
+  a declared cycle; the risk guard fails open; the durable tier no-ops without a
+  DSN. Enforcement that fired on every ad-hoc session would train users to rip
+  the plugin out.
+- **Reuse over invention.** The failures→evals bridge emits into the existing
+  compliance schema; the durable tier reuses the task-provided DDL verbatim; the
+  evidence schema is the one the delivery gate already documents in its own
+  error message.
+- **python3 over dual .sh/.ps1 for the new hooks.** One interpreter, cross-
+  platform, and real JSON parsing — versus bash-only string wrangling or a
+  doubled .ps1 surface. The plugin's pre-existing bash hooks stay as they are.
+
+### Consequences
+
+- The `ccds-loops` plugin now wires five hook events (was two):
+  PreToolUse, PostToolUse, PreCompact, SessionStart, Stop. `plugins/` is
+  regenerated from `plugin-extras/` (marketplace-fresh lint enforces the copy).
+- `tests/test_playbook_scripts.py` gains ~43 cases across the five primitives;
+  the pre-existing `test_loops_plugin_ships_hooks` was updated from the old
+  two-event surface to the new five.
+- The `loop-long-horizon` SKILL.md edit (one additive bootstrap bullet) changed
+  loop-* wording, so its **live compliance baseline is now unmeasured** and must
+  be re-recorded at release time (`eval-loop-compliance.py --votes 3 --model
+  haiku`, ~18 API calls) — the `loop-skill-edited` tripwire fired as designed.
+- Three loop stages remain **impossible to file-enforce** and are named so no one
+  pretends otherwise: **intent** (what to build is a human judgment), **decide**
+  (choosing the next action from a digest is the model's reasoning), and
+  **tools-early / dispatch selection** (which tool to reach for first). Files can
+  gate the *outputs* of these stages (evidence, risk, handoff) but not the
+  judgment itself.
+- Budget governor deferral remains open follow-on work.
+
+### Supersedes
+None. Implements the enforcement-hooks follow-on named in ADR-0010's
+Consequences; composes with the command gate and context injector already there.
