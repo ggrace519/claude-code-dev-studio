@@ -18,11 +18,16 @@ always — this is a tripwire, not a gate.
 import json
 import sys
 
-# Files whose wording the live compliance/loop baselines actually measure.
-WATCHED = (
-    "skills/loop-",                # any loop-* SKILL.md or bundled reference
-    "evals/loop-compliance/",      # scenario wording is half the measurement
-)
+# Files whose wording the live compliance baseline actually measures. The eval
+# injects ONLY loop-* SKILL.md bodies (not their bundled references), plus the
+# scenario prompts. So a reference-only edit (references/*.md) is not a baseline
+# change and must not trip the reminder.
+def _measured(norm):
+    if "skills/loop-" in norm and norm.endswith("SKILL.md"):
+        return True                    # a loop-* SKILL.md body
+    if "evals/loop-compliance/" in norm:
+        return True                    # scenario wording is half the measurement
+    return False
 
 def main():
     try:
@@ -31,7 +36,7 @@ def main():
         return 0  # malformed input: stay silent, never break the edit
     path = (payload.get("tool_input") or {}).get("file_path", "") or ""
     norm = path.replace("\\", "/")
-    if not any(w in norm for w in WATCHED):
+    if not _measured(norm):
         return 0
     print(json.dumps({
         "hookSpecificOutput": {

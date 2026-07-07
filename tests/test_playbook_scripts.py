@@ -1248,6 +1248,13 @@ class TestLoopSkillEditedHook(unittest.TestCase):
             {"tool_input": {"file_path": "/x/skills/saas-billing/SKILL.md"}}))
         self.assertEqual((r.returncode, r.stdout), (0, ""))
 
+    def test_silent_on_loop_reference_edit(self):
+        # References are NOT injected by the compliance eval — editing one is not
+        # a baseline change, so the tripwire must stay quiet (WATCHED = */SKILL.md).
+        r = self.hook(json.dumps({"tool_input": {"file_path":
+            "/x/skills/loop-long-horizon/references/state-files.md"}}))
+        self.assertEqual((r.returncode, r.stdout), (0, ""))
+
     def test_silent_on_malformed_input(self):
         r = self.hook("not json at all")
         self.assertEqual((r.returncode, r.stdout), (0, ""))
