@@ -42,9 +42,12 @@ that lives only in a prompt is wishful thinking. New ADR-0011 records the layer.
   just before context compaction, snapshots operational state to
   `.claude/handoff.md` — timestamp + compaction trigger, the open loop cycle id,
   the last 5 evidence artifacts with their verdicts, `git status --short`, and
-  the last 5 commits. `loop-long-horizon`'s bootstrap ritual now reads this file
-  so a compacted or fresh context rebuilds "where was I" from disk instead of
-  faded memory. Always exits 0 (a handoff writer must never block compaction);
+  the last 5 commits. The `ccds-loops` SessionStart hook points a fresh/compacted
+  context at this file on boot (and `loop-long-horizon`'s bundled state-file kit
+  documents reading it), so "where was I" is rebuilt from disk instead of faded
+  memory — wired via the boot hook rather than the compliance-measured skill body
+  (live measurement showed a body edit regressed the one-task iron law 9/9→~73%;
+  see ADR-0011). Always exits 0 (a handoff writer must never block compaction);
   best-effort and secret-free (cycle ids, verdicts, task labels, git metadata
   only). The file is hook-owned and overwritten each compaction — latest wins.
 - **Evidence sink, dual-tier** (Primitive 4). *Fast tier:* the per-cycle

@@ -396,6 +396,19 @@ class TestLoopHooks(unittest.TestCase):
     def set_gate(self, line):
         write(os.path.join(self.proj, ".claude", "loop-gate.cmd"), line + "\n")
 
+    def test_session_start_points_at_handoff_when_present(self):
+        # ADR-0011: the "continue step reads handoff.md on boot" wiring lives in
+        # this hook, not the compliance-measured skill body.
+        write(os.path.join(self.proj, ".claude", "handoff.md"), "# snapshot\n")
+        r = self.hook("session-start.sh")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(".claude/handoff.md", r.stdout)
+
+    def test_session_start_silent_on_handoff_when_absent(self):
+        r = self.hook("session-start.sh")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("handoff.md", r.stdout)
+
     def test_session_start_emits_loop_index(self):
         r = self.hook("session-start.sh")
         self.assertEqual(r.returncode, 0, r.stderr)

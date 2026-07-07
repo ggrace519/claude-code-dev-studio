@@ -39,10 +39,8 @@ Create the state kit — templates in [references/state-files.md](references/sta
 ## The iteration
 
 1. **Bootstrap ritual** — before touching code: `pwd`, `git log -5`, read
-   `progress.md`, read `feature_list.json`, and — if it exists — read
-   `.claude/handoff.md` (the snapshot the `ccds-loops` PreCompact hook writes
-   before context loss: open cycle id, recent evidence verdicts, git state).
-   Then run `init.sh`. If `init.sh` fails, fixing that *is* this iteration's task.
+   `progress.md`, read `feature_list.json`, run `init.sh`. If `init.sh` fails, fixing
+   that *is* this iteration's task.
 2. **Pick ONE incomplete item** — the highest-priority `"passes": false` entry.
 3. **Search before building.** Confirm the feature isn't already implemented; false
    "not implemented yet" is a documented failure mode of fresh contexts.

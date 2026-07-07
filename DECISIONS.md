@@ -827,10 +827,22 @@ plugin's original `stop-gate.sh`/`session-start.sh` are unchanged.
 - `tests/test_playbook_scripts.py` gains ~43 cases across the five primitives;
   the pre-existing `test_loops_plugin_ships_hooks` was updated from the old
   two-event surface to the new five.
-- The `loop-long-horizon` SKILL.md edit (one additive bootstrap bullet) changed
-  loop-* wording, so its **live compliance baseline is now unmeasured** and must
-  be re-recorded at release time (`eval-loop-compliance.py --votes 3 --model
-  haiku`, ~18 API calls) — the `loop-skill-edited` tripwire fired as designed.
+- **Empirical finding (2026-07-06): the handoff read is wired via the
+  SessionStart hook, NOT the compliance-measured skill body.** The first attempt
+  added a bootstrap bullet to `loop-long-horizon/SKILL.md`. Live measurement
+  (`eval-loop-compliance.py`, haiku) bisected it against `main`: the pristine
+  body scored 9/9 votes on `long-horizon-second-task`; the edited body scored
+  ~11/15 (≈73%) — a measurable regression of the one-task iron law, exactly what
+  the compliance eval exists to catch. Resolution honoring the "which file
+  enforces this" principle: revert the SKILL.md body to pristine and wire the
+  `.claude/handoff.md` read into `session-start.sh` (the hook that fires on
+  session boot / "continue") plus the bundled `references/state-files.md`
+  bootstrap step. The eval injects only SKILL.md bodies, so neither the hook nor
+  the reference touches the measured wording. Net effect: **no loop-* SKILL.md
+  body differs from `main`, so the committed 2026-07-03 compliance baseline
+  remains valid and current** (pristine body re-verified at 9/9); no re-record
+  was warranted, and the handoff read is enforced by a hook rather than by prose
+  that costs compliance.
 - Three loop stages remain **impossible to file-enforce** and are named so no one
   pretends otherwise: **intent** (what to build is a human judgment), **decide**
   (choosing the next action from a digest is the model's reasoning), and

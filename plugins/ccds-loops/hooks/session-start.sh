@@ -16,4 +16,13 @@ optional:
 Optional stop gate: put one command in .claude/loop-gate.cmd — the session cannot
 end while it fails (remove the file to disarm).
 EOF
+
+# If a handoff snapshot from a prior compaction is present, point the fresh
+# context at it — this is the "continue step reads handoff.md on boot" wiring,
+# enforced by the hook rather than by prose (a file the model is told to read,
+# not a rule it must remember). Written by precompact-handoff.py.
+proj="${CLAUDE_PROJECT_DIR:-$PWD}"
+if [[ -f "$proj/.claude/handoff.md" ]]; then
+    printf '\nA loop handoff snapshot exists at .claude/handoff.md (written before the last compaction: open cycle id, recent evidence verdicts, git state). If you are resuming or continuing a long-horizon loop, read it first to rebuild bearings.\n'
+fi
 exit 0
