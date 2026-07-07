@@ -47,6 +47,21 @@ that lives only in a prompt is wishful thinking. New ADR-0011 records the layer.
   faded memory. Always exits 0 (a handoff writer must never block compaction);
   best-effort and secret-free (cycle ids, verdicts, task labels, git metadata
   only). The file is hook-owned and overwritten each compaction — latest wins.
+- **Evidence sink, dual-tier** (Primitive 4). *Fast tier:* the per-cycle
+  `.claude/evidence/<cycle_id>.json` artifacts the delivery gate already reads
+  (`cycle_id, ts, task, verdict, proof, agent`); the gate's own block message
+  documents the exact shape, so no separate writer is needed. *Durable tier:* a
+  `ccds-loops` PostToolUse hook (`posttooluse-evidence-log.py`, matcher
+  `Write|Edit`) that fires only on evidence-file writes and (1) validates the
+  JSON shape, (2) **secret-scans** the artifact — a high-confidence key/token
+  pattern blocks the turn (exit 2) with instructions to strip it, so credentials
+  never land in evidence, and (3) mirrors the row to Postgres for cross-session
+  failure analysis. The mirror is **optional and best-effort**: no-op unless
+  `CCDS_EVIDENCE_DSN` is set and `psql` is on PATH; a Postgres outage never
+  blocks the turn. Connection is env-only (no credentials in the repo); the DDL
+  ships as `agent-evidence.sql` and runs idempotently (table self-provisions);
+  values pass through psql's injection-safe `:'var'` quoting. Repo stays
+  stack-agnostic when the DSN is unset.
 
 ---
 

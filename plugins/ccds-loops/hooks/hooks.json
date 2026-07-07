@@ -11,6 +11,17 @@
         ]
       }
     ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/posttooluse-evidence-log.py\""
+          }
+        ]
+      }
+    ],
     "PreCompact": [
       {
         "hooks": [

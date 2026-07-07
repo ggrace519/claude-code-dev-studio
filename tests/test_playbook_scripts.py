@@ -694,6 +694,115 @@ class TestHandoffWriter(unittest.TestCase):
         self.assertNotIn("cyc-old", h)
 
 
+EVIDENCE_LOG = os.path.join(HOOKS_SRC, "posttooluse-evidence-log.py")
+
+
+@unittest.skipUnless(os.path.isfile(EVIDENCE_LOG),
+                     "posttooluse-evidence-log.py not on this branch yet")
+class TestEvidenceLog(unittest.TestCase):
+    """Primitive 4 (durable tier + secret guard): PostToolUse hook that fires on
+    writes to .claude/evidence/*.json — validates, secret-scans (exit 2), and
+    optionally mirrors to Postgres via psql (no-op without CCDS_EVIDENCE_DSN)."""
+
+    def setUp(self):
+        self.proj = tempfile.mkdtemp(prefix="ccds-evlog-test-")
+        self.addCleanup(shutil.rmtree, self.proj, ignore_errors=True)
+        self.ev_dir = os.path.join(self.proj, ".claude", "evidence")
+        os.makedirs(self.ev_dir)
+        # dir for a fake `psql` on PATH (records its argv to a file)
+        self.bindir = os.path.join(self.proj, "bin")
+        os.makedirs(self.bindir)
+        self.psql_log = os.path.join(self.proj, "psql-argv.txt")
+
+    def write_evidence(self, cycle_id="cyc-1", **fields):
+        payload = {"cycle_id": cycle_id, "verdict": "PASS", "task": "t",
+                   "proof": {"cmd": "pytest", "count": "42/42"}, "agent": "x"}
+        payload.update(fields)
+        path = os.path.join(self.ev_dir, cycle_id + ".json")
+        write(path, json.dumps(payload))
+        return path
+
+    def stub_psql(self, exit_code=0):
+        shim = os.path.join(self.bindir, "psql")
+        write(shim, "#!/usr/bin/env bash\n"
+                    'printf "%%s\\n" "$@" >> "%s"\nexit %d\n' % (self.psql_log, exit_code))
+        os.chmod(shim, 0o755)
+
+    def run_hook(self, file_path, dsn=None, with_psql=False):
+        env = {k: v for k, v in os.environ.items() if k != "CCDS_EVIDENCE_DSN"}
+        if with_psql:
+            env["PATH"] = self.bindir + os.pathsep + env["PATH"]
+        else:
+            # scrub any real psql so "no psql" paths are deterministic
+            env["PATH"] = self.bindir
+            write(os.path.join(self.bindir, ".keep"), "")
+        if dsn is not None:
+            env["CCDS_EVIDENCE_DSN"] = dsn
+        payload = {"tool_name": "Write", "tool_input": {"file_path": file_path}}
+        return subprocess.run([sys.executable, EVIDENCE_LOG],
+                              input=json.dumps(payload),
+                              capture_output=True, text=True, env=env)
+
+    def test_non_evidence_write_is_inert(self):
+        p = os.path.join(self.proj, "src", "main.py")
+        write(p, "print(1)")
+        r = self.run_hook(p)
+        self.assertEqual(r.returncode, 0)
+
+    def test_clean_evidence_no_dsn_is_noop_exit0(self):
+        p = self.write_evidence()
+        r = self.run_hook(p)  # no DSN
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_malformed_json_blocks(self):
+        p = os.path.join(self.ev_dir, "bad.json")
+        write(p, "{not json")
+        r = self.run_hook(p)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("not valid JSON", r.stderr)
+
+    def test_missing_verdict_blocks(self):
+        p = self.write_evidence(verdict=None)
+        r = self.run_hook(p)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("valid verdict", r.stderr)
+
+    def test_secret_in_proof_blocks(self):
+        # planted fake AWS key shape — must be caught before it can be mirrored
+        p = self.write_evidence(proof={"log": "using AKIAIOSFODNN7EXAMPLE now"})
+        r = self.run_hook(p)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("secret", r.stderr)
+
+    def test_private_key_blocks(self):
+        p = self.write_evidence(proof={"k": "-----BEGIN RSA PRIVATE KEY-----"})
+        r = self.run_hook(p)
+        self.assertEqual(r.returncode, 2)
+
+    def test_dsn_set_invokes_psql_with_row(self):
+        self.stub_psql(exit_code=0)
+        p = self.write_evidence(cycle_id="ship-9")
+        r = self.run_hook(p, dsn="postgresql://u@h/db", with_psql=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        argv = read(self.psql_log)
+        self.assertIn("ship-9", argv)                 # row passed via --set ev=
+        self.assertIn("ON_ERROR_STOP=1", argv)
+        self.assertIn("agent_evidence", argv)         # DDL+insert in the -c body
+
+    def test_psql_failure_does_not_block_turn(self):
+        self.stub_psql(exit_code=1)
+        p = self.write_evidence()
+        r = self.run_hook(p, dsn="postgresql://u@h/db", with_psql=True)
+        self.assertEqual(r.returncode, 0)             # infra hiccup never blocks
+        self.assertIn("mirror failed", r.stderr)
+
+    def test_dsn_set_but_no_psql_noops(self):
+        p = self.write_evidence()
+        r = self.run_hook(p, dsn="postgresql://u@h/db", with_psql=False)
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("psql not on PATH", r.stderr)
+
+
 EVAL_COMPLIANCE = os.path.join(SCRIPTS, "eval-loop-compliance.py")
 
 
