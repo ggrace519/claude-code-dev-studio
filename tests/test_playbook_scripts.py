@@ -13,6 +13,7 @@ Run: python3 -m unittest discover -s tests -v
 import getpass
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -347,8 +348,15 @@ class TestBuildMarketplace(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         hooks_dir = os.path.join(REPO_ROOT, "plugins", "ccds-loops", "hooks")
         hooks = json.loads(read(os.path.join(hooks_dir, "hooks.json")))
-        self.assertEqual(sorted(hooks["hooks"].keys()), ["SessionStart", "Stop"])
-        for script in ("session-start.sh", "stop-gate.sh"):
+        # Enforcement layer (ADR-0011) added PreToolUse/PostToolUse/PreCompact
+        # alongside the original SessionStart/Stop.
+        self.assertEqual(
+            sorted(hooks["hooks"].keys()),
+            ["PostToolUse", "PreCompact", "PreToolUse", "SessionStart", "Stop"])
+        for script in ("session-start.sh", "stop-gate.sh",
+                       "stop-evidence-gate.py", "pretooluse-risk-guard.py",
+                       "risk-deny-list.txt", "precompact-handoff.py",
+                       "posttooluse-evidence-log.py", "agent-evidence.sql"):
             self.assertTrue(os.path.isfile(os.path.join(hooks_dir, script)), script)
 
     def test_explicit_version_pins_plugins(self):
@@ -801,6 +809,112 @@ class TestEvidenceLog(unittest.TestCase):
         r = self.run_hook(p, dsn="postgresql://u@h/db", with_psql=False)
         self.assertEqual(r.returncode, 0)
         self.assertIn("psql not on PATH", r.stderr)
+
+
+EVIDENCE_TO_EVALS = os.path.join(SCRIPTS, "evidence-to-evals.py")
+
+
+@unittest.skipUnless(os.path.isfile(EVIDENCE_TO_EVALS),
+                     "evidence-to-evals.py not on this branch yet")
+class TestEvidenceToEvals(unittest.TestCase):
+    """Primitive 5: recurring FAIL verdicts -> eval stubs in the EXISTING
+    scenarios.json schema, emitted to a separate review file."""
+
+    def setUp(self):
+        # a repo-shaped root with the loop-verify skill the stub references
+        self.root = tempfile.mkdtemp(prefix="ccds-e2e-test-")
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        shutil.copytree(os.path.join(REPO_ROOT, "skills", "loop-verify"),
+                        os.path.join(self.root, "skills", "loop-verify"))
+        self.project = os.path.join(self.root, "proj")
+        os.makedirs(os.path.join(self.project, ".claude", "evidence"))
+        self.out = os.path.join(self.root, "evals", "loop-compliance",
+                                "generated-stubs.json")
+
+    def add(self, cycle_id, verdict, task):
+        write(os.path.join(self.project, ".claude", "evidence", cycle_id + ".json"),
+              json.dumps({"cycle_id": cycle_id, "verdict": verdict, "task": task}))
+
+    def run_script(self, *args):
+        return run(EVIDENCE_TO_EVALS, self.root, "--project", self.project, *args)
+
+    def stubs(self):
+        return json.loads(read(self.out))["scenarios"]
+
+    def test_recurring_fail_emits_stub(self):
+        self.add("c1", "FAIL", "flaky auth smoke")
+        self.add("c2", "FAIL", "flaky auth smoke")
+        r = self.run_script()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        stubs = self.stubs()
+        self.assertEqual(len(stubs), 1)
+        self.assertEqual(stubs[0]["id"], "regression-flaky-auth-smoke")
+        self.assertIn("flaky auth smoke", stubs[0]["_source"])
+
+    def test_below_threshold_not_emitted(self):
+        self.add("c1", "FAIL", "one-off blip")
+        r = self.run_script()  # default threshold 2
+        self.assertIn("new stubs=0", r.stdout)
+        self.assertFalse(os.path.exists(self.out))
+
+    def test_pass_verdicts_ignored(self):
+        self.add("c1", "PASS", "healthy task")
+        self.add("c2", "PASS", "healthy task")
+        r = self.run_script()
+        self.assertIn("new stubs=0", r.stdout)
+
+    def test_threshold_flag(self):
+        self.add("c1", "FAIL", "t")
+        r = self.run_script("--threshold", "1")
+        self.assertEqual(len(self.stubs()), 1)
+
+    def test_emitted_stubs_have_valid_schema(self):
+        self.add("c1", "FAIL", "some task")
+        self.add("c2", "FAIL", "some task")
+        self.run_script()
+        for s in self.stubs():
+            for key in ("id", "skill", "prompt", "pass_if", "fail_if"):
+                self.assertIn(key, s)
+            for pat in s["pass_if"] + s["fail_if"]:
+                re.compile(pat)  # must not raise
+            self.assertTrue(os.path.isdir(
+                os.path.join(self.root, "skills", s["skill"])))
+
+    def test_stub_passes_real_compliance_validator(self):
+        # Strongest proof of compatibility: feed the generated stub to the real
+        # eval-loop-compliance.py loader as scenarios.json; it must validate.
+        if not os.path.isfile(EVAL_COMPLIANCE):
+            self.skipTest("eval-loop-compliance.py not on this branch")
+        self.add("c1", "FAIL", "regression candidate")
+        self.add("c2", "FAIL", "regression candidate")
+        self.run_script()
+        write(os.path.join(self.root, "evals", "loop-compliance", "scenarios.json"),
+              json.dumps({"scenarios": self.stubs()}))
+        r = run(EVAL_COMPLIANCE, self.root, "--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("valid", r.stdout)
+
+    def test_already_promoted_id_is_skipped(self):
+        self.add("c1", "FAIL", "known task")
+        self.add("c2", "FAIL", "known task")
+        # simulate the task already promoted into the curated set
+        write(os.path.join(self.root, "evals", "loop-compliance", "scenarios.json"),
+              json.dumps({"scenarios": [{"id": "regression-known-task",
+                                         "skill": "loop-verify", "prompt": "x",
+                                         "pass_if": [], "fail_if": []}]}))
+        r = self.run_script()
+        self.assertIn("new stubs=0", r.stdout)
+
+    def test_dry_run_writes_nothing(self):
+        self.add("c1", "FAIL", "t"); self.add("c2", "FAIL", "t")
+        r = self.run_script("--dry-run")
+        self.assertEqual(r.returncode, 0)
+        self.assertFalse(os.path.exists(self.out))
+
+    def test_bad_skill_errors(self):
+        r = self.run_script("--skill", "no-such-skill")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("no skills/", r.stderr)
 
 
 EVAL_COMPLIANCE = os.path.join(SCRIPTS, "eval-loop-compliance.py")

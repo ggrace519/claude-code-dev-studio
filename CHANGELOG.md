@@ -62,6 +62,18 @@ that lives only in a prompt is wishful thinking. New ADR-0011 records the layer.
   ships as `agent-evidence.sql` and runs idempotently (table self-provisions);
   values pass through psql's injection-safe `:'var'` quoting. Repo stays
   stack-agnostic when the DSN is unset.
+- **Failures → evals** (`scripts/evidence-to-evals.py`): makes "a recurring
+  failure becomes an eval" a command, not a good intention. Scans the evidence
+  sink for tasks with repeated `FAIL` verdicts (Postgres via `CCDS_EVIDENCE_DSN`
+  when available, else the local `.claude/evidence/*.json` files) and emits
+  pressure-test **stubs in the existing `scenarios.json` schema** — no new schema
+  invented. Stubs go to a *separate* review file
+  (`evals/loop-compliance/generated-stubs.json`), never the curated,
+  baseline-measured set, so generating them can't disturb the compliance
+  baseline; a human completes each stub and promotes the keepers. Tasks already
+  promoted to a real scenario id are skipped, so a fixed failure stops
+  re-emitting. Emitted stubs are schema-valid — they pass
+  `eval-loop-compliance.py --dry-run` after promotion (proven in tests).
 
 ---
 
