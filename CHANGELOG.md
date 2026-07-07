@@ -5,6 +5,29 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## [Unreleased] — Loop enforcement layer: file-enforced control primitives for the agent loop
+
+Turning the `loop-*` process skills (ADR-0010) from prose into files that
+enforce tomorrow. Governing principle: *which file enforces this?* Anything
+that lives only in a prompt is wishful thinking. New ADR-0011 records the layer.
+
+### Added
+
+- **Delivery gate** (`ccds-loops` Stop hook, `stop-evidence-gate.py`): a tracked
+  loop cycle can no longer end claiming "done" without a per-cycle evidence
+  artifact carrying an explicit `PASS`/`FAIL` verdict. Opt-in and cycle-scoped —
+  armed only when an open cycle id is declared (`.claude/loop-cycle` marker or
+  `CCDS_LOOP_CYCLE` env), so ad-hoc sessions are untouched. When armed, the hook
+  blocks turn-end (exit 2) and feeds back exactly what to write until
+  `.claude/evidence/<cycle_id>.json` exists with a valid verdict matching the
+  open cycle. A `FAIL` verdict satisfies the gate on purpose: honestly recording
+  a failure is compliance; the anti-pattern blocked is a silent done-claim with
+  no proof. Model-agnostic by construction — the proof lives in a file, so a
+  silent model reroute cannot bypass it. Runs alongside the existing
+  command-based `stop-gate.sh`.
+
+---
+
 ## v0.11.0 — 2026-07-04 — Measure the system, then act on it: doctor, routing evals, baselines — with full dispatcher parity
 
 ### What changed

@@ -418,6 +418,107 @@ class TestLoopHooks(unittest.TestCase):
         self.assertFalse(os.path.exists(canary), "second line must not run")
 
 
+EVIDENCE_GATE = os.path.join(HOOKS_SRC, "stop-evidence-gate.py")
+
+
+@unittest.skipUnless(os.path.isfile(EVIDENCE_GATE),
+                     "stop-evidence-gate.py not on this branch yet")
+class TestEvidenceGate(unittest.TestCase):
+    """The delivery gate (Primitive 1): a Stop hook that blocks turn-end unless
+    the open cycle has an evidence artifact carrying a PASS/FAIL verdict.
+
+    Opt-in: disarmed (exit 0) with no cycle marker; armed by .claude/loop-cycle
+    or CCDS_LOOP_CYCLE. python3 hook, so this runs wherever python3 does."""
+
+    def setUp(self):
+        self.proj = tempfile.mkdtemp(prefix="ccds-evidence-test-")
+        self.addCleanup(shutil.rmtree, self.proj, ignore_errors=True)
+        os.makedirs(os.path.join(self.proj, ".claude"))
+
+    def gate(self, cycle_env=None):
+        env = {k: v for k, v in os.environ.items() if k != "CCDS_LOOP_CYCLE"}
+        env["CLAUDE_PROJECT_DIR"] = self.proj
+        if cycle_env is not None:
+            env["CCDS_LOOP_CYCLE"] = cycle_env
+        return subprocess.run([sys.executable, EVIDENCE_GATE],
+                              input="{}", capture_output=True, text=True, env=env)
+
+    def arm_marker(self, cycle_id):
+        write(os.path.join(self.proj, ".claude", "loop-cycle"), cycle_id + "\n")
+
+    def write_evidence(self, cycle_id, **fields):
+        payload = {"cycle_id": cycle_id, "verdict": "PASS", "task": "t",
+                   "proof": {"cmd": "pytest", "count": "42/42"}, "agent": "x"}
+        payload.update(fields)
+        write(os.path.join(self.proj, ".claude", "evidence", cycle_id + ".json"),
+              json.dumps(payload))
+
+    def test_disarmed_is_noop(self):
+        # No marker, no env -> gate must not block an ad-hoc session.
+        self.assertEqual(self.gate().returncode, 0)
+
+    def test_armed_without_evidence_blocks(self):
+        self.arm_marker("cyc-1")
+        r = self.gate()
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("no evidence artifact", r.stderr)
+        self.assertIn("cyc-1", r.stderr)
+
+    def test_valid_pass_verdict_allows(self):
+        self.arm_marker("cyc-1")
+        self.write_evidence("cyc-1", verdict="PASS")
+        r = self.gate()
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_fail_verdict_also_allows(self):
+        # Honest FAIL is compliance; blocking it would teach the model to omit.
+        self.arm_marker("cyc-1")
+        self.write_evidence("cyc-1", verdict="FAIL")
+        self.assertEqual(self.gate().returncode, 0)
+
+    def test_missing_verdict_field_blocks(self):
+        self.arm_marker("cyc-1")
+        self.write_evidence("cyc-1", verdict=None)
+        r = self.gate()
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("valid\nverdict".replace("\n", " "), r.stderr.replace("\n", " "))
+
+    def test_bogus_verdict_value_blocks(self):
+        self.arm_marker("cyc-1")
+        self.write_evidence("cyc-1", verdict="DONE")
+        self.assertEqual(self.gate().returncode, 2)
+
+    def test_malformed_json_blocks(self):
+        self.arm_marker("cyc-1")
+        write(os.path.join(self.proj, ".claude", "evidence", "cyc-1.json"),
+              "{not json")
+        r = self.gate()
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("invalid JSON", r.stderr)
+
+    def test_stale_cycle_id_mismatch_blocks(self):
+        # Evidence file for cyc-1 must not satisfy an open cycle of cyc-2.
+        self.arm_marker("cyc-2")
+        self.write_evidence("cyc-1", verdict="PASS")  # wrong file name AND id
+        write(os.path.join(self.proj, ".claude", "evidence", "cyc-2.json"),
+              json.dumps({"cycle_id": "cyc-1", "verdict": "PASS"}))
+        r = self.gate()
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("does not match", r.stderr)
+
+    def test_env_var_arms_the_gate(self):
+        # CCDS_LOOP_CYCLE arms even with no marker file.
+        r = self.gate(cycle_env="cyc-env")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("cyc-env", r.stderr)
+
+    def test_env_var_overrides_marker(self):
+        self.arm_marker("cyc-marker")
+        self.write_evidence("cyc-env", verdict="PASS")
+        r = self.gate(cycle_env="cyc-env")
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+
 EVAL_COMPLIANCE = os.path.join(SCRIPTS, "eval-loop-compliance.py")
 
 
