@@ -38,6 +38,15 @@ that lives only in a prompt is wishful thinking. New ADR-0011 records the layer.
   a broken data file never freezes the shell (permission modes remain the outer
   guard). Benign look-alikes (`rm -rf ./build`, `truncate -s 0 log`,
   `dd of=./img`, a single `ssh host`) pass untouched.
+- **Handoff writer** (`ccds-loops` PreCompact hook, `precompact-handoff.py`):
+  just before context compaction, snapshots operational state to
+  `.claude/handoff.md` — timestamp + compaction trigger, the open loop cycle id,
+  the last 5 evidence artifacts with their verdicts, `git status --short`, and
+  the last 5 commits. `loop-long-horizon`'s bootstrap ritual now reads this file
+  so a compacted or fresh context rebuilds "where was I" from disk instead of
+  faded memory. Always exits 0 (a handoff writer must never block compaction);
+  best-effort and secret-free (cycle ids, verdicts, task labels, git metadata
+  only). The file is hook-owned and overwritten each compaction — latest wins.
 
 ---
 

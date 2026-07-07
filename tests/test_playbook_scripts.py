@@ -605,6 +605,95 @@ class TestRiskGuard(unittest.TestCase):
         self.assertEqual(r.returncode, 0)
 
 
+HANDOFF_HOOK = os.path.join(HOOKS_SRC, "precompact-handoff.py")
+
+
+@unittest.skipUnless(os.path.isfile(HANDOFF_HOOK),
+                     "precompact-handoff.py not on this branch yet")
+class TestHandoffWriter(unittest.TestCase):
+    """Primitive 3: PreCompact hook snapshots operational state to
+    .claude/handoff.md so a compacted/fresh context can rebuild bearings."""
+
+    def setUp(self):
+        self.proj = tempfile.mkdtemp(prefix="ccds-handoff-test-")
+        self.addCleanup(shutil.rmtree, self.proj, ignore_errors=True)
+        os.makedirs(os.path.join(self.proj, ".claude"))
+
+    def run_hook(self, trigger="auto", cycle_env=None):
+        env = {k: v for k, v in os.environ.items() if k != "CCDS_LOOP_CYCLE"}
+        env["CLAUDE_PROJECT_DIR"] = self.proj
+        if cycle_env is not None:
+            env["CCDS_LOOP_CYCLE"] = cycle_env
+        return subprocess.run(
+            [sys.executable, HANDOFF_HOOK],
+            input=json.dumps({"trigger": trigger, "cwd": self.proj}),
+            capture_output=True, text=True, env=env)
+
+    def handoff(self):
+        return read(os.path.join(self.proj, ".claude", "handoff.md"))
+
+    def git(self, *args):
+        subprocess.run(["git", *args], cwd=self.proj,
+                       capture_output=True, text=True, check=True)
+
+    def init_repo(self):
+        self.git("init", "-q")
+        self.git("config", "user.email", "t@t.t")
+        self.git("config", "user.name", "t")
+        write(os.path.join(self.proj, "a.txt"), "one\n")
+        self.git("add", "a.txt")
+        self.git("commit", "-q", "-m", "first commit")
+
+    def add_evidence(self, cycle_id, verdict, task):
+        write(os.path.join(self.proj, ".claude", "evidence", cycle_id + ".json"),
+              json.dumps({"cycle_id": cycle_id, "verdict": verdict,
+                          "task": task, "proof": {}, "agent": "x",
+                          "ts": "2026-07-06T10:00:00"}))
+
+    def test_writes_handoff_always_exit_0(self):
+        r = self.run_hook()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue(os.path.isfile(os.path.join(self.proj, ".claude", "handoff.md")))
+
+    def test_records_cycle_and_trigger(self):
+        self.run_hook(trigger="manual", cycle_env="ship-auth")
+        h = self.handoff()
+        self.assertIn("ship-auth", h)
+        self.assertIn("compaction trigger: manual", h)
+
+    def test_lists_recent_evidence_with_verdicts(self):
+        self.add_evidence("cyc-1", "PASS", "wire the gate")
+        self.add_evidence("cyc-2", "FAIL", "flaky smoke")
+        self.run_hook()
+        h = self.handoff()
+        self.assertIn("cyc-1", h)
+        self.assertIn("PASS", h)
+        self.assertIn("cyc-2", h)
+        self.assertIn("FAIL", h)
+        self.assertIn("wire the gate", h)
+
+    def test_captures_git_state(self):
+        self.init_repo()
+        # an uncommitted change so status --short is non-empty
+        write(os.path.join(self.proj, "b.txt"), "two\n")
+        self.run_hook()
+        h = self.handoff()
+        self.assertIn("first commit", h)          # last-5 commits
+        self.assertIn("b.txt", h)                 # git status --short
+
+    def test_non_git_dir_is_noted_not_fatal(self):
+        r = self.run_hook()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("not a git repo", self.handoff())
+
+    def test_overwrites_prior_snapshot(self):
+        self.run_hook(cycle_env="cyc-old")
+        self.run_hook(cycle_env="cyc-new")
+        h = self.handoff()
+        self.assertIn("cyc-new", h)
+        self.assertNotIn("cyc-old", h)
+
+
 EVAL_COMPLIANCE = os.path.join(SCRIPTS, "eval-loop-compliance.py")
 
 
