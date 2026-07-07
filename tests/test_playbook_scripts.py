@@ -13,6 +13,7 @@ Run: python3 -m unittest discover -s tests -v
 import getpass
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -347,8 +348,15 @@ class TestBuildMarketplace(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         hooks_dir = os.path.join(REPO_ROOT, "plugins", "ccds-loops", "hooks")
         hooks = json.loads(read(os.path.join(hooks_dir, "hooks.json")))
-        self.assertEqual(sorted(hooks["hooks"].keys()), ["SessionStart", "Stop"])
-        for script in ("session-start.sh", "stop-gate.sh"):
+        # Enforcement layer (ADR-0011) added PreToolUse/PostToolUse/PreCompact
+        # alongside the original SessionStart/Stop.
+        self.assertEqual(
+            sorted(hooks["hooks"].keys()),
+            ["PostToolUse", "PreCompact", "PreToolUse", "SessionStart", "Stop"])
+        for script in ("session-start.sh", "stop-gate.sh",
+                       "stop-evidence-gate.py", "pretooluse-risk-guard.py",
+                       "risk-deny-list.txt", "precompact-handoff.py",
+                       "posttooluse-evidence-log.py", "agent-evidence.sql"):
             self.assertTrue(os.path.isfile(os.path.join(hooks_dir, script)), script)
 
     def test_explicit_version_pins_plugins(self):
@@ -388,6 +396,19 @@ class TestLoopHooks(unittest.TestCase):
     def set_gate(self, line):
         write(os.path.join(self.proj, ".claude", "loop-gate.cmd"), line + "\n")
 
+    def test_session_start_points_at_handoff_when_present(self):
+        # ADR-0011: the "continue step reads handoff.md on boot" wiring lives in
+        # this hook, not the compliance-measured skill body.
+        write(os.path.join(self.proj, ".claude", "handoff.md"), "# snapshot\n")
+        r = self.hook("session-start.sh")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(".claude/handoff.md", r.stdout)
+
+    def test_session_start_silent_on_handoff_when_absent(self):
+        r = self.hook("session-start.sh")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("handoff.md", r.stdout)
+
     def test_session_start_emits_loop_index(self):
         r = self.hook("session-start.sh")
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -416,6 +437,497 @@ class TestLoopHooks(unittest.TestCase):
         r = self.hook("stop-gate.sh")
         self.assertEqual(r.returncode, 0)
         self.assertFalse(os.path.exists(canary), "second line must not run")
+
+
+EVIDENCE_GATE = os.path.join(HOOKS_SRC, "stop-evidence-gate.py")
+
+
+@unittest.skipUnless(os.path.isfile(EVIDENCE_GATE),
+                     "stop-evidence-gate.py not on this branch yet")
+class TestEvidenceGate(unittest.TestCase):
+    """The delivery gate (Primitive 1): a Stop hook that blocks turn-end unless
+    the open cycle has an evidence artifact carrying a PASS/FAIL verdict.
+
+    Opt-in: disarmed (exit 0) with no cycle marker; armed by .claude/loop-cycle
+    or CCDS_LOOP_CYCLE. python3 hook, so this runs wherever python3 does."""
+
+    def setUp(self):
+        self.proj = tempfile.mkdtemp(prefix="ccds-evidence-test-")
+        self.addCleanup(shutil.rmtree, self.proj, ignore_errors=True)
+        os.makedirs(os.path.join(self.proj, ".claude"))
+
+    def gate(self, cycle_env=None):
+        env = {k: v for k, v in os.environ.items() if k != "CCDS_LOOP_CYCLE"}
+        env["CLAUDE_PROJECT_DIR"] = self.proj
+        if cycle_env is not None:
+            env["CCDS_LOOP_CYCLE"] = cycle_env
+        return subprocess.run([sys.executable, EVIDENCE_GATE],
+                              input="{}", capture_output=True, text=True, env=env)
+
+    def arm_marker(self, cycle_id):
+        write(os.path.join(self.proj, ".claude", "loop-cycle"), cycle_id + "\n")
+
+    def write_evidence(self, cycle_id, **fields):
+        payload = {"cycle_id": cycle_id, "verdict": "PASS", "task": "t",
+                   "proof": {"cmd": "pytest", "count": "42/42"}, "agent": "x"}
+        payload.update(fields)
+        write(os.path.join(self.proj, ".claude", "evidence", cycle_id + ".json"),
+              json.dumps(payload))
+
+    def test_disarmed_is_noop(self):
+        # No marker, no env -> gate must not block an ad-hoc session.
+        self.assertEqual(self.gate().returncode, 0)
+
+    def test_armed_without_evidence_blocks(self):
+        self.arm_marker("cyc-1")
+        r = self.gate()
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("no evidence artifact", r.stderr)
+        self.assertIn("cyc-1", r.stderr)
+
+    def test_valid_pass_verdict_allows(self):
+        self.arm_marker("cyc-1")
+        self.write_evidence("cyc-1", verdict="PASS")
+        r = self.gate()
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_fail_verdict_also_allows(self):
+        # Honest FAIL is compliance; blocking it would teach the model to omit.
+        self.arm_marker("cyc-1")
+        self.write_evidence("cyc-1", verdict="FAIL")
+        self.assertEqual(self.gate().returncode, 0)
+
+    def test_missing_verdict_field_blocks(self):
+        self.arm_marker("cyc-1")
+        self.write_evidence("cyc-1", verdict=None)
+        r = self.gate()
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("valid\nverdict".replace("\n", " "), r.stderr.replace("\n", " "))
+
+    def test_bogus_verdict_value_blocks(self):
+        self.arm_marker("cyc-1")
+        self.write_evidence("cyc-1", verdict="DONE")
+        self.assertEqual(self.gate().returncode, 2)
+
+    def test_malformed_json_blocks(self):
+        self.arm_marker("cyc-1")
+        write(os.path.join(self.proj, ".claude", "evidence", "cyc-1.json"),
+              "{not json")
+        r = self.gate()
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("invalid JSON", r.stderr)
+
+    def test_stale_cycle_id_mismatch_blocks(self):
+        # Evidence file for cyc-1 must not satisfy an open cycle of cyc-2.
+        self.arm_marker("cyc-2")
+        self.write_evidence("cyc-1", verdict="PASS")  # wrong file name AND id
+        write(os.path.join(self.proj, ".claude", "evidence", "cyc-2.json"),
+              json.dumps({"cycle_id": "cyc-1", "verdict": "PASS"}))
+        r = self.gate()
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("does not match", r.stderr)
+
+    def test_env_var_arms_the_gate(self):
+        # CCDS_LOOP_CYCLE arms even with no marker file.
+        r = self.gate(cycle_env="cyc-env")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("cyc-env", r.stderr)
+
+    def test_env_var_overrides_marker(self):
+        self.arm_marker("cyc-marker")
+        self.write_evidence("cyc-env", verdict="PASS")
+        r = self.gate(cycle_env="cyc-env")
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+
+RISK_GUARD = os.path.join(HOOKS_SRC, "pretooluse-risk-guard.py")
+
+
+@unittest.skipUnless(os.path.isfile(RISK_GUARD),
+                     "pretooluse-risk-guard.py not on this branch yet")
+class TestRiskGuard(unittest.TestCase):
+    """Primitive 2: PreToolUse Bash guard. Deny-list hit -> exit 2 (block);
+    fleet-SSH loop -> exit 1 (non-blocking WARN); benign -> exit 0. Runs the
+    real hook against the real shipped risk-deny-list.txt."""
+
+    def guard(self, command, tool_name="Bash"):
+        payload = {"tool_name": tool_name, "tool_input": {"command": command}}
+        return subprocess.run([sys.executable, RISK_GUARD],
+                              input=json.dumps(payload),
+                              capture_output=True, text=True)
+
+    # --- deny-list: every mandated pattern must block (exit 2) ---
+    DENY = [
+        "rm -rf /",
+        "rm -rf /*",
+        "sudo rm -fr  /  ",
+        "rm -rf *",
+        "mkfs.ext4 /dev/sda1",
+        "dd if=/dev/zero of=/dev/sda bs=1M",
+        ":(){ :|:& };:",
+        'psql -c "DROP DATABASE prod"',
+        "DROP TABLE users",
+        "TRUNCATE TABLE sessions",
+        'psql -c "TRUNCATE users;"',
+        "zpool destroy tank",
+    ]
+
+    def test_denylist_patterns_block(self):
+        for cmd in self.DENY:
+            r = self.guard(cmd)
+            self.assertEqual(r.returncode, 2, "should BLOCK: %r\n%s" % (cmd, r.stderr))
+            self.assertIn("BLOCKED", r.stderr)
+
+    # --- benign commands must pass untouched (exit 0) ---
+    ALLOW = [
+        "ls -la",
+        "git status",
+        "rm -rf ./build",
+        "rm -rf /tmp/mycache",
+        "dd if=/dev/zero of=./disk.img bs=1M count=100",
+        "truncate -s 0 app.log",
+        "ssh web1 uptime",
+        "grep -rf patterns.txt src/",
+        'psql -h localhost -c "SELECT * FROM users"',
+    ]
+
+    def test_benign_commands_allowed(self):
+        for cmd in self.ALLOW:
+            r = self.guard(cmd)
+            self.assertEqual(r.returncode, 0, "should ALLOW: %r\n%s" % (cmd, r.stderr))
+
+    # --- fleet SSH loops: non-blocking WARN (exit 1) ---
+    def test_fleet_ssh_loop_warns_nonblocking(self):
+        r = self.guard("for h in web1 web2 web3; do ssh $h uptime; done")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("WARN", r.stderr)
+
+    def test_parallel_ssh_warns(self):
+        r = self.guard("parallel-ssh -h hosts.txt uptime")
+        self.assertEqual(r.returncode, 1)
+
+    # --- robustness: never block on our own failure / non-Bash / empty ---
+    def test_deny_beats_warn_when_both_match(self):
+        # a fleet loop that also drops a table must BLOCK, not merely warn
+        r = self.guard("for h in db1 db2; do ssh $h 'psql -c \"DROP TABLE t\"'; done")
+        self.assertEqual(r.returncode, 2, r.stderr)
+
+    def test_non_bash_tool_is_inert(self):
+        r = self.guard("rm -rf /", tool_name="Read")
+        self.assertEqual(r.returncode, 0)
+
+    def test_empty_command_allowed(self):
+        r = self.guard("   ")
+        self.assertEqual(r.returncode, 0)
+
+    def test_malformed_stdin_fails_open(self):
+        r = subprocess.run([sys.executable, RISK_GUARD],
+                           input="not json", capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0)
+
+
+HANDOFF_HOOK = os.path.join(HOOKS_SRC, "precompact-handoff.py")
+
+
+@unittest.skipUnless(os.path.isfile(HANDOFF_HOOK),
+                     "precompact-handoff.py not on this branch yet")
+class TestHandoffWriter(unittest.TestCase):
+    """Primitive 3: PreCompact hook snapshots operational state to
+    .claude/handoff.md so a compacted/fresh context can rebuild bearings."""
+
+    def setUp(self):
+        self.proj = tempfile.mkdtemp(prefix="ccds-handoff-test-")
+        self.addCleanup(shutil.rmtree, self.proj, ignore_errors=True)
+        os.makedirs(os.path.join(self.proj, ".claude"))
+
+    def run_hook(self, trigger="auto", cycle_env=None):
+        env = {k: v for k, v in os.environ.items() if k != "CCDS_LOOP_CYCLE"}
+        env["CLAUDE_PROJECT_DIR"] = self.proj
+        if cycle_env is not None:
+            env["CCDS_LOOP_CYCLE"] = cycle_env
+        return subprocess.run(
+            [sys.executable, HANDOFF_HOOK],
+            input=json.dumps({"trigger": trigger, "cwd": self.proj}),
+            capture_output=True, text=True, env=env)
+
+    def handoff(self):
+        return read(os.path.join(self.proj, ".claude", "handoff.md"))
+
+    def git(self, *args):
+        subprocess.run(["git", *args], cwd=self.proj,
+                       capture_output=True, text=True, check=True)
+
+    def init_repo(self):
+        self.git("init", "-q")
+        self.git("config", "user.email", "t@t.t")
+        self.git("config", "user.name", "t")
+        write(os.path.join(self.proj, "a.txt"), "one\n")
+        self.git("add", "a.txt")
+        self.git("commit", "-q", "-m", "first commit")
+
+    def add_evidence(self, cycle_id, verdict, task):
+        write(os.path.join(self.proj, ".claude", "evidence", cycle_id + ".json"),
+              json.dumps({"cycle_id": cycle_id, "verdict": verdict,
+                          "task": task, "proof": {}, "agent": "x",
+                          "ts": "2026-07-06T10:00:00"}))
+
+    def test_writes_handoff_always_exit_0(self):
+        r = self.run_hook()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue(os.path.isfile(os.path.join(self.proj, ".claude", "handoff.md")))
+
+    def test_records_cycle_and_trigger(self):
+        self.run_hook(trigger="manual", cycle_env="ship-auth")
+        h = self.handoff()
+        self.assertIn("ship-auth", h)
+        self.assertIn("compaction trigger: manual", h)
+
+    def test_lists_recent_evidence_with_verdicts(self):
+        self.add_evidence("cyc-1", "PASS", "wire the gate")
+        self.add_evidence("cyc-2", "FAIL", "flaky smoke")
+        self.run_hook()
+        h = self.handoff()
+        self.assertIn("cyc-1", h)
+        self.assertIn("PASS", h)
+        self.assertIn("cyc-2", h)
+        self.assertIn("FAIL", h)
+        self.assertIn("wire the gate", h)
+
+    def test_captures_git_state(self):
+        self.init_repo()
+        # an uncommitted change so status --short is non-empty
+        write(os.path.join(self.proj, "b.txt"), "two\n")
+        self.run_hook()
+        h = self.handoff()
+        self.assertIn("first commit", h)          # last-5 commits
+        self.assertIn("b.txt", h)                 # git status --short
+
+    def test_non_git_dir_is_noted_not_fatal(self):
+        r = self.run_hook()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("not a git repo", self.handoff())
+
+    def test_overwrites_prior_snapshot(self):
+        self.run_hook(cycle_env="cyc-old")
+        self.run_hook(cycle_env="cyc-new")
+        h = self.handoff()
+        self.assertIn("cyc-new", h)
+        self.assertNotIn("cyc-old", h)
+
+
+EVIDENCE_LOG = os.path.join(HOOKS_SRC, "posttooluse-evidence-log.py")
+
+
+@unittest.skipUnless(os.path.isfile(EVIDENCE_LOG),
+                     "posttooluse-evidence-log.py not on this branch yet")
+class TestEvidenceLog(unittest.TestCase):
+    """Primitive 4 (durable tier + secret guard): PostToolUse hook that fires on
+    writes to .claude/evidence/*.json — validates, secret-scans (exit 2), and
+    optionally mirrors to Postgres via psql (no-op without CCDS_EVIDENCE_DSN)."""
+
+    def setUp(self):
+        self.proj = tempfile.mkdtemp(prefix="ccds-evlog-test-")
+        self.addCleanup(shutil.rmtree, self.proj, ignore_errors=True)
+        self.ev_dir = os.path.join(self.proj, ".claude", "evidence")
+        os.makedirs(self.ev_dir)
+        # dir for a fake `psql` on PATH (records its argv to a file)
+        self.bindir = os.path.join(self.proj, "bin")
+        os.makedirs(self.bindir)
+        self.psql_log = os.path.join(self.proj, "psql-argv.txt")
+
+    def write_evidence(self, cycle_id="cyc-1", **fields):
+        payload = {"cycle_id": cycle_id, "verdict": "PASS", "task": "t",
+                   "proof": {"cmd": "pytest", "count": "42/42"}, "agent": "x"}
+        payload.update(fields)
+        path = os.path.join(self.ev_dir, cycle_id + ".json")
+        write(path, json.dumps(payload))
+        return path
+
+    def stub_psql(self, exit_code=0):
+        shim = os.path.join(self.bindir, "psql")
+        write(shim, "#!/usr/bin/env bash\n"
+                    'printf "%%s\\n" "$@" >> "%s"\nexit %d\n' % (self.psql_log, exit_code))
+        os.chmod(shim, 0o755)
+
+    def run_hook(self, file_path, dsn=None, with_psql=False):
+        env = {k: v for k, v in os.environ.items() if k != "CCDS_EVIDENCE_DSN"}
+        if with_psql:
+            env["PATH"] = self.bindir + os.pathsep + env["PATH"]
+        else:
+            # scrub any real psql so "no psql" paths are deterministic
+            env["PATH"] = self.bindir
+            write(os.path.join(self.bindir, ".keep"), "")
+        if dsn is not None:
+            env["CCDS_EVIDENCE_DSN"] = dsn
+        payload = {"tool_name": "Write", "tool_input": {"file_path": file_path}}
+        return subprocess.run([sys.executable, EVIDENCE_LOG],
+                              input=json.dumps(payload),
+                              capture_output=True, text=True, env=env)
+
+    def test_non_evidence_write_is_inert(self):
+        p = os.path.join(self.proj, "src", "main.py")
+        write(p, "print(1)")
+        r = self.run_hook(p)
+        self.assertEqual(r.returncode, 0)
+
+    def test_clean_evidence_no_dsn_is_noop_exit0(self):
+        p = self.write_evidence()
+        r = self.run_hook(p)  # no DSN
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_malformed_json_blocks(self):
+        p = os.path.join(self.ev_dir, "bad.json")
+        write(p, "{not json")
+        r = self.run_hook(p)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("not valid JSON", r.stderr)
+
+    def test_missing_verdict_blocks(self):
+        p = self.write_evidence(verdict=None)
+        r = self.run_hook(p)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("valid verdict", r.stderr)
+
+    def test_secret_in_proof_blocks(self):
+        # planted fake AWS key shape — must be caught before it can be mirrored
+        p = self.write_evidence(proof={"log": "using AKIAIOSFODNN7EXAMPLE now"})
+        r = self.run_hook(p)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("secret", r.stderr)
+
+    def test_private_key_blocks(self):
+        p = self.write_evidence(proof={"k": "-----BEGIN RSA PRIVATE KEY-----"})
+        r = self.run_hook(p)
+        self.assertEqual(r.returncode, 2)
+
+    def test_dsn_set_invokes_psql_with_row(self):
+        self.stub_psql(exit_code=0)
+        p = self.write_evidence(cycle_id="ship-9")
+        r = self.run_hook(p, dsn="postgresql://u@h/db", with_psql=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        argv = read(self.psql_log)
+        self.assertIn("ship-9", argv)                 # row passed via --set ev=
+        self.assertIn("ON_ERROR_STOP=1", argv)
+        self.assertIn("agent_evidence", argv)         # DDL+insert in the -c body
+
+    def test_psql_failure_does_not_block_turn(self):
+        self.stub_psql(exit_code=1)
+        p = self.write_evidence()
+        r = self.run_hook(p, dsn="postgresql://u@h/db", with_psql=True)
+        self.assertEqual(r.returncode, 0)             # infra hiccup never blocks
+        self.assertIn("mirror failed", r.stderr)
+
+    def test_dsn_set_but_no_psql_noops(self):
+        p = self.write_evidence()
+        r = self.run_hook(p, dsn="postgresql://u@h/db", with_psql=False)
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("psql not on PATH", r.stderr)
+
+
+EVIDENCE_TO_EVALS = os.path.join(SCRIPTS, "evidence-to-evals.py")
+
+
+@unittest.skipUnless(os.path.isfile(EVIDENCE_TO_EVALS),
+                     "evidence-to-evals.py not on this branch yet")
+class TestEvidenceToEvals(unittest.TestCase):
+    """Primitive 5: recurring FAIL verdicts -> eval stubs in the EXISTING
+    scenarios.json schema, emitted to a separate review file."""
+
+    def setUp(self):
+        # a repo-shaped root with the loop-verify skill the stub references
+        self.root = tempfile.mkdtemp(prefix="ccds-e2e-test-")
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        shutil.copytree(os.path.join(REPO_ROOT, "skills", "loop-verify"),
+                        os.path.join(self.root, "skills", "loop-verify"))
+        self.project = os.path.join(self.root, "proj")
+        os.makedirs(os.path.join(self.project, ".claude", "evidence"))
+        self.out = os.path.join(self.root, "evals", "loop-compliance",
+                                "generated-stubs.json")
+
+    def add(self, cycle_id, verdict, task):
+        write(os.path.join(self.project, ".claude", "evidence", cycle_id + ".json"),
+              json.dumps({"cycle_id": cycle_id, "verdict": verdict, "task": task}))
+
+    def run_script(self, *args):
+        return run(EVIDENCE_TO_EVALS, self.root, "--project", self.project, *args)
+
+    def stubs(self):
+        return json.loads(read(self.out))["scenarios"]
+
+    def test_recurring_fail_emits_stub(self):
+        self.add("c1", "FAIL", "flaky auth smoke")
+        self.add("c2", "FAIL", "flaky auth smoke")
+        r = self.run_script()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        stubs = self.stubs()
+        self.assertEqual(len(stubs), 1)
+        self.assertEqual(stubs[0]["id"], "regression-flaky-auth-smoke")
+        self.assertIn("flaky auth smoke", stubs[0]["_source"])
+
+    def test_below_threshold_not_emitted(self):
+        self.add("c1", "FAIL", "one-off blip")
+        r = self.run_script()  # default threshold 2
+        self.assertIn("new stubs=0", r.stdout)
+        self.assertFalse(os.path.exists(self.out))
+
+    def test_pass_verdicts_ignored(self):
+        self.add("c1", "PASS", "healthy task")
+        self.add("c2", "PASS", "healthy task")
+        r = self.run_script()
+        self.assertIn("new stubs=0", r.stdout)
+
+    def test_threshold_flag(self):
+        self.add("c1", "FAIL", "t")
+        r = self.run_script("--threshold", "1")
+        self.assertEqual(len(self.stubs()), 1)
+
+    def test_emitted_stubs_have_valid_schema(self):
+        self.add("c1", "FAIL", "some task")
+        self.add("c2", "FAIL", "some task")
+        self.run_script()
+        for s in self.stubs():
+            for key in ("id", "skill", "prompt", "pass_if", "fail_if"):
+                self.assertIn(key, s)
+            for pat in s["pass_if"] + s["fail_if"]:
+                re.compile(pat)  # must not raise
+            self.assertTrue(os.path.isdir(
+                os.path.join(self.root, "skills", s["skill"])))
+
+    def test_stub_passes_real_compliance_validator(self):
+        # Strongest proof of compatibility: feed the generated stub to the real
+        # eval-loop-compliance.py loader as scenarios.json; it must validate.
+        if not os.path.isfile(EVAL_COMPLIANCE):
+            self.skipTest("eval-loop-compliance.py not on this branch")
+        self.add("c1", "FAIL", "regression candidate")
+        self.add("c2", "FAIL", "regression candidate")
+        self.run_script()
+        write(os.path.join(self.root, "evals", "loop-compliance", "scenarios.json"),
+              json.dumps({"scenarios": self.stubs()}))
+        r = run(EVAL_COMPLIANCE, self.root, "--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("valid", r.stdout)
+
+    def test_already_promoted_id_is_skipped(self):
+        self.add("c1", "FAIL", "known task")
+        self.add("c2", "FAIL", "known task")
+        # simulate the task already promoted into the curated set
+        write(os.path.join(self.root, "evals", "loop-compliance", "scenarios.json"),
+              json.dumps({"scenarios": [{"id": "regression-known-task",
+                                         "skill": "loop-verify", "prompt": "x",
+                                         "pass_if": [], "fail_if": []}]}))
+        r = self.run_script()
+        self.assertIn("new stubs=0", r.stdout)
+
+    def test_dry_run_writes_nothing(self):
+        self.add("c1", "FAIL", "t"); self.add("c2", "FAIL", "t")
+        r = self.run_script("--dry-run")
+        self.assertEqual(r.returncode, 0)
+        self.assertFalse(os.path.exists(self.out))
+
+    def test_bad_skill_errors(self):
+        r = self.run_script("--skill", "no-such-skill")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("no skills/", r.stderr)
 
 
 EVAL_COMPLIANCE = os.path.join(SCRIPTS, "eval-loop-compliance.py")
@@ -734,6 +1246,13 @@ class TestLoopSkillEditedHook(unittest.TestCase):
     def test_silent_on_non_loop_edit(self):
         r = self.hook(json.dumps(
             {"tool_input": {"file_path": "/x/skills/saas-billing/SKILL.md"}}))
+        self.assertEqual((r.returncode, r.stdout), (0, ""))
+
+    def test_silent_on_loop_reference_edit(self):
+        # References are NOT injected by the compliance eval — editing one is not
+        # a baseline change, so the tripwire must stay quiet (WATCHED = */SKILL.md).
+        r = self.hook(json.dumps({"tool_input": {"file_path":
+            "/x/skills/loop-long-horizon/references/state-files.md"}}))
         self.assertEqual((r.returncode, r.stdout), (0, ""))
 
     def test_silent_on_malformed_input(self):

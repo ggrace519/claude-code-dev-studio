@@ -5,6 +5,81 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## [Unreleased] — Loop enforcement layer: file-enforced control primitives for the agent loop
+
+Turning the `loop-*` process skills (ADR-0010) from prose into files that
+enforce tomorrow. Governing principle: *which file enforces this?* Anything
+that lives only in a prompt is wishful thinking. New ADR-0011 records the layer.
+
+### Added
+
+- **Delivery gate** (`ccds-loops` Stop hook, `stop-evidence-gate.py`): a tracked
+  loop cycle can no longer end claiming "done" without a per-cycle evidence
+  artifact carrying an explicit `PASS`/`FAIL` verdict. Opt-in and cycle-scoped —
+  armed only when an open cycle id is declared (`.claude/loop-cycle` marker or
+  `CCDS_LOOP_CYCLE` env), so ad-hoc sessions are untouched. When armed, the hook
+  blocks turn-end (exit 2) and feeds back exactly what to write until
+  `.claude/evidence/<cycle_id>.json` exists with a valid verdict matching the
+  open cycle. A `FAIL` verdict satisfies the gate on purpose: honestly recording
+  a failure is compliance; the anti-pattern blocked is a silent done-claim with
+  no proof. Model-agnostic by construction — the proof lives in a file, so a
+  silent model reroute cannot bypass it. Runs alongside the existing
+  command-based `stop-gate.sh`.
+- **Risk guard** (`ccds-loops` PreToolUse hook on `Bash`,
+  `pretooluse-risk-guard.py`): reversible-first backstop. Blocks (exit 2, with
+  the reason fed back to the model) a deny-list of catastrophic, irreversible
+  commands — `rm -rf /` and `rm -rf *`, `mkfs`, `dd of=/dev/…`, the classic
+  forkbomb, `zpool destroy`, and `DROP DATABASE` / `DROP TABLE` / `TRUNCATE`.
+  Wide-but-reversible fleet fan-out (a for-loop running `ssh` across hosts,
+  `parallel-ssh`) is a non-blocking WARN (exit 1) instead. The deny-list is a
+  separate editable data file (`risk-deny-list.txt`) — tune it without touching
+  logic. High-signal by design: it targets whole-system / whole-database blast
+  radius, not ordinary risky work, and fails open if its table is unreadable so
+  a broken data file never freezes the shell (permission modes remain the outer
+  guard). Benign look-alikes (`rm -rf ./build`, `truncate -s 0 log`,
+  `dd of=./img`, a single `ssh host`) pass untouched.
+- **Handoff writer** (`ccds-loops` PreCompact hook, `precompact-handoff.py`):
+  just before context compaction, snapshots operational state to
+  `.claude/handoff.md` — timestamp + compaction trigger, the open loop cycle id,
+  the last 5 evidence artifacts with their verdicts, `git status --short`, and
+  the last 5 commits. The `ccds-loops` SessionStart hook points a fresh/compacted
+  context at this file on boot (and `loop-long-horizon`'s bundled state-file kit
+  documents reading it), so "where was I" is rebuilt from disk instead of faded
+  memory — wired via the boot hook rather than the compliance-measured skill body
+  (live measurement showed a body edit regressed the one-task iron law 9/9→~73%;
+  see ADR-0011). Always exits 0 (a handoff writer must never block compaction);
+  best-effort and secret-free (cycle ids, verdicts, task labels, git metadata
+  only). The file is hook-owned and overwritten each compaction — latest wins.
+- **Evidence sink, dual-tier** (Primitive 4). *Fast tier:* the per-cycle
+  `.claude/evidence/<cycle_id>.json` artifacts the delivery gate already reads
+  (`cycle_id, ts, task, verdict, proof, agent`); the gate's own block message
+  documents the exact shape, so no separate writer is needed. *Durable tier:* a
+  `ccds-loops` PostToolUse hook (`posttooluse-evidence-log.py`, matcher
+  `Write|Edit`) that fires only on evidence-file writes and (1) validates the
+  JSON shape, (2) **secret-scans** the artifact — a high-confidence key/token
+  pattern blocks the turn (exit 2) with instructions to strip it, so credentials
+  never land in evidence, and (3) mirrors the row to Postgres for cross-session
+  failure analysis. The mirror is **optional and best-effort**: no-op unless
+  `CCDS_EVIDENCE_DSN` is set and `psql` is on PATH; a Postgres outage never
+  blocks the turn. Connection is env-only (no credentials in the repo); the DDL
+  ships as `agent-evidence.sql` and runs idempotently (table self-provisions);
+  values pass through psql's injection-safe `:'var'` quoting. Repo stays
+  stack-agnostic when the DSN is unset.
+- **Failures → evals** (`scripts/evidence-to-evals.py`): makes "a recurring
+  failure becomes an eval" a command, not a good intention. Scans the evidence
+  sink for tasks with repeated `FAIL` verdicts (Postgres via `CCDS_EVIDENCE_DSN`
+  when available, else the local `.claude/evidence/*.json` files) and emits
+  pressure-test **stubs in the existing `scenarios.json` schema** — no new schema
+  invented. Stubs go to a *separate* review file
+  (`evals/loop-compliance/generated-stubs.json`), never the curated,
+  baseline-measured set, so generating them can't disturb the compliance
+  baseline; a human completes each stub and promotes the keepers. Tasks already
+  promoted to a real scenario id are skipped, so a fixed failure stops
+  re-emitting. Emitted stubs are schema-valid — they pass
+  `eval-loop-compliance.py --dry-run` after promotion (proven in tests).
+
+---
+
 ## v0.11.0 — 2026-07-04 — Measure the system, then act on it: doctor, routing evals, baselines — with full dispatcher parity
 
 ### What changed

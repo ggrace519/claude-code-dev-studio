@@ -74,8 +74,10 @@ prompt bug, not a code bug.
 Work on the project in this directory. THE ONE UNBREAKABLE RULE: exactly ONE
 feature this run. Finishing early does not earn a second one.
 
-1. Read .loop/progress.md and .loop/feature_list.json. Run .loop/init.sh;
-   if it fails, fixing it is this iteration's ONLY task.
+1. Read .loop/progress.md and .loop/feature_list.json (and .claude/handoff.md
+   if it exists — the PreCompact snapshot of the open cycle, recent evidence
+   verdicts, and git state). Run .loop/init.sh; if it fails, fixing it is this
+   iteration's ONLY task.
 2. Pick the ONE highest-priority feature with "passes": false. That id is
    the only feature you may touch this run. Search the codebase first — do
    not re-implement something that exists.
