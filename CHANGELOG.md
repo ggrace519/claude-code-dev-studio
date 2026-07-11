@@ -5,11 +5,13 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
-## [Unreleased] — Loop enforcement layer: file-enforced control primitives for the agent loop
+## v0.12.0 — 2026-07-11 — Loop enforcement layer + the inventive-engineer skill
 
-Turning the `loop-*` process skills (ADR-0010) from prose into files that
-enforce tomorrow. Governing principle: *which file enforces this?* Anything
-that lives only in a prompt is wishful thinking. New ADR-0011 records the layer.
+Two things ship: the loop enforcement layer, and `inventive-engineer` as a new
+core cross-cutting skill. The loop layer turns the `loop-*` process skills
+(ADR-0010) from prose into files that enforce tomorrow. Governing principle:
+*which file enforces this?* Anything that lives only in a prompt is wishful
+thinking. New ADR-0011 records the layer.
 
 ### Added
 
