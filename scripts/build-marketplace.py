@@ -58,8 +58,8 @@ EXTRAS_DIR = os.path.join(REPO_ROOT, "plugin-extras")
 
 CORE_AGENTS = ["plan-architect", "pr-code-reviewer", "secure-auditor",
                "test-writer-runner", "deploy-checklist"]
-CORE_SKILLS = ["api-design", "code-review-checklist", "playbook-conventions",
-               "security-checklist", "ux-design"]
+CORE_SKILLS = ["api-design", "code-review-checklist", "inventive-engineer",
+               "playbook-conventions", "security-checklist", "ux-design"]
 PACKS = ["ai", "dataplat", "desktop", "devtool", "ecom", "embed", "ext",
          "fintech", "game", "infra", "media", "mobile", "orch", "saas"]
 

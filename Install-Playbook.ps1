@@ -136,6 +136,7 @@ $Script:GlobalSkills = @(
     'ux-design'
     'security-checklist'
     'code-review-checklist'
+    'inventive-engineer'
     'common-a11y'
     'common-i18n'
     'common-privacy'

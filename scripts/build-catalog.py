@@ -33,7 +33,7 @@ CORE_AGENTS = {
 # skills installed globally (always available), not JIT per project
 GLOBAL_META_SKILLS = {
     "playbook-conventions", "sync-agents", "api-design", "ux-design",
-    "security-checklist", "code-review-checklist",
+    "security-checklist", "code-review-checklist", "inventive-engineer",
 }
 PACKS = {"saas", "ai", "infra", "game", "mobile", "dataplat", "ecom", "fintech",
          "devtool", "desktop", "ext", "embed", "media", "orch"}

@@ -672,6 +672,14 @@
     "description": "SRE specialist. Owns SLOs, error budgets, incident response, postmortems, on-call rotation, and reliability engineering practice. Auto-invoked when setting up SLOs, responding to incidents, or improving reliability."
   },
   {
+    "name": "inventive-engineer",
+    "pack": "core",
+    "kind": "skill",
+    "scope": "global",
+    "model": "",
+    "description": "Inventive senior-engineer loop — survey the codebase deeply, research the state of the art, write ranked proposals to INNOVATIONS.md, then build the top picks on innovation/<slug> branches. Use when the user asks to innovate, modernize, level up, or make a project elite or impressive, asks which features could be added or are missing, or wants state-of-the-art research applied to their own code."
+  },
+  {
     "name": "loop-compound",
     "pack": "core",
     "kind": "skill",

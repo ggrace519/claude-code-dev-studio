@@ -1269,8 +1269,8 @@ BASH = shutil.which("bash")
 # Mirrors GLOBAL_SKILLS in scripts/ccds-user-setup.sh.
 GLOBAL_SKILLS = (
     "playbook-conventions", "sync-agents", "api-design", "ux-design",
-    "security-checklist", "code-review-checklist", "common-a11y",
-    "common-i18n", "common-privacy", "common-notifications",
+    "security-checklist", "code-review-checklist", "inventive-engineer",
+    "common-a11y", "common-i18n", "common-privacy", "common-notifications",
     "common-product-analytics", "loop-verify", "loop-debug", "loop-review",
     "loop-parallel", "loop-long-horizon", "loop-compound",
 )

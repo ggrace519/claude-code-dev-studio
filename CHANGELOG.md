@@ -13,6 +13,15 @@ that lives only in a prompt is wishful thinking. New ADR-0011 records the layer.
 
 ### Added
 
+- **`inventive-engineer` skill** (core cross-cutting, `ccds-core` plugin): the
+  evidence-grounded innovation loop — deep codebase survey → state-of-the-art
+  research → ruthlessly filtered ranked proposals in `INNOVATIONS.md` → working
+  builds of the top picks on `innovation/<slug>` branches. Previously lived only
+  as a hand-installed skill in `~/.claude/skills/`; now ships with the studio in
+  every outlet (bash + PowerShell installers, catalog, marketplace plugin), so a
+  fresh install gets it and `ccds doctor` verifies it. The original description
+  was condensed to meet the 400-char lint cap; the trigger phrases ("innovate",
+  "modernize", "level this up", "what are we missing") are preserved.
 - **Delivery gate** (`ccds-loops` Stop hook, `stop-evidence-gate.py`): a tracked
   loop cycle can no longer end claiming "done" without a per-cycle evidence
   artifact carrying an explicit `PASS`/`FAIL` verdict. Opt-in and cycle-scoped —
