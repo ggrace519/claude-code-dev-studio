@@ -54,7 +54,7 @@ Skills are the just-in-time layer. The `sync-agents` skill (or `ccds sync`):
 4. Copies them to `./.claude/skills/` in the project
 5. Summarises what was staged; new skills are discovered on the next session refresh
 
-Cross-cutting skills (`playbook-conventions`, `api-design`, `ux-design`, `security-checklist`, `code-review-checklist`, `common-*`, and the `loop-*` agent-loop process skills) install once to `~/.claude/skills/` and are always available.
+Cross-cutting skills (`playbook-conventions`, `api-design`, `ux-design`, `security-checklist`, `code-review-checklist`, `inventive-engineer`, `common-*`, and the `loop-*` agent-loop process skills) install once to `~/.claude/skills/` and are always available.
 
 ## Install as native Claude Code plugins (recommended)
 
