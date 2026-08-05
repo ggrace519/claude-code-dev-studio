@@ -11,7 +11,7 @@
         ]
       },
       {
-        "matcher": "Read|Write|Edit|NotebookEdit",
+        "matcher": "Read|Write|Edit|NotebookEdit|Grep",
         "hooks": [
           {
             "type": "command",
@@ -22,7 +22,7 @@
     ],
     "ConfigChange": [
       {
-        "matcher": "project_settings|local_settings",
+        "matcher": "user_settings|project_settings|local_settings",
         "hooks": [
           {
             "type": "command",

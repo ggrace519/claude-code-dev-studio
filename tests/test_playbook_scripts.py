@@ -1599,8 +1599,19 @@ class TestGuardHooks(unittest.TestCase):
         for path in ("/proj/server.pem", "/proj/deploy.key",
                      "/home/u/.ssh/id_rsa", "/home/u/.ssh/config",
                      "/proj/infra/terraform.tfstate",
-                     "/home/u/.aws/credentials", "/home/u/.netrc"):
+                     "/home/u/.aws/credentials", "/proj/credentials.json",
+                     "/proj/svc/service-credentials.yaml", "/home/u/.netrc"):
             self.assert_deny(self.file("Read", path), "ccds-guard")
+
+    def test_credentials_substring_source_files_allowed(self):
+        # Multi-review finding: an unanchored `credentials` rule hard-blocked
+        # everyday source files — the uninstall-inducing false positive.
+        for path in ("/proj/src/credentials_manager.py",
+                     "/proj/src/auth/credentials.py",
+                     "/proj/tests/test_credentials_flow.py",
+                     "/proj/docs/how-to-manage-credentials.md"):
+            self.assert_allow(self.file("Read", path))
+            self.assert_allow(self.file("Write", path))
 
     def test_windows_backslash_paths_normalized(self):
         self.assert_deny(self.file("Read", "C:\\proj\\.env"), "secrets file")
@@ -1645,6 +1656,8 @@ class TestGuardHooks(unittest.TestCase):
 
     def test_tls_disable_denied(self):
         for cmd in ("curl -k https://internal/api",
+                    "curl -sk https://internal/api",       # combined short flags
+                    "curl -fsSLk https://x",               # (multi-review bypass)
                     "curl --insecure https://x",
                     "wget --no-check-certificate https://x",
                     "git -c http.sslVerify=false clone https://x",
@@ -1652,9 +1665,17 @@ class TestGuardHooks(unittest.TestCase):
                     "NODE_TLS_REJECT_UNAUTHORIZED=0 node app.js"):
             self.assert_deny(self.bash(cmd), "TLS")
 
+    def test_curl_uppercase_K_config_flag_allowed(self):
+        # -K reads a curl config file; only lowercase -k disables TLS. The
+        # k-cluster rule is case-sensitive via (?-i:) despite IGNORECASE.
+        self.assert_allow(self.bash("curl -K myconfig https://x"))
+
     def test_rm_rf_outside_project_denied(self):
         self.assert_deny(self.bash("rm -rf /etc/nginx"), "outside the project")
         self.assert_deny(self.bash("rm -rf ~/old-stuff"), "outside the project")
+        # Quoted paths (multi-review bypass): quoting is routine, not adversarial.
+        self.assert_deny(self.bash('rm -rf "/etc/nginx"'), "outside the project")
+        self.assert_deny(self.bash('rm -rf "$HOME/old-stuff"'), "outside the project")
 
     def test_ordinary_commands_allowed(self):
         for cmd in ("git status", "python3 -m pytest -q", "npm test",
@@ -1669,12 +1690,18 @@ class TestGuardHooks(unittest.TestCase):
         for cmd in ("npm install left-pad", "pnpm add lodash",
                     "yarn add express", "pip install requsets",
                     "uv add httpx", "cargo add serde", "go get example.com/mod",
-                    "gem install rails", "composer require monolog/monolog"):
+                    "gem install rails", "composer require monolog/monolog",
+                    # Flagged forms (multi-review bypass): a leading flag must
+                    # not skip the slopsquat ask — these are the common forms.
+                    "npm install --save-dev totally-hallucinated-pkg",
+                    "npm i -g some-pkg", "pnpm add -D lodash",
+                    "pip install --upgrade requests"):
             self.assert_ask(self.bash(cmd), "verify this")
 
     def test_lockfile_restore_allowed(self):
         for cmd in ("npm install", "npm ci", "pip install -r requirements.txt",
-                    "pip install -e .", "uv pip install -r requirements.txt"):
+                    "pip install -e .", "uv pip install -r requirements.txt",
+                    "npm install --production"):  # flags-only restore, no package
             self.assert_allow(self.bash(cmd))
 
     # --- secret paths in bash: ask, not deny ---
@@ -1687,6 +1714,42 @@ class TestGuardHooks(unittest.TestCase):
     def test_bash_env_lookalike_words_allowed(self):
         self.assert_allow(self.bash("echo the envelope please"))
         self.assert_allow(self.bash("printenv PATH"))
+
+    def test_bash_metachar_glued_secret_paths_ask(self):
+        # Multi-review finding: whitespace-only tokenization missed paths glued
+        # to shell operators.
+        for cmd in ("cat<.env", "cat .env|grep API_KEY"):
+            self.assert_ask(self.bash(cmd), "may hold secrets")
+
+    # --- Grep is read-shaped: its path param is guarded like Read ---
+
+    def test_grep_secret_path_denied(self):
+        r = self.guard({"tool_name": "Grep",
+                        "tool_input": {"path": "/proj/.env", "pattern": "."}})
+        self.assert_deny(r, "secrets file")
+
+    def test_grep_ordinary_and_absent_path_allowed(self):
+        self.assert_allow(self.guard({"tool_name": "Grep",
+                                      "tool_input": {"path": "/proj/src",
+                                                     "pattern": "TODO"}}))
+        self.assert_allow(self.guard({"tool_name": "Grep",
+                                      "tool_input": {"pattern": "TODO"}}))
+
+    def test_installed_plugin_files_write_asks(self):
+        # Multi-review finding: the guard's own installed rules file was one
+        # Edit away from silent self-tamper.
+        r = self.file("Edit", "/home/u/.claude/plugins/marketplaces/ccds/"
+                              "plugins/ccds-guard/hooks/guard-rules.txt")
+        self.assert_ask(r, "installed plugin files")
+
+    def test_known_limitation_quoting_bypasses_pinned(self):
+        # DOCUMENTED LIMITATION (ADR-0012 threat model): regex-over-string
+        # guards do not see through shell quoting/interpolation. These forms
+        # currently pass; this test pins that consciously — if a change makes
+        # them blocked (better) or documents new bypasses, update deliberately.
+        for cmd in ('git push "--force" origin main',
+                    'curl --insecu""re https://x'):
+            self.assert_allow(self.bash(cmd))
 
     # --- fail-open + kill switch ---
 

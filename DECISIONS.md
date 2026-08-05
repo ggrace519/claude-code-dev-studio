@@ -893,9 +893,11 @@ Facts verified before this decision (2026-08-04, Claude Code docs + live test):
 Ship Gate 1 as a **new, separate plugin `ccds-guard`** — not folded into
 `ccds-core` or `ccds-loops` — with a **protective-only charter**:
 
-1. **Secret-path guard.** File tools (Read/Write/Edit/NotebookEdit) touching
-   secret-bearing paths (`.env*`, key material, `id_*` SSH keys, `.ssh/`,
-   `*credentials*`, `secrets/`, `.netrc`, `.git-credentials`, `*.tfstate`) are
+1. **Secret-path guard.** File tools (Read/Write/Edit/NotebookEdit, plus
+   Grep's `path` param — Grep is read-shaped) touching secret-bearing paths
+   (`.env*`, key material, `id_*` SSH keys, `.ssh/`, credential stores
+   (anchored, not bare substring — `credentials_manager.py` must stay
+   editable), `secrets/`, `.netrc`, `.git-credentials`, `*.tfstate`) are
    **denied** (exit 2). The same paths appearing in a Bash command **ask**
    instead of deny — `source .env`-style commands are sometimes legitimate,
    and a prompt keeps false positives from teaching users to uninstall the
@@ -910,12 +912,23 @@ Ship Gate 1 as a **new, separate plugin `ccds-guard`** — not folded into
    composer require) returns `permissionDecision: "ask"` with a reason telling
    the user to verify the package exists on the registry first. Bare lockfile
    restores (`npm install`, `pip install -r`) pass untouched.
-4. **Config tamper watch.** A `ConfigChange` hook (project/local settings
+4. **Config tamper watch.** A `ConfigChange` hook (user/project/local settings
    matchers) surfaces a non-blocking warning when session config changes
    mid-session; additionally, Write/Edit to `.claude/settings*.json`,
-   `.claude/hooks/`, or `.pre-commit-config.yaml` returns an **ask** — users
-   legitimately ask Claude to edit permissions, so a hard deny is wrong, but
-   silent self-modification (including via prompt injection) is not allowed.
+   `.claude/hooks/`, `.claude/plugins/` (the guard's own installed rules
+   included — no silent self-tamper), or `.pre-commit-config.yaml` returns an
+   **ask** — users legitimately ask Claude to edit permissions, so a hard
+   deny is wrong, but silent self-modification (including via prompt
+   injection) is not allowed.
+
+   *Post-review hardening (same-day multi-model review, pre-merge):* the
+   review panel found four HIGH regex defects — unanchored `credentials`
+   substring (false-positived on everyday source files), quoted-path bypass
+   of the rm deny, combined-short-flag bypass of `curl -k`, and leading-flag
+   bypass of the npm/pnpm/yarn install ask — plus the Grep hole and
+   self-tamper gap above. All fixed with the panel's failing cases encoded
+   as regression tests; shell-quoting invisibility remains the documented,
+   test-pinned limitation of the threat model.
 
 Mechanics, reusing the ADR-0011 substrate: one python3 hook script
 (`pretooluse-guard.py`) + one categorized data file (`guard-rules.txt`,

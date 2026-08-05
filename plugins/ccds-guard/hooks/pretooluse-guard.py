@@ -42,7 +42,7 @@ import sys
 RULES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                           "guard-rules.txt")
 
-FILE_TOOLS = ("Read", "Write", "Edit", "NotebookEdit")
+FILE_TOOLS = ("Read", "Write", "Edit", "NotebookEdit", "Grep")
 WRITE_TOOLS = ("Write", "Edit", "NotebookEdit")
 CATEGORIES = ("allow-path", "deny-path", "ask-write-path",
               "deny-command", "ask-command")
@@ -110,9 +110,10 @@ def _guard_bash(cmd, rules):
     # `cp .env.example .env` and `source .env` have legitimate uses, but the
     # user should knowingly approve anything that touches a secrets file.
     # Path rules are anchored for file paths, so match them per shell token
-    # (`cat .env` puts the path after a space, not a slash).
-    tokens = [t.strip("\"'`;()") for part in cmd.split()
-              for t in part.split("=")]
+    # (`cat .env` puts the path after a space, not a slash). Split on shell
+    # metacharacters too — `cat<.env` and `cat .env|grep` glue the path to
+    # the operator.
+    tokens = [t.strip("\"'`") for t in re.split(r"[\s=<>|&;(){}]+", cmd)]
     if any(rx.search(tok) for tok in tokens if tok
            for rx, _ in rules["deny-path"]):
         reasons.append(
@@ -172,7 +173,11 @@ def main():
         return 0
 
     if tool in FILE_TOOLS:
-        path = tool_input.get("file_path") or tool_input.get("notebook_path")
+        # Grep is read-shaped: its `path` param pointed at a secrets file
+        # would pull matching lines into context just like Read would.
+        path = (tool_input.get("file_path")
+                or tool_input.get("notebook_path")
+                or (tool_input.get("path") if tool == "Grep" else None))
         if isinstance(path, str) and path.strip():
             return _guard_file(tool, path, rules)
         return 0

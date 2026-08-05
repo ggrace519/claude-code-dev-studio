@@ -34,7 +34,8 @@ deny-path: (^|/)\.env(\.[A-Za-z0-9._-]+)?$                                      
 deny-path: \.(pem|key|p12|pfx|jks|keystore)$                                    # private key material
 deny-path: (^|/)id_(rsa|dsa|ecdsa|ed25519)[^/]*$                                # SSH private keys
 deny-path: (^|/)\.ssh(/|$)                                                      # SSH config + keys directory
-deny-path: credentials                                                          # anything named credentials (.aws/credentials, credentials.json)
+deny-path: (^|/)\.?credentials$                                                 # bare credentials files (.aws/credentials)
+deny-path: credentials\.(json|ya?ml|ini|cfg|xml)$                               # credential stores (credentials.json, service-credentials.yaml)
 deny-path: (^|/)secrets?(/|\.(json|ya?ml|toml|txt|env)$)                        # secrets/ dirs and secrets.* files
 deny-path: (^|/)\.netrc$                                                        # machine login passwords
 deny-path: (^|/)\.git-credentials$                                              # stored git passwords
@@ -43,23 +44,24 @@ deny-path: \.tfstate(\.backup)?$                                                
 # --- Config tamper watch: the model editing its own gates asks first ---
 ask-write-path: (^|/)\.claude/settings(\.local)?\.json$                         # Claude Code is changing its own permissions or hooks - confirm you asked for this
 ask-write-path: (^|/)\.claude/hooks(/|$)                                        # Claude Code is changing hook scripts that enforce your safety gates
+ask-write-path: (^|/)\.claude/plugins/                                          # Claude Code is changing installed plugin files (including this guard's own rules) - confirm you asked for this
 ask-write-path: (^|/)\.pre-commit-config\.ya?ml$                                # Claude Code is changing the checks that run before every commit
 
 # --- Dangerous commands: blocked outright ---
 deny-command: \bgit\s+push\b[^\n;|&]*(\s--force(?!-with-lease)\b|\s-f\b)        # force-push rewrites shared history; use --force-with-lease if you truly need it
 deny-command: \b(curl|wget)\b[^\n;|&]*\|[^\n;|&]*\b(sudo\s+)?(bash|sh|zsh|dash|fish)\b  # piping a download straight into a shell runs unreviewed remote code
 deny-command: \bchmod\b[^\n;|&]*\b[0-7]?777\b                                   # chmod 777 makes files writable by everyone on the machine
-deny-command: \bcurl\b[^\n;|&]*(\s-k\b|--insecure\b)                            # disabling TLS verification lets anyone intercept the traffic
+deny-command: \bcurl\b[^\n;|&]*((?-i:\s-[A-Za-z]*k[A-Za-z]*\b)|--insecure\b)    # disabling TLS verification lets anyone intercept the traffic (lowercase k only - uppercase -K is the config flag - incl. combined flags like -sk)
 deny-command: \bwget\b[^\n;|&]*--no-check-certificate\b                         # disabling TLS verification lets anyone intercept the traffic
 deny-command: \bsslverify\s*[= ]\s*false\b                                      # disabling git TLS verification lets anyone intercept the traffic
 deny-command: \bstrict-ssl\b[^\n;|&]*\bfalse\b                                  # disabling npm TLS verification lets anyone intercept the traffic
 deny-command: \b(PYTHONHTTPSVERIFY=0|NODE_TLS_REJECT_UNAUTHORIZED=0)\b          # disabling TLS verification lets anyone intercept the traffic
-deny-command: \brm\b(?=[^\n;|&]*-[a-z]*r)(?=[^\n;|&]*-[a-z]*f)[^\n;|&]*\s(~|\$HOME|/home/|/etc\b|/usr\b|/var\b|/opt\b)  # recursive force-delete outside the project
+deny-command: \brm\b(?=[^\n;|&]{0,200}-[a-z]*r)(?=[^\n;|&]{0,200}-[a-z]*f)[^\n;|&]{0,200}\s["']?(~|\$HOME|/home/|/etc\b|/usr\b|/var\b|/opt\b)  # recursive force-delete outside the project (quoted paths too; bounded runs, no ReDoS)
 
 # --- Package installs: ask, because models hallucinate package names ---
 # Attackers register hallucinated names (slopsquatting). Bare lockfile restores
 # (npm install, pip install -r ...) pass; installing a NAMED package asks.
-ask-command: \b(npm|pnpm|yarn)\s+(install|i|add)\s+(?!(-|\s*$))                 # verify this package exists on npmjs.com (name, author, downloads) before approving - AI models sometimes invent package names attackers then register
+ask-command: \b(npm|pnpm|yarn)\s+(install|i|add)\b(\s+-{1,2}[\w.=-]+)*\s+(?![-.])\S  # verify this package exists on npmjs.com (name, author, downloads) before approving - AI models sometimes invent package names attackers then register
 ask-command: \bpip3?\s+install\s+(?!(-r\b|-e\b|--upgrade\s+pip\b|-U\s+pip\b|\.))  # verify this package exists on pypi.org (name, author, downloads) before approving - AI models sometimes invent package names attackers then register
 ask-command: \buv\s+(add|pip\s+install)\s+(?!(-r\b|-e\b|\.))                    # verify this package exists on pypi.org before approving - AI models sometimes invent package names attackers then register
 ask-command: \bcargo\s+add\s+\S                                                 # verify this crate exists on crates.io before approving - AI models sometimes invent package names attackers then register
