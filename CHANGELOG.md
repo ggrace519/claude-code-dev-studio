@@ -5,7 +5,13 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
-## [Unreleased]
+## v0.13.0 — 2026-08-04 — Quality/security pipeline: ccds-guard plugin + gate staging
+
+The first two layers of the five-gate quality/security pipeline for
+zero-config projects: the `ccds-guard` security plugin (Gate 1, ADR-0012) and
+gate staging in `ccds sync` (Gates 2–4 + the v1 stack matrix, ADR-0013). Both
+hardened by multi-model review panels with every verified finding pinned as a
+regression test.
 
 ### Added
 
