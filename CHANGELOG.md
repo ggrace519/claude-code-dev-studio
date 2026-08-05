@@ -5,7 +5,13 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
-## [Unreleased]
+## v0.14.0 — 2026-08-05 — Gate 5: AI-review principles complete the pipeline
+
+The final layer of the five-gate quality/security pipeline: the review skills
+and agents now encode how AI-generated code is reviewed (untrusted contributor
+code, named scrutiny zones and mistake patterns, fresh-context review as the
+default flow). Closes the 2026-08-04 pipeline handoff — all five work items
+shipped across v0.13.0 and v0.14.0.
 
 ### Added
 
