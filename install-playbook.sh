@@ -579,9 +579,13 @@ if (( SKIP_PLUGINS == 0 )); then
         log_warn "  claude plugin install ccds-guard@ccds --scope user"
         log_warn "  claude plugin install ccds-loops@ccds --scope user"
     else
-        # Marketplace add is idempotent-ish: tolerate "already exists".
+        # Marketplace add is idempotent-ish: tolerate "already exists", but
+        # then refresh — a stale pre-guard registration would not know the
+        # ccds-guard plugin exists (round-2 review finding).
         if ! claude plugin marketplace add "${OWNER}/${REPO}" </dev/null >/dev/null 2>&1; then
-            log_info "marketplace 'ccds' already registered (or add failed; continuing)"
+            log_info "marketplace 'ccds' already registered; refreshing catalog"
+            claude plugin marketplace update ccds </dev/null >/dev/null 2>&1 \
+                || log_warn "could not refresh marketplace 'ccds'; plugin installs may see a stale catalog"
         fi
         PLUGINS_STATUS="installed (ccds-guard, ccds-loops)"
         for plugin in ccds-guard ccds-loops; do

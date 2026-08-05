@@ -807,7 +807,13 @@ try {
             try {
                 & claude plugin marketplace add "$Script:Owner/$Script:Repo" 2>$null | Out-Null
                 if ($LASTEXITCODE -ne 0) {
-                    Write-Info "marketplace 'ccds' already registered (or add failed; continuing)"
+                    # Stale pre-guard registration would not know ccds-guard
+                    # exists — refresh the catalog (round-2 review finding).
+                    Write-Info "marketplace 'ccds' already registered; refreshing catalog"
+                    & claude plugin marketplace update ccds 2>$null | Out-Null
+                    if ($LASTEXITCODE -ne 0) {
+                        Write-WarnMsg "could not refresh marketplace 'ccds'; plugin installs may see a stale catalog"
+                    }
                 }
                 $pluginsStatus = 'installed (ccds-guard, ccds-loops)'
                 foreach ($plugin in @('ccds-guard', 'ccds-loops')) {

@@ -921,14 +921,43 @@ Ship Gate 1 as a **new, separate plugin `ccds-guard`** — not folded into
    deny is wrong, but silent self-modification (including via prompt
    injection) is not allowed.
 
-   *Post-review hardening (same-day multi-model review, pre-merge):* the
-   review panel found four HIGH regex defects — unanchored `credentials`
+   *Post-review hardening, round 1 (same-day multi-model review, pre-merge):*
+   the review panel found four HIGH regex defects — unanchored `credentials`
    substring (false-positived on everyday source files), quoted-path bypass
    of the rm deny, combined-short-flag bypass of `curl -k`, and leading-flag
    bypass of the npm/pnpm/yarn install ask — plus the Grep hole and
    self-tamper gap above. All fixed with the panel's failing cases encoded
    as regression tests; shell-quoting invisibility remains the documented,
    test-pinned limitation of the threat model.
+
+   *Post-review hardening, round 2 (full codex + grok + Claude panel; 24/24
+   unique claims verified, 0 hallucinated):* the panel's structural verdict
+   was accepted — pure-regex rules kept failing on target-model and
+   flag-order problems — so two checks moved from the data file into script
+   logic: **rm-outside-project** now resolves each delete target (quotes,
+   `~`/`$HOME`, relative paths) against the project dir, covering macOS
+   `/Users`, WSL `/mnt`, `/` itself and `../siblings` while un-blocking
+   in-project and `/tmp` deletes; and **path normalization** (normpath)
+   runs before all rule matching, closing the `tests/fixtures/../../.env`
+   traversal of the fixtures exemption. Bash tokens now get the full rule
+   treatment (allow-path exemptions and the ask-write-path tamper watch —
+   `echo {} > .claude/settings.json` asks). Rule fixes: credentials re-anchor
+   regression (dirs + `credentials.yml.enc` restored), named `*.env` files,
+   `+refspec`/`-uf`/`git -C` force-push variants (`--force-if-includes`
+   exempted), multi-hop pipe-to-shell + process substitution (which also
+   fixed the latent `| grep bash` false positive), curl k-cluster narrowed
+   to boolean flags (`-Hk` un-blocked), one shared flag-skipping shape for
+   all install gates (pre-command flags ask; pip/uv `-r` restores with
+   flags un-blocked; bun + yarn-global added; `go get -u ./...` and
+   redirection tokens un-blocked), `.pub` keys exempt, ConfigChange gains
+   the `skills` matcher, installers refresh a stale marketplace before
+   installing, and fail-open now warns on stderr instead of going silently
+   inert. Every verified panel case is a row in the data-driven
+   `test_round2_panel_matrix`. Named residual limitations: shell
+   quoting/interpolation (pinned), and `python3`-on-PATH as a hook runtime
+   requirement — native Windows without it leaves the guard inert (warn
+   path); a dual launcher was rejected because `||` fallback would re-run
+   the hook after legitimate exit-2 denials.
 
 Mechanics, reusing the ADR-0011 substrate: one python3 hook script
 (`pretooluse-guard.py`) + one categorized data file (`guard-rules.txt`,

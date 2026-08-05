@@ -77,7 +77,9 @@ The guard stops model mistakes and casual prompt injection — it is a teaching
 backstop on top of Claude Code's permission modes, not a sandbox. Never run
 with permissions bypassed (`--dangerously-skip-permissions`) outside an
 isolated container, guard or no guard. Kill switch: `CCDS_GUARD_DISABLE=1`;
-tune rules in the plugin's `hooks/guard-rules.txt`.
+tune rules in the plugin's `hooks/guard-rules.txt`. The hooks need `python3`
+on PATH (macOS/Linux/WSL have it; on native Windows install Python 3 or the
+guard is inert).
 
 Update later with `/plugin marketplace update ccds`. The marketplace tree
 (`.claude-plugin/marketplace.json` + `plugins/`) is generated from the library
