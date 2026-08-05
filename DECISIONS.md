@@ -854,3 +854,136 @@ plugin's original `stop-gate.sh`/`session-start.sh` are unchanged.
 ### Supersedes
 None. Implements the enforcement-hooks follow-on named in ADR-0010's
 Consequences; composes with the command gate and context injector already there.
+
+---
+
+## ADR-0012: `ccds-guard` — Zero-Config Security Guard Plugin (Pipeline Gate 1)
+
+**Date:** 2026-08-04
+**Status:** Accepted
+**Phase:** Architecture
+**Deciders:** Greg Grace
+
+### Context
+
+CCDS's users are vibe coders: they will not configure linters, read security
+docs, or review diffs unprompted. A five-gate quality/security pipeline was
+agreed (in-session hooks → session config → pre-commit → CI → review process)
+so that any CCDS-powered project inherits protection with zero configuration.
+The 2026-08-04 hook audit found Gate 1 almost entirely unbuilt: the only
+shipped hooks are the `ccds-loops` process-enforcement layer (ADR-0011), whose
+risk guard covers a fragment of "dangerous commands" under a deliberately
+catastrophic-only charter. No secret-path guard, no install gate, no tamper
+watch exists, and hooks ship through exactly one outlet (the plugin
+marketplace) — the classic installer wires none.
+
+Facts verified before this decision (2026-08-04, Claude Code docs + live test):
+- PreToolUse/PostToolUse hooks fire for subagent tool calls too; the payload
+  carries `agent_id`/`agent_type`. Confirmed live: a logging PreToolUse hook
+  recorded a Task-subagent's Bash call. Domain agents cannot bypass the guard.
+- A PreToolUse hook may return `hookSpecificOutput.permissionDecision`
+  `allow|deny|ask` via stdout JSON (exit 0); `permissionDecisionReason` is
+  shown to the user. Exit 2 + stderr is the block path (stdout ignored).
+- A `ConfigChange` hook event exists (matchers `user_settings`,
+  `project_settings`, `local_settings`, `skills`); exit 2 can block.
+- `claude plugin install <name>@<marketplace> --scope user` is scriptable.
+
+### Decision
+
+Ship Gate 1 as a **new, separate plugin `ccds-guard`** — not folded into
+`ccds-core` or `ccds-loops` — with a **protective-only charter**:
+
+1. **Secret-path guard.** File tools (Read/Write/Edit/NotebookEdit) touching
+   secret-bearing paths (`.env*`, key material, `id_*` SSH keys, `.ssh/`,
+   `*credentials*`, `secrets/`, `.netrc`, `.git-credentials`, `*.tfstate`) are
+   **denied** (exit 2). The same paths appearing in a Bash command **ask**
+   instead of deny — `source .env`-style commands are sometimes legitimate,
+   and a prompt keeps false positives from teaching users to uninstall the
+   guard. Explicit allow-list exempts `.env.example`-style templates.
+2. **Dangerous-command guard (Bash).** Deny: force-push (`--force-with-lease`
+   exempted), curl/wget piped to a shell, `chmod 777`, TLS-verification
+   disables (curl `-k`, `--no-check-certificate`, git/npm/env-var forms), and
+   recursive force-deletes outside the project. Complements — does not replace
+   or modify — the catastrophic-only `ccds-loops` risk guard.
+3. **Install ask-gate (slopsquatting).** Installing a *named* package
+   (npm/pnpm/yarn add, pip/uv install <name>, cargo add, go get, gem install,
+   composer require) returns `permissionDecision: "ask"` with a reason telling
+   the user to verify the package exists on the registry first. Bare lockfile
+   restores (`npm install`, `pip install -r`) pass untouched.
+4. **Config tamper watch.** A `ConfigChange` hook (project/local settings
+   matchers) surfaces a non-blocking warning when session config changes
+   mid-session; additionally, Write/Edit to `.claude/settings*.json`,
+   `.claude/hooks/`, or `.pre-commit-config.yaml` returns an **ask** — users
+   legitimately ask Claude to edit permissions, so a hard deny is wrong, but
+   silent self-modification (including via prompt injection) is not allowed.
+
+Mechanics, reusing the ADR-0011 substrate: one python3 hook script
+(`pretooluse-guard.py`) + one categorized data file (`guard-rules.txt`,
+`deny-path` / `allow-path` / `ask-write-path` / `deny-command` / `ask-command`)
+in `plugin-extras/ccds-guard/hooks/`, copied into the generated plugin by
+`build-marketplace.py`. Every block/ask message teaches: what was stopped, why
+it matters in plain language, and what to do instead. Kill switch:
+`CCDS_GUARD_DISABLE=1`.
+
+**Fail-open, backed by a harder layer.** The hook fails open (unreadable rules
+file → allow) per ADR-0011's rationale: a guard that bricks the shell when its
+data file breaks trains users to remove it. The non-negotiables (secret-path
+denies) will ALSO ship as Gate-2 `permissions.deny` rules in the settings
+template staged by sync (work item 3), which the harness enforces with no
+runtime dependency — the hook is the teaching layer, the deny rule the hard
+layer. Until Gate 2 ships, the hook is the only layer; that gap is accepted
+and time-boxed, not hidden.
+
+**Distribution: plugins are the only hook-shipping mechanism.** The classic
+installer does not learn to write hooks into user settings; instead it
+registers the repo as a marketplace and runs
+`claude plugin install ccds-guard@ccds` (and `ccds-loops@ccds`) by default,
+with a `--skip-plugins` flag to opt out. One mechanism, every outlet converges
+on it (honors the every-outlet rule without doubling the hook surface).
+
+**Out of scope, deliberately:** a stack-detected formatter hook. Edit-time
+formatting only works when the formatter is installed, which for this audience
+it usually is not; a hook that silently no-ops most of the time is a broken
+promise. Formatting enforcement belongs to Gate 3 (pre-commit, which manages
+its own tool environments) — work item 3's scope. The guard's v1 charter is
+purely protective: zero dependencies, always fires.
+
+### Rationale
+
+- **Separate plugin because the escape hatch matters more than charter
+  purity.** Security guards on unknown stacks will false-positive eventually;
+  the user's remedy must be "disable the guard," not "uninstall the thing
+  carrying all my agents and skills." Folding into ccds-core welds them.
+- **Ask over deny wherever legitimate use exists** (bash env-file access,
+  config edits, package installs). Deny is reserved for actions with no
+  legitimate in-session form (reading key material, curl|bash, chmod 777).
+  Every ask is also the teaching moment the audience needs.
+- **Honest threat model.** Regex guards stop model mistakes and casual
+  injection, not a determined adversary (`python read_env.py` beats any Bash
+  regex). The security boundary remains Claude Code's permission modes +
+  environment isolation; the guard is the smart layer on top. Documentation
+  must not claim otherwise, and must never instruct users to run with
+  permissions bypassed outside an isolated container.
+- **Data-file rules, code-free tuning** proved out in ADR-0011: project-side
+  false positives get fixed by editing a text file, not by forking a plugin.
+
+### Consequences
+
+- New plugin surface: `plugin-extras/ccds-guard/hooks/*`;
+  `build-marketplace.py` gains the entry and accepts hooks-only plugins in its
+  self-check (previously required agents/ or skills/).
+- Installer changes in both dispatchers (bash + PowerShell, same PR) for the
+  marketplace-registration + default-install step; cli-parity lint applies.
+- `tests/test_playbook_scripts.py` gains behavioral coverage for all four
+  guard concerns, including the `.env.example` allowance and fail-open.
+- Gate-2 settings template (work item 3) must mirror the secret-path denies —
+  tracked as the pipeline's next work item, referenced here so the fail-open
+  posture is never the sole layer long-term.
+- The `ConfigChange` wiring is new API surface; live verification on the
+  installed Claude Code version is part of this work item's definition of
+  done (an older CLI that ignores unknown events must degrade silently, not
+  fail to load the plugin).
+
+### Supersedes
+None. Composes with ADR-0011 (ccds-loops enforcement layer); implements Gate 1
+of the five-gate pipeline; ADR-0001 (BOM-less UTF-8) applies to all new files.

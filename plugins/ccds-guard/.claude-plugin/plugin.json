@@ -1,0 +1,10 @@
+{
+  "name": "ccds-guard",
+  "description": "Zero-config security guard (ADR-0012): blocks secret-file access and dangerous commands, asks before package installs (slopsquatting) and config self-edits, and warns on mid-session config tampering. Hooks-only — protects any project with no setup.",
+  "author": {
+    "name": "Greg Grace",
+    "email": "contact@519lab.com"
+  },
+  "homepage": "https://github.com/ggrace519/claude-code-dev-studio",
+  "license": "PolyForm-Noncommercial-1.0.0"
+}
