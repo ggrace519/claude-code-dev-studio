@@ -8,5 +8,11 @@
           python-version: "3.12"
       - name: Ruff (lint)
         run: pipx run ruff check .
-      - name: pip-audit (known-vulnerable dependencies)
-        run: pipx run pip-audit --skip-editable || true
+      - name: pip-audit (advisory - flags known-vulnerable deps, does not block)
+        continue-on-error: true
+        run: |
+          if [ -f requirements.txt ]; then
+            pipx run pip-audit -r requirements.txt
+          else
+            pipx run pip-audit .
+          fi

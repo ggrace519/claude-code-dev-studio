@@ -92,7 +92,14 @@ $TemplatesDir = Join-Path $LibraryRoot 'templates'
 # (no ?? operator: must run on Windows PowerShell 5.1)
 $PythonCmd = Get-Command python3 -ErrorAction SilentlyContinue
 if (-not $PythonCmd) { $PythonCmd = Get-Command python -ErrorAction SilentlyContinue }
-function Test-Gates { ($null -ne $PythonCmd) -and (Test-Path -LiteralPath $GatesScript) }
+function Test-Gates {
+    # python must actually RUN (present-but-broken behaves like absent).
+    if (($null -eq $PythonCmd) -or -not (Test-Path -LiteralPath $GatesScript)) { return $false }
+    try {
+        & $PythonCmd.Source -c "" 2>$null | Out-Null
+        return ($LASTEXITCODE -eq 0)
+    } catch { return $false }
+}
 function Invoke-Gates {
     param([string[]]$ExtraArgs = @())
     & $PythonCmd.Source $GatesScript --target $TargetProject --templates $TemplatesDir @ExtraArgs
@@ -126,16 +133,28 @@ if ($Clean) {
     if ($prevSet.Count -eq 0 -and -not (Test-Path -LiteralPath $Manifest)) {
         Write-Host "Nothing to clean (no manifest)."; return
     }
+    # Parity with the bash twin (review blocker): a schema-3 manifest records
+    # gate files whose safe (hash-checked) removal needs the python engine.
+    # Cleaning without it would delete the manifest and orphan those files.
+    $prevSchema = 0
+    if ($null -ne $prev -and $prev.PSObject.Properties['schema']) {
+        $prevSchema = [int]$prev.schema
+    }
+    if ($prevSchema -ge 3 -and -not (Test-Gates)) {
+        throw "This manifest (schema 3+) records staged gate files; cleaning them safely needs python. Install python 3 and re-run -Clean."
+    }
     Write-Host ""
     Write-Host "=== Clean plan" -ForegroundColor Cyan
     foreach ($n in ($prevSet | Sort-Object)) { Write-Host ("    - {0}" -f $n) -ForegroundColor Yellow }
     if ($DryRun) {
-        if ((Test-Gates) -and -not $NoGates) { Invoke-Gates -ExtraArgs @('--clean', '--dry-run') }
+        if (Test-Gates) { Invoke-Gates -ExtraArgs @('--clean', '--dry-run') }
         Write-Host ""
         Write-Host "DRY RUN - no changes made." -ForegroundColor Magenta
         return
     }
-    if ((Test-Gates) -and -not $NoGates) { Invoke-Gates -ExtraArgs @('--clean') }
+    # Gate clean always runs when the engine is available: -NoGates means
+    # "don't STAGE gates", not "leave gate files orphaned on clean".
+    if (Test-Gates) { Invoke-Gates -ExtraArgs @('--clean') }
     foreach ($n in $prevSet) {
         $tgt = Join-Path $TgtSkills $n
         if (Test-Path -LiteralPath $tgt) { Remove-Item -LiteralPath $tgt -Recurse -Force }

@@ -8,5 +8,6 @@
           go-version: stable
       - name: gofmt (formatting)
         run: test -z "$(gofmt -l .)"
-      - name: govulncheck (known-vulnerable dependencies)
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./... || true
+      - name: govulncheck (advisory - flags known-vulnerable deps, does not block)
+        continue-on-error: true
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...

@@ -6,5 +6,6 @@
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: npm audit (known-vulnerable dependencies)
-        run: npm audit --audit-level=high || true
+      - name: npm audit (advisory - flags known-vulnerable deps, does not block)
+        continue-on-error: true
+        run: npm audit --audit-level=high

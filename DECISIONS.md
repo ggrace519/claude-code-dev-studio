@@ -1124,6 +1124,43 @@ bypassed the manifest entirely.
   + `stage-gates.py`; cli-parity covers the command surface, and the new
   `--no-gates` flag exists in both dispatchers and both sync twins.
 
+### Post-review hardening (same-day full panel: codex + grok + Claude)
+
+The three-reviewer panel (all claims verified before acceptance) drove one
+wording correction and a batch of fixes, all regression-tested:
+
+- **Honest scope of Gate 2** (wording): `permissions.deny` `Read(...)` rules
+  govern the model's FILE TOOLS only — a Bash `cat .env` is not stopped by
+  them (that remains the guard hook's ask), and the OS-level layer is Claude
+  Code's sandboxing, not settings. "Hard layer" claims were narrowed
+  accordingly here, in the changelog, README, and template comments.
+- **Never-destroy blockers fixed**: unbalanced ccds-standards markers now
+  leave CLAUDE.md untouched (previously everything below a begin-without-end
+  was silently dropped); PS `-Clean` refuses on a schema-3 manifest without
+  the python engine (parity with bash — it previously deleted the manifest
+  and orphaned gate files); the bash printf manifest fallback refuses to
+  rewrite a schema-3 manifest (it previously truncated the gate keys on any
+  python3-less re-sync); `--clean` validates manifest paths (relative,
+  `..`-free, realpath-contained) so a tampered manifest cannot delete files
+  outside the project; a pre-existing empty CLAUDE.md survives clean.
+- **Gate-2/Gate-1 mirror corrected**: the deny set now honors the guard's
+  allow-list — `.env.example`-style templates and `*.pub` keys are not
+  denied (live `.env` variants enumerated; `id_*` rules match exact key
+  basenames); credentials/secrets shapes extended to match the guard.
+- **Templates**: rust CI got its missing toolchain step; dependency audits
+  are explicitly *advisory* (`continue-on-error`, named as such) — gitleaks
+  is the enforcing job; pip-audit targets the project, not pipx's venv.
+- **Fidelity**: CRLF files round-trip (CLAUDE.md and settings), backups are
+  byte-identical copies with collision-proof names, template refresh takes a
+  backup, duplicate-key settings JSON is refused (a rewrite would collapse
+  it), `gateEdits` unions with history instead of being wiped by idempotent
+  re-runs, malformed manifest values are validated before any mutation, and
+  the bash fallback skill parser handles multi-line manifests.
+- **Interaction noted**: `ccds sync` writes `.claude/settings.json` via a
+  subprocess, which the guard's Bash-text tamper watch cannot see — accepted
+  because sync is a deliberate user-invoked action and the change is
+  additive-only; recorded here so it is a decision, not an oversight.
+
 ### Supersedes
 None. Implements pipeline Gates 2–4 staging; composes with ADR-0012 (Gate 1)
 and closes its fail-open follow-on; extends ADR-0004/0007's sync mechanism.

@@ -56,7 +56,7 @@ Skills are the just-in-time layer. The `sync-agents` skill (or `ccds sync`):
 
 Cross-cutting skills (`playbook-conventions`, `api-design`, `ux-design`, `security-checklist`, `code-review-checklist`, `inventive-engineer`, `common-*`, and the `loop-*` agent-loop process skills) install once to `~/.claude/skills/` and are always available.
 
-`ccds sync` also stages **quality/security gates** into the project (ADR-0013), stack-matched and zero-config: `permissions.deny` rules that keep secrets files out of the model's context (the hard layer under the ccds-guard plugin's hooks), a plain-language standards block in `CLAUDE.md`, a pre-commit config with gitleaks secret scanning, and a CI quality workflow. ccds never destroys your content — existing files are merged with a backup (settings) or left alone entirely (pre-commit/CI), and `--clean` only removes ccds-created files you haven't edited. Skip with `--no-gates`; requires python3.
+`ccds sync` also stages **quality/security gates** into the project (ADR-0013), stack-matched and zero-config: `permissions.deny` rules that keep secrets files away from the model's file tools (harness-enforced, complementing the ccds-guard plugin's hooks, which cover the Bash side), a plain-language standards block in `CLAUDE.md`, a pre-commit config with gitleaks secret scanning, and a CI quality workflow (secret scan enforcing; dependency audits advisory). ccds never destroys your content — existing files are merged with a backup (settings) or left alone entirely (pre-commit/CI), and `--clean` only removes ccds-created files you haven't edited. Skip with `--no-gates`; requires python3.
 
 ## Install as native Claude Code plugins (recommended)
 

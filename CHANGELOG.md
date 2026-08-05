@@ -64,10 +64,14 @@ New sessions should read this file first to get up to speed before doing anythin
   project — zero-config, opt out with `--no-gates`:
   - **Settings deny rules (Gate 2)**: `.claude/settings.json` gains
     harness-enforced `permissions.deny` rules mirroring the ccds-guard
-    secret paths — the hard layer under the hook's teaching layer, closing
-    ADR-0012's fail-open time-box. Existing files are merged with a
-    timestamped backup: entries are only added, nothing is removed or
-    reordered.
+    secret paths *including its allow-list* (`.env.example` templates and
+    `*.pub` keys stay readable). Honest scope: these govern the model's
+    file tools — Bash-side reads remain the guard hook's ask, and OS-level
+    enforcement is Claude Code's sandbox. Together with the hook this
+    closes ADR-0012's fail-open time-box for file-tool reads. Existing
+    files are merged with a byte-identical backup: entries are only added,
+    nothing is removed or reordered, and files with invalid or duplicate
+    JSON keys are left untouched.
   - **CLAUDE.md standards block (Gate 2)**: a managed `ccds-standards`
     block with plain-language process rules (small PRs, explainable diffs,
     AI output as untrusted contributor code, parameterized SQL/commands,
@@ -75,9 +79,11 @@ New sessions should read this file first to get up to speed before doing anythin
     is always preserved.
   - **Pre-commit + CI (Gates 3/4)**: `.pre-commit-config.yaml` and
     `.github/workflows/ccds-quality.yml` created only when absent —
-    gitleaks secret scanning everywhere, plus ruff/pip-audit (python),
-    prettier/npm-audit (node), gofmt/govulncheck (go), cargo fmt/audit
-    (rust) per detected stack (`templates/stack-matrix.json`).
+    gitleaks secret scanning enforces everywhere; formatters/linters run
+    per detected stack (ruff, prettier, gofmt, cargo fmt via
+    `templates/stack-matrix.json`); dependency audits (pip-audit,
+    npm audit, govulncheck, cargo audit) are *advisory* — visibly flagged
+    in CI, never a permanently red workflow on day one.
   ccds-created files are hash-tracked; `--clean` removes them only while
   unmodified (user edits always win) and strips the standards block, but
   leaves deny rules in place by design. Requires python3; without it gates

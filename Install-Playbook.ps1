@@ -601,7 +601,7 @@ function Install-FromZip {
     Expand-Archive -LiteralPath $ZipPath -DestinationPath $newDir -Force
 
     # Sanity: key files must exist in the extracted tree
-    foreach ($sentinel in @('bin\ccds.ps1', 'catalog.json', 'agents', 'skills')) {
+    foreach ($sentinel in @('bin\ccds.ps1', 'catalog.json', 'agents', 'skills', 'templates')) {
         if (-not (Test-Path (Join-Path $newDir $sentinel))) {
             Remove-Item -LiteralPath $newDir -Recurse -Force
             throw "Extraction did not produce '$sentinel' -- archive layout is unexpected."

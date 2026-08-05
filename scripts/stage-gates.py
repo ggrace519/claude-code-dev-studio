@@ -11,6 +11,12 @@ templates/stack-matrix.json:
                                            permissions.deny entries only;
                                            never remove/reorder; key order
                                            preserved. Absent -> created.
+                                           Honest scope: deny rules govern
+                                           the model's FILE TOOLS; Bash-side
+                                           reads (cat .env) remain covered by
+                                           the ccds-guard hook's ask, and the
+                                           OS-level layer is Claude Code's
+                                           sandbox — not this file.
   Gate 2b  CLAUDE.md                       managed block between
                                            `# >>> ccds-standards >>>` markers
                                            (strip-and-append + backup, same
@@ -35,6 +41,8 @@ import datetime
 import hashlib
 import json
 import os
+import re
+import shutil
 import sys
 
 STD_BEGIN = "# >>> ccds-standards >>>"
@@ -48,14 +56,22 @@ def log(msg):
 
 
 def read_text(path):
-    with open(path, encoding="utf-8") as f:
+    # newline="" keeps \r\n intact so CRLF files round-trip (review finding:
+    # universal-newline reading silently converted whole files to LF).
+    with open(path, encoding="utf-8", newline="") as f:
         return f.read()
 
 
-def write_text(path, content):
+def write_text(path, content, crlf=False):
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    with open(path, "w", encoding="utf-8", newline="\n") as f:
+    if crlf:
+        content = content.replace("\r\n", "\n").replace("\n", "\r\n")
+    with open(path, "w", encoding="utf-8", newline="") as f:
         f.write(content)
+
+
+def is_crlf(content):
+    return "\r\n" in content
 
 
 def sha256(content):
@@ -63,12 +79,18 @@ def sha256(content):
 
 
 def backup(path, dry):
+    """Byte-identical backup (shutil.copyfile, not a text round-trip) with a
+    collision-proof name."""
     if not os.path.isfile(path):
         return None
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     dst = "%s.ccds-backup-%s" % (path, stamp)
+    n = 1
+    while os.path.exists(dst):
+        dst = "%s.ccds-backup-%s-%d" % (path, stamp, n)
+        n += 1
     if not dry:
-        write_text(dst, read_text(path))
+        shutil.copyfile(path, dst)
     return dst
 
 
@@ -78,6 +100,25 @@ def load_json(path):
             return json.load(f)
     except (OSError, json.JSONDecodeError, ValueError):
         return None
+
+
+def _reject_dupes(pairs):
+    d = {}
+    for k, v in pairs:
+        if k in d:
+            raise ValueError("duplicate JSON key: %s" % k)
+        d[k] = v
+    return d
+
+
+def load_prior_gate_files(manifest):
+    """managedGateFiles entries, validated (review finding: malformed types
+    must never crash mid-mutation — bad entries are dropped, not fatal)."""
+    raw = (manifest or {}).get("managedGateFiles")
+    if not isinstance(raw, list):
+        return []
+    return [e for e in raw
+            if isinstance(e, dict) and isinstance(e.get("path"), str)]
 
 
 def detect_stacks(target, matrix):
@@ -106,17 +147,23 @@ def stage_settings(target, templates, dry, edits):
 
     if not os.path.isfile(path):
         content = json.dumps({"permissions": {"deny": wanted}}, indent=2) + "\n"
-        log("settings: created %s (%d deny rules — the hard layer under the "
-            "ccds-guard hook)" % (rel, len(wanted)))
+        log("settings: created %s (%d deny rules — blocks the model's file "
+            "tools from reading secrets)" % (rel, len(wanted)))
         if not dry:
             write_text(path, content)
         edits.append(rel)
         return
 
-    data = load_json(path)
+    raw = read_text(path)
+    try:
+        # Duplicate keys would be silently collapsed by a rewrite — that is
+        # user content we cannot faithfully preserve, so refuse to touch.
+        data = json.loads(raw, object_pairs_hook=_reject_dupes)
+    except (json.JSONDecodeError, ValueError):
+        data = None
     if not isinstance(data, dict):
-        log("settings: %s exists but is not valid JSON — left untouched. "
-            "Fix it, then re-run ccds sync." % rel)
+        log("settings: %s exists but is not clean JSON (invalid or duplicate "
+            "keys) — left untouched. Fix it, then re-run ccds sync." % rel)
         return
     perms = data.setdefault("permissions", {})
     if not isinstance(perms, dict):
@@ -137,7 +184,9 @@ def stage_settings(target, templates, dry, edits):
     log("settings: added %d missing deny rules to %s (backup: %s)"
         % (len(missing), rel, os.path.basename(bak) if bak else "n/a"))
     if not dry:
-        write_text(path, json.dumps(data, indent=2) + "\n")
+        write_text(path,
+                   json.dumps(data, indent=2, ensure_ascii=False) + "\n",
+                   crlf=is_crlf(raw))
     edits.append(rel)
 
 
@@ -146,20 +195,28 @@ def stage_settings(target, templates, dry, edits):
 # --------------------------------------------------------------------------
 
 def strip_standards_block(content):
-    """Remove ALL ccds-standards blocks; preserve everything else verbatim."""
+    """Remove ALL ccds-standards blocks; preserve everything else verbatim.
+    Returns None on unbalanced markers (begin without end, or a stray end) —
+    the caller must then LEAVE THE FILE UNTOUCHED. Review finding: recovering
+    from a missing end marker by deletion silently ate everything below it."""
     out, skipping = [], False
     for line in content.splitlines():
         check = line.rstrip("\r\t ")
         if check == STD_BEGIN:
+            if skipping:
+                return None  # nested/duplicate begin: unbalanced
             skipping = True
             continue
         if check == STD_END:
+            if not skipping:
+                return None  # stray end marker: unbalanced
             skipping = False
             continue
         if not skipping:
             out.append(line)
-    text = "\n".join(out)
-    return text.rstrip("\n")
+    if skipping:
+        return None  # begin without end: unbalanced
+    return "\n".join(out).rstrip("\n")
 
 
 def stage_claude_block(target, templates, dry, edits):
@@ -170,9 +227,14 @@ def stage_claude_block(target, templates, dry, edits):
     block = read_text(block_path).rstrip("\n")
     path = os.path.join(target, "CLAUDE.md")
     existing = read_text(path) if os.path.isfile(path) else ""
-    kept = strip_standards_block(existing)
+    kept = strip_standards_block(existing.replace("\r\n", "\n"))
+    if kept is None:
+        log("standards: CLAUDE.md has unbalanced ccds-standards markers — "
+            "left untouched. Fix the markers (one begin, one end), then "
+            "re-run ccds sync.")
+        return
     new_content = (kept + "\n\n" if kept else "") + block + "\n"
-    if new_content == existing:
+    if new_content == existing.replace("\r\n", "\n"):
         log("standards: CLAUDE.md block up to date")
         return
     bak = backup(path, dry)
@@ -180,7 +242,7 @@ def stage_claude_block(target, templates, dry, edits):
         % ("updated" if STD_BEGIN in existing else "added",
            " (backup: %s)" % os.path.basename(bak) if bak else ""))
     if not dry:
-        write_text(path, new_content)
+        write_text(path, new_content, crlf=is_crlf(existing))
     edits.append("CLAUDE.md")
 
 
@@ -210,8 +272,11 @@ def stage_created_file(target, rel, content, prior, dry, created, label):
                 log("%s: up to date" % label)
                 created.append({"path": rel, "sha256": sha256(content)})
                 return
-            # ours and unmodified by the user -> safe to refresh
-            log("%s: refreshed %s (template changed)" % (label, rel))
+            # ours and unmodified by the user -> safe to refresh, but keep
+            # the last known good (review finding: refresh had no backup)
+            bak = backup(path, dry)
+            log("%s: refreshed %s (template changed; backup: %s)"
+                % (label, rel, os.path.basename(bak) if bak else "n/a"))
             if not dry:
                 write_text(path, content)
             created.append({"path": rel, "sha256": sha256(content)})
@@ -239,42 +304,82 @@ def update_manifest(target, created, edits, dry):
     data = load_json(path)
     if not isinstance(data, dict):
         data = {"schema": SCHEMA_VERSION}
-    data["schema"] = max(int(data.get("schema") or 0), SCHEMA_VERSION)
+    try:
+        prior_schema = int(data.get("schema") or 0)
+    except (TypeError, ValueError):
+        prior_schema = 0
+    data["schema"] = max(prior_schema, SCHEMA_VERSION)
     data["managedGateFiles"] = created
-    data["gateEdits"] = sorted(set(edits))
+    # Union with history: an idempotent re-run edits nothing, but the files
+    # ccds edited before are still gate-managed (review finding: replacing
+    # with this run's list wiped gateEdits to [] on every no-op re-sync).
+    prior_edits = [e for e in (data.get("gateEdits") or [])
+                   if isinstance(e, str)]
+    data["gateEdits"] = sorted(set(prior_edits) | set(edits))
     if not dry:
         write_text(path, json.dumps(data, indent=2) + "\n")
 
 
+def _contained(target, rel):
+    """Resolve a manifest-recorded relative path, refusing anything that
+    escapes the target (review finding: absolute or ../ paths in a tampered
+    manifest could delete files outside the project)."""
+    if not isinstance(rel, str) or not rel:
+        return None
+    if rel.startswith(("/", "\\")) or re.match(r"^[A-Za-z]:", rel) \
+            or ".." in rel.replace("\\", "/").split("/"):
+        return None
+    resolved = os.path.realpath(os.path.join(target, rel))
+    root = os.path.realpath(target)
+    try:
+        if os.path.commonpath([resolved, root]) != root:
+            return None
+    except ValueError:
+        return None  # different drives etc.
+    return resolved
+
+
 def clean(target, dry):
     manifest = load_json(os.path.join(target, MANIFEST_REL)) or {}
-    for entry in manifest.get("managedGateFiles", []):
+    for entry in load_prior_gate_files(manifest):
         rel, want = entry.get("path"), entry.get("sha256")
-        if not rel:
+        path = _contained(target, rel)
+        if path is None:
+            log("clean: manifest entry %r escapes the project — ignored" % rel)
             continue
-        path = os.path.join(target, rel)
         if not os.path.isfile(path):
             continue
-        if sha256(read_text(path)) == want:
+        if sha256(read_text(path).replace("\r\n", "\n")) == want \
+                or sha256(read_text(path)) == want:
             log("clean: removing %s (ccds-created, unmodified)" % rel)
             if not dry:
                 os.remove(path)
+                # tidy an emptied .github/workflows/, best-effort
+                try:
+                    os.removedirs(os.path.dirname(path))
+                except OSError:
+                    pass
         else:
             log("clean: %s has your edits — kept" % rel)
     claude_md = os.path.join(target, "CLAUDE.md")
     if os.path.isfile(claude_md):
         content = read_text(claude_md)
         if STD_BEGIN in content:
-            kept = strip_standards_block(content)
-            backup(claude_md, dry)
-            log("clean: removed ccds-standards block from CLAUDE.md")
-            if not dry:
-                if kept:
-                    write_text(claude_md, kept + "\n")
-                else:
-                    os.remove(claude_md)
-    if "gateEdits" in manifest and ".claude/settings.json" in \
-            manifest.get("gateEdits", []):
+            kept = strip_standards_block(content.replace("\r\n", "\n"))
+            if kept is None:
+                log("clean: CLAUDE.md has unbalanced ccds-standards markers "
+                    "— left untouched")
+            else:
+                backup(claude_md, dry)
+                log("clean: removed ccds-standards block from CLAUDE.md")
+                if not dry:
+                    # Never delete the file, even when empty: it may have
+                    # existed before ccds touched it (never-destroy).
+                    write_text(claude_md, (kept + "\n") if kept else "",
+                               crlf=is_crlf(content))
+    if ".claude/settings.json" in (
+            e for e in (manifest.get("gateEdits") or [])
+            if isinstance(e, str)):
         log("clean: deny rules in .claude/settings.json left in place "
             "(protective; remove by hand if you truly want them gone)")
 
@@ -307,8 +412,8 @@ def main():
     stacks = detect_stacks(target, matrix)
     log("detected stack(s): %s" % ", ".join(stacks))
 
-    prior = (load_json(os.path.join(target, MANIFEST_REL)) or {}) \
-        .get("managedGateFiles", [])
+    prior = load_prior_gate_files(load_json(
+        os.path.join(target, MANIFEST_REL)))
     created, edits = [], []
 
     stage_settings(target, args.templates, args.dry_run, edits)
