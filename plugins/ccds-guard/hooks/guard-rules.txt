@@ -1,0 +1,84 @@
+# ccds-guard PreToolUse rules — pattern table (data, not logic).
+#
+# The hook (pretooluse-guard.py) reads this file; editing it tunes the guard
+# without touching code. One rule per line, five categories:
+#
+#   allow-path:   <python-regex>   [ # label ]   file paths exempt from deny-path
+#   deny-path:    <python-regex>   [ # label ]   secret-bearing paths: file tools
+#                                                (incl. Grep path/glob) blocked
+#                                                (exit 2); in Bash text -> ask
+#   ask-write-path: <python-regex> [ # label ]   writes here (file tools or Bash)
+#                                                ask the user first (config
+#                                                tamper watch)
+#   deny-command: <python-regex>   [ # label ]   block the Bash call (exit 2)
+#   ask-command:  <python-regex>   [ # label ]   surface a permission prompt with
+#                                                the label as the reason
+#
+# Regexes are case-insensitive (use (?-i:...) to opt a span out). Paths and
+# shell tokens are normalized before matching: backslashes -> slashes, ./..
+# collapsed, quotes and glob tails stripped — so `tests/fixtures/../../.env`
+# and `cat .env*` are seen as `.env`. In command patterns, `[^\n;|&]*` keeps a
+# match inside one command segment. An inline label is the text after the
+# FIRST " # " (space-hash-space).
+#
+# NOT in this table (lives in pretooluse-guard.py as path logic, because a
+# regex cannot resolve paths): recursive force-delete outside the project.
+#
+# Charter: protective only. This guard exists so that projects built by people
+# who configure nothing still refuse to leak secrets, run curl|bash, or install
+# hallucinated packages. It is a teaching backstop layered on Claude Code's
+# permission modes — NOT a sandbox, and not a linter for ordinary risky work.
+# Fail-open by design: if this file is unreadable the guard allows and warns.
+# Disable entirely: set CCDS_GUARD_DISABLE=1.
+
+# --- Path exemptions (checked first) ---
+allow-path: \.env\.(example|sample|template|dist)$                              # env templates are meant to be edited
+allow-path: (^|/)tests?/fixtures?/                                              # test fixtures named like secrets
+allow-path: \.pub$                                                              # public keys are not secrets
+
+# --- Secret-bearing paths: never read or written by the model ---
+deny-path: (^|/)\.env(\.[A-Za-z0-9._-]+)?$                                      # .env and variants hold live credentials
+deny-path: [^/]\.env$                                                           # named env files (backend.env, staging.env - docker compose convention)
+deny-path: \.(pem|key|p12|pfx|jks|keystore)$                                    # private key material
+deny-path: (^|/)id_(rsa|dsa|ecdsa|ed25519)[^/]*$                                # SSH private keys
+deny-path: (^|/)\.ssh(/|$)                                                      # SSH config + keys directory
+deny-path: (^|/)\.?credentials$                                                 # bare credentials files (.aws/credentials)
+deny-path: (^|/)credentials(/|$)                                                # credentials/ directories
+deny-path: credentials\.(json|ya?ml|ini|cfg|xml|txt)(\.enc)?$                   # credential stores (credentials.json, rails credentials.yml.enc)
+deny-path: (^|/)secrets?(/|$|\.(json|ya?ml|toml|txt|env)$)                      # secrets/ dirs and secrets.* files
+deny-path: (^|/)\.netrc$                                                        # machine login passwords
+deny-path: (^|/)\.git-credentials$                                              # stored git passwords
+deny-path: \.tfstate(\.backup)?$                                                # terraform state embeds live secrets
+
+# --- Config tamper watch: the model editing its own gates asks first ---
+# (Applied to file-tool writes AND to Bash command tokens - `echo {} >
+# .claude/settings.json` must ask just like an Edit would.)
+ask-write-path: (^|/)\.claude/settings(\.local)?\.json$                         # Claude Code is changing its own permissions or hooks - confirm you asked for this
+ask-write-path: (^|/)\.claude/hooks(/|$)                                        # Claude Code is changing hook scripts that enforce your safety gates
+ask-write-path: (^|/)\.claude/plugins/                                          # Claude Code is changing installed plugin files (including this guard's own rules) - confirm you asked for this
+ask-write-path: (^|/)\.pre-commit-config\.ya?ml$                                # Claude Code is changing the checks that run before every commit
+
+# --- Dangerous commands: blocked outright ---
+deny-command: \bgit\b[^\n;|&]*\bpush\b[^\n;|&]*(\s--force(?!-with-lease|-if-includes)\b|\s-[a-z]*f[a-z]*\b)  # force-push rewrites shared history; use --force-with-lease if you truly need it
+deny-command: \bgit\b[^\n;|&]*\bpush\b[^\n;|&]*\s["']?\+\S                      # push +refspec is a force-push in disguise; use --force-with-lease if you truly need it
+deny-command: \b(curl|wget)\b[^\n]*\|\s*(sudo\s+)?(bash|sh|zsh|dash|fish)\b     # piping a download into a shell runs unreviewed remote code (any number of pipe hops)
+deny-command: \b(bash|sh|zsh|dash|fish|source)\s+<\(\s*(curl|wget)\b            # process-substituting a download into a shell runs unreviewed remote code
+deny-command: \bchmod\b[^\n;|&]*\b[0-7]?777\b                                   # chmod 777 makes files writable by everyone on the machine
+deny-command: \bcurl\b[^\n;|&]*((?-i:\s-[fsSvLiION]*k[fsSvLiION]*\b)|--insecure\b)  # disabling TLS verification lets anyone intercept the traffic (lowercase k in boolean-flag clusters like -sk; -Hk etc. pass because H takes k as its argument)
+deny-command: \bwget\b[^\n;|&]*--no-check-certificate\b                         # disabling TLS verification lets anyone intercept the traffic
+deny-command: \bsslverify\s*[= ]\s*false\b                                      # disabling git TLS verification lets anyone intercept the traffic
+deny-command: \bstrict-ssl\b[^\n;|&]*\bfalse\b                                  # disabling npm TLS verification lets anyone intercept the traffic
+deny-command: \b(PYTHONHTTPSVERIFY=0|NODE_TLS_REJECT_UNAUTHORIZED=0)\b          # disabling TLS verification lets anyone intercept the traffic
+
+# --- Package installs: ask, because models hallucinate package names ---
+# Attackers register hallucinated names (slopsquatting). Flags may appear
+# before or after the subcommand; bare lockfile restores (npm install,
+# pip install -r ...) and flag-only forms pass; installing a NAMED package
+# asks. Redirection tokens (2>&1, >) are not package names.
+ask-command: \b(npm|pnpm|yarn|bun)(\s+-{1,2}[\w.=-]+)*\s+(global\s+)?(install|i|add)\b(\s+-{1,2}[\w.=-]+)*\s+(?!(-|\.|\d*>))\S  # verify this package exists on npmjs.com (name, author, downloads) before approving - AI models sometimes invent package names attackers then register
+ask-command: \bpip3?(\s+-{1,2}[\w.=-]+)*\s+install\b(?![^\n;|&]*(\s-r\s|\s--requirement\b|\s-e\s|\s--editable\b))(\s+-{1,2}[\w.=-]+)*\s+(?!(-|\.|\d*>))\S  # verify this package exists on pypi.org before approving - AI models sometimes invent package names attackers then register
+ask-command: \buv(\s+-{1,2}[\w.=-]+)*\s+(add|pip\s+install)\b(?![^\n;|&]*(\s-r\s|\s--requirement\b|\s-e\s))(\s+-{1,2}[\w.=-]+)*\s+(?!(-|\.|\d*>))\S  # verify this package exists on pypi.org before approving - AI models sometimes invent package names attackers then register
+ask-command: \bcargo(\s+-{1,2}[\w.=-]+)*\s+add\b(\s+-{1,2}[\w.=-]+)*\s+(?![-.])\S  # verify this crate exists on crates.io before approving - AI models sometimes invent package names attackers then register
+ask-command: \bgo(\s+-{1,2}[\w.=-]+)*\s+get\b(\s+-{1,2}[\w.=-]+)*\s+(?![-./])\S  # verify this module path exists before approving - AI models sometimes invent package names attackers then register
+ask-command: \bgem(\s+-{1,2}[\w.=-]+)*\s+install\b(\s+-{1,2}[\w.=-]+)*\s+(?![-.])\S  # verify this gem exists on rubygems.org before approving - AI models sometimes invent package names attackers then register
+ask-command: \bcomposer(\s+-{1,2}[\w.=-]+)*\s+require\b(\s+-{1,2}[\w.=-]+)*\s+(?![-.])\S  # verify this package exists on packagist.org before approving - AI models sometimes invent package names attackers then register

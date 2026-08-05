@@ -20,6 +20,17 @@
       ]
     },
     {
+      "name": "ccds-guard",
+      "source": "./plugins/ccds-guard",
+      "description": "Zero-config security guard (ADR-0012): blocks secret-file access and dangerous commands, asks before package installs (slopsquatting) and config self-edits, and warns on mid-session config tampering. Hooks-only — protects any project with no setup.",
+      "category": "security",
+      "tags": [
+        "ccds",
+        "playbook",
+        "guard"
+      ]
+    },
+    {
       "name": "ccds-loops",
       "source": "./plugins/ccds-loops",
       "description": "Transferable agent-loop process skills: verification, root-cause debugging, adversarial review, parallel dispatch, long-horizon runs, and compounding. Skills-only — works alongside any stack or pack.",

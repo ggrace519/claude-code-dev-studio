@@ -60,14 +60,26 @@ Cross-cutting skills (`playbook-conventions`, `api-design`, `ux-design`, `securi
 
 The repo doubles as a **Claude Code plugin marketplace**: one plugin per pack
 (`ccds-saas`, `ccds-ai`, …) plus `ccds-core` (the 5 core agents + cross-cutting
-skills). Claude Code handles versioning, updates, and enable/disable — no
-installer, no PATH, no restart dance.
+skills), `ccds-loops` (process-enforcement hooks), and `ccds-guard` (the
+zero-config security guard, ADR-0012 — blocks secret-file access and dangerous
+commands, asks before package installs). Claude Code handles versioning,
+updates, and enable/disable — no installer, no PATH, no restart dance.
 
 ```
 /plugin marketplace add ggrace519/claude-code-dev-studio
 /plugin install ccds-core@ccds
+/plugin install ccds-guard@ccds       # security guard: recommended everywhere
+/plugin install ccds-loops@ccds       # process gates: recommended everywhere
 /plugin install ccds-saas@ccds        # one per archetype you work in
 ```
+
+The guard stops model mistakes and casual prompt injection — it is a teaching
+backstop on top of Claude Code's permission modes, not a sandbox. Never run
+with permissions bypassed (`--dangerously-skip-permissions`) outside an
+isolated container, guard or no guard. Kill switch: `CCDS_GUARD_DISABLE=1`;
+tune rules in the plugin's `hooks/guard-rules.txt`. The hooks need `python3`
+on PATH (macOS/Linux/WSL have it; on native Windows install Python 3 or the
+guard is inert).
 
 Update later with `/plugin marketplace update ccds`. The marketplace tree
 (`.claude-plugin/marketplace.json` + `plugins/`) is generated from the library
@@ -79,7 +91,7 @@ staging via `ccds sync`.
 
 ## Install
 
-The installer downloads a GitHub Release ZIP, verifies its SHA256 against the sidecar, stages to `<prefix>.new`, snapshots the existing install to `<prefix>.previous`, and atomically promotes. It copies the 19 agents to `~/.claude/agents/`, the cross-cutting skills to `~/.claude/skills/`, injects the ccds block into `~/.claude/CLAUDE.md`, and updates `PATH` so `ccds` resolves in new shells.
+The installer downloads a GitHub Release ZIP, verifies its SHA256 against the sidecar, stages to `<prefix>.new`, snapshots the existing install to `<prefix>.previous`, and atomically promotes. It copies the 19 agents to `~/.claude/agents/`, the cross-cutting skills to `~/.claude/skills/`, injects the ccds block into `~/.claude/CLAUDE.md`, and updates `PATH` so `ccds` resolves in new shells. It also registers the ccds marketplace and installs the `ccds-guard` + `ccds-loops` enforcement plugins via the `claude` CLI (plugins are the only hook-shipping mechanism, ADR-0012) — skip with `--skip-plugins` / `-SkipPlugins`.
 
 **Windows (PowerShell 5.1 or 7+):**
 

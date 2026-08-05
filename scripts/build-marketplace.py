@@ -132,7 +132,9 @@ def build_plugin(name, description, agents, skill_names, version):
         # meaning, but supported by older Claude Code versions too.
         "source": f"./plugins/{name}",
         "description": description,
-        "category": "workflow" if name in ("ccds-core", "ccds-loops") else "domain-pack",
+        "category": ("security" if name == "ccds-guard"
+                     else "workflow" if name in ("ccds-core", "ccds-loops")
+                     else "domain-pack"),
         "tags": ["ccds", "playbook"] + ([] if name == "ccds-core" else [name.removeprefix("ccds-")]),
     }
     if version:
@@ -161,6 +163,14 @@ def main():
         "Claude Code Dev Studio core: 5 generalist agents (plan, review, security, "
         "test, deploy) plus the cross-cutting skills every project uses.",
         CORE_AGENTS, sorted(CORE_SKILLS + common_skills), version)]
+
+    entries.append(build_plugin(
+        "ccds-guard",
+        "Zero-config security guard (ADR-0012): blocks secret-file access and "
+        "dangerous commands, asks before package installs (slopsquatting) and "
+        "config self-edits, and warns on mid-session config tampering. "
+        "Hooks-only — protects any project with no setup.",
+        [], [], version))
 
     entries.append(build_plugin(
         "ccds-loops",
@@ -202,7 +212,8 @@ def main():
         if not os.path.isfile(os.path.join(pdir, ".claude-plugin", "plugin.json")):
             print(f"ERROR: {e['name']}: missing plugin.json", file=sys.stderr)
             failures += 1
-        if not (os.path.isdir(os.path.join(pdir, "agents")) or os.path.isdir(os.path.join(pdir, "skills"))):
+        if not any(os.path.isdir(os.path.join(pdir, d))
+                   for d in ("agents", "skills", "hooks")):
             print(f"ERROR: {e['name']}: no components", file=sys.stderr)
             failures += 1
     if failures:

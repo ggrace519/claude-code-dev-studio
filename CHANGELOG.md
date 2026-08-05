@@ -5,6 +5,68 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **`ccds-guard` plugin — zero-config security guard (ADR-0012, pipeline
+  Gate 1).** New hooks-only plugin (17th in the marketplace) protecting any
+  project with no setup, aimed at users who configure nothing. What it does:
+  - **Secret-path guard**: Read/Write/Edit/NotebookEdit — and Grep's
+    path/glob params, which are read-shaped — on secret-bearing paths
+    (`.env*` and named `*.env` files, `*.pem`/`*.key`/keystores, SSH private
+    keys, `.ssh/`, credential stores and `credentials/` dirs (anchored so
+    `credentials_manager.py`-style source files stay editable), `secrets/`,
+    `.netrc`, `.git-credentials`, `*.tfstate`) is blocked with a
+    plain-language explanation; `.env.example`-style templates, fixtures,
+    and `.pub` keys are exempt, and paths are normalized so `../` cannot
+    dodge the rules. The same paths in a Bash command raise a permission
+    prompt instead of a block (`source .env` has legitimate uses).
+  - **Dangerous-command guard**: blocks force-push in its real variants
+    (`--force`, `-f`/`-uf` clusters, `+refspec`; `--force-with-lease` and
+    `--force-if-includes` exempted), curl/wget piped into a shell (any
+    number of pipe hops, process substitution included), `chmod 777`,
+    TLS-verification disables (`-k` in combined flag clusters too), and
+    recursive force-deletes whose target resolves outside the project —
+    path logic, not a regex prefix list, so macOS/WSL layouts are covered
+    and in-project or `/tmp` deletes are not blocked.
+  - **Install ask-gate (slopsquatting)**: installing a *named* package
+    (npm/pnpm/yarn/pip/uv/cargo/go/gem/composer) raises a permission prompt
+    telling the user to verify the package exists on the registry — models
+    sometimes invent package names that attackers then register. Bare
+    lockfile restores pass untouched.
+  - **Config tamper watch**: writes to `.claude/settings*.json`,
+    `.claude/hooks/`, or `.pre-commit-config.yaml` ask first; a
+    `ConfigChange` hook warns on any mid-session settings change.
+  Rules are a data file (`guard-rules.txt`) — tune without touching code;
+  the two checks a regex cannot express (rm target resolution, path
+  normalization) live in the hook script. Fail-open by design — with a
+  stderr warning when the rule table is empty, never silently — backed next
+  by Gate-2 settings deny rules (see ADR-0012). Kill switch:
+  `CCDS_GUARD_DISABLE=1`. Verified live: hooks fire for subagent tool calls
+  too, so domain agents cannot bypass the guard. Hardened by two
+  multi-model review rounds (codex + grok + Claude); every verified finding
+  is pinned as a regression test. Known limitations, both documented and
+  test-pinned: shell quoting/interpolation defeats string matching (the
+  boundary of the threat model), and the hooks need `python3` on PATH — on
+  native Windows without it the guard is inert (warns via the hook-error
+  path).
+- **Installers auto-install enforcement plugins.** Both installers (bash +
+  PowerShell) now register the ccds marketplace and install
+  `ccds-guard`/`ccds-loops` via the `claude` CLI by default — plugins are the
+  only hook-shipping mechanism, so the classic-install outlet no longer ships
+  the loop skills without their enforcement layer. Best-effort (a missing
+  `claude` CLI warns with the manual commands); opt out with
+  `--skip-plugins` / `-SkipPlugins`.
+
+### Changed
+
+- `build-marketplace.py` accepts hooks-only plugins (self-check previously
+  required agents/ or skills/) and gives `ccds-guard` the `security`
+  marketplace category.
+
+---
+
 ## v0.12.0 — 2026-07-11 — Loop enforcement layer + the inventive-engineer skill
 
 Two things ship: the loop enforcement layer, and `inventive-engineer` as a new
