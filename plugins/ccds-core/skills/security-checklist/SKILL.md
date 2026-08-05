@@ -42,6 +42,30 @@ Review every codebase against:
 - [ ] A09 Security Logging and Monitoring Failures
 - [ ] A10 Server-Side Request Forgery (SSRF)
 
+## AI-generated code: recurring mistake patterns
+
+Model output is untrusted contributor code; these specific patterns recur often
+enough in generated code to check for by name (they are also good semgrep/hook
+rules per stack):
+
+- [ ] No SQL or shell commands built by string concatenation — **parameterized
+      queries and argument arrays, always**; string-building is a finding even
+      when today's inputs look safe
+- [ ] No `subprocess`/exec with `shell=True` on anything derived from input
+- [ ] No `yaml.load` without `SafeLoader` (or equivalent unsafe deserializers)
+- [ ] No `verify=False` / disabled TLS verification on HTTP clients
+- [ ] No unintended `0.0.0.0` binds — loopback by default, all-interfaces only
+      as an explicit, documented choice
+- [ ] No outdated crypto the model reached for from old training data: ECB mode,
+      MD5/SHA-1 for anything security-relevant, `random()` where a CSPRNG is
+      required for tokens/ids
+- [ ] Authorization checked, not just authentication — every handler that loads a
+      resource verifies *this* user may act on *this* object (models write login
+      flows and forget ownership checks)
+- [ ] New dependencies verified to exist on the registry (name, author, real
+      download history) before install — models invent plausible package names,
+      and attackers register them (slopsquatting)
+
 ## Secrets hygiene checklist
 
 - [ ] No credentials, API keys, or tokens in source code

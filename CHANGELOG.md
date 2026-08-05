@@ -5,6 +5,28 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **AI-review principles in the skill layer (ADR-0014, pipeline Gate 5 —
+  completes the five-gate quality/security pipeline).**
+  `code-review-checklist` now carries a "Reviewing AI-generated code" section
+  (model output is untrusted contributor code; line-by-line scrutiny zones:
+  authorization, error paths, concurrency, crypto, string-built SQL/shell;
+  explainable-diff and ~400-line size gates) and makes the **fresh-context
+  rule** the default flow — the generator never grades its own work; review
+  and test coverage route to `pr-code-reviewer`/`test-writer-runner` in a
+  fresh context. `security-checklist` gains the named recurring AI mistake
+  patterns (shell=True, yaml.load without SafeLoader, verify=False, 0.0.0.0
+  binds, ECB/MD5/non-CSPRNG crypto, authorization checked and not just
+  authentication, slopsquatting dependency checks) shaped to double as future
+  semgrep/hook rules. Both
+  agents' charters updated to match; skill descriptions (the routing surface)
+  untouched, so catalog and routing behavior are unchanged.
+
+---
+
 ## v0.13.0 — 2026-08-04 — Quality/security pipeline: ccds-guard plugin + gate staging
 
 The first two layers of the five-gate quality/security pipeline for

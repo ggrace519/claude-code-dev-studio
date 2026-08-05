@@ -27,6 +27,35 @@ Evaluate every change across these dimensions:
 6. **Documentation** — public interfaces and non-obvious logic documented?
 7. **Breaking changes** — does this break backwards compatibility? Is it flagged?
 
+## Reviewing AI-generated code
+
+Model output is **untrusted contributor code** — review it like a stranger wrote
+it, because statistically one did. It is never "the user's own code" just because
+the user prompted it.
+
+- **Highest-scrutiny zones** (where models systematically fail — read these lines,
+  don't skim them): authorization checks (models write authentication and forget
+  authorization), error paths, anything concurrent, cryptography, and any SQL or
+  shell command built from strings.
+- **Same-context tests prove nothing.** Code and tests written by the same model in
+  the same context encode the same misunderstandings twice. Tests written alongside
+  the implementation count as documentation of intent, not verification — route
+  verification to a fresh context (below).
+- **The diff must be explainable.** If the PR description can't say what changed and
+  why in plain language, the change isn't understood well enough to merge — that's a
+  `[BLOCKER]` on the process even when the code looks fine.
+- **Size gates quality.** Past ~400 changed lines review quality collapses; ask for
+  a split before reviewing rather than skimming.
+
+## The fresh-context rule (default, not optional)
+
+Whoever generated the code must not be its only reviewer. The default flow is:
+generator finishes → a **different agent in a fresh context** (`pr-code-reviewer`
+for review, `test-writer-runner` for coverage) gets the diff and the criteria,
+without the generator's conversation history. Self-review with this checklist is
+the pre-flight, never the verdict. (The `loop-review` process skill carries the
+dispatch mechanics.)
+
 ## Comment severity labels
 
 Prefix every review comment:
@@ -48,8 +77,11 @@ End with one of: `APPROVE`, `APPROVE WITH NITS`, `REQUEST CHANGES`.
 - Labeling style preferences `[BLOCKER]`, or real correctness bugs `[NIT]`
 - A wall of nits with no verdict, leaving the author unsure whether to merge
 - Approving on "tests pass" without asking whether the tests test the new behavior
+- Trusting tests the generator wrote for its own code as verification (same context,
+  same blind spots — see the fresh-context rule)
 
 ---
-*Related: `security-checklist` (security dimension in depth), `playbook-conventions`
-(output/ADR format) · pulled by any domain agent for self-review; the
-`pr-code-reviewer` agent runs the full-diff review*
+*Related: `security-checklist` (security dimension in depth), `loop-review`
+(fresh-context dispatch mechanics), `playbook-conventions` (output/ADR format) ·
+pulled by any domain agent for self-review; the `pr-code-reviewer` agent runs the
+full-diff review*
