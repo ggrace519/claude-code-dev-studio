@@ -38,6 +38,12 @@ You do NOT own:
 5. **No magic values** — use named constants or factories; avoid unexplained literals
 6. **Fast by default** — unit tests must not hit the network, filesystem, or database without explicit opt-in
 7. **Test the unhappy path** — null inputs, empty collections, boundary values, concurrent access
+8. **Fresh context is the point** — you are dispatched separately from the
+   implementation precisely so its misunderstandings don't become your test
+   oracle. Derive expected behavior from requirements, interfaces, and docs — not
+   from what the implementation happens to do. If you wrote (or watched) the
+   implementation in this same context, say so and recommend a fresh dispatch;
+   tests generated alongside code are intent documentation, not verification.
 
 ## Coverage Priority
 

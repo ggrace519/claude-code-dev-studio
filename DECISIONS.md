@@ -1164,3 +1164,71 @@ wording correction and a batch of fixes, all regression-tested:
 ### Supersedes
 None. Implements pipeline Gates 2–4 staging; composes with ADR-0012 (Gate 1)
 and closes its fail-open follow-on; extends ADR-0004/0007's sync mechanism.
+
+---
+
+## ADR-0014: Fresh-Context Review as Default — AI-Review Principles in the Skill Layer
+
+**Date:** 2026-08-05
+**Status:** Accepted
+**Phase:** Documentation
+**Deciders:** Greg Grace
+
+### Context
+
+The quality-pipeline handoff's final work item (Gate 5, the review process):
+the review skills and agents must encode how AI-generated code is reviewed,
+not just generic review practice. Two principles carried over verbatim in
+intent: model output is untrusted contributor code, and the same context
+writing both code and tests encodes the same misunderstandings twice.
+
+### Decision
+
+Encode the principles in the always-on layer, avoiding the compliance-measured
+`loop-*` bodies (the ADR-0011 lesson — a body edit regressed the measured
+baseline; the eval injects only SKILL.md bodies):
+
+1. **`code-review-checklist`** gains "Reviewing AI-generated code" (untrusted
+   contributor framing, the scrutiny zones, same-context tests prove nothing,
+   explainable-diff and ~400-line size gates) and "The fresh-context rule" —
+   generator never grades its own work; fresh-context dispatch to
+   `pr-code-reviewer`/`test-writer-runner` is the default flow, with
+   `loop-review` carrying the dispatch mechanics unchanged.
+2. **`security-checklist`** gains the named recurring AI mistake patterns
+   (string-built SQL/commands vs mandatory parameterization, shell=True,
+   yaml.load without SafeLoader, verify=False, 0.0.0.0 binds, ECB/MD5/
+   non-CSPRNG crypto, authz-not-just-authn, slopsquatting dependency
+   verification) — deliberately shaped to double as per-stack semgrep/hook
+   rules later.
+3. **`pr-code-reviewer`** gets an explicit fresh-context charter (reviews
+   without the author's history; line-by-line on the scrutiny zones);
+   **`test-writer-runner`** gets principle 8: derive expected behavior from
+   requirements, never from the implementation; disclose and re-dispatch if
+   it shares the generator's context.
+
+Descriptions (the routing surface) are untouched — no catalog or routing-eval
+churn; the marketplace tree is regenerated as usual.
+
+### Rationale
+
+- **Checklists over agent bodies for the shared content**: skills are the
+  reference layer any agent pulls; agents carry only their charter (the
+  fresh-context framing) and point at the checklist rather than restating it
+  (the secure-auditor precedent — restating creates two hand-synced copies).
+- **Named patterns over general advice**: "models write insecure code" is not
+  reviewable; `shell=True` and string-built SQL are — and double as future
+  automated rules.
+- **Loop bodies untouched** because the compliance baseline measures them;
+  the always-on layer reaches every review anyway.
+
+### Consequences
+
+Completes the five-gate pipeline handoff (items 1–5). Gate 5 is prose-encoded
+rather than hook-enforced by nature — review judgment cannot be a file
+invariant (ADR-0011's named limit); the enforcement-shaped share of Gate 5
+(PR size, templates, branch protection) already ships via the Gate-2 standards
+block. Follow-on candidate: per-stack semgrep rules generated from the
+security-checklist patterns into the Gate-3 pre-commit templates.
+
+### Supersedes
+None. Completes the ADR-0012/0013 pipeline series at the content layer.
