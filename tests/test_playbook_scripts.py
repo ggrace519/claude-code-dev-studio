@@ -1818,6 +1818,91 @@ class TestGuardHooks(unittest.TestCase):
                     self.assertEqual(r.returncode, 0, (label, r.stderr))
                     self.assertEqual(r.stdout.strip(), "", label)
 
+    # Round-3 focused panel (codex + grok on the new path logic; every row a
+    # verified finding). Cases carry (cwd, proj) where containment matters.
+    ROUND3 = [
+        ("env-assignment wrapper", "deny", {"command": "env MODE=test " + RM + " /var/victim"}, "/proj", "/proj"),
+        ("sudo -u root rm", "deny", {"command": "sudo -u root " + RM + " /etc/nginx"}, "/proj", "/proj"),
+        ("bare assignment prefix", "deny", {"command": "FOO=bar " + RM + " /etc/nginx"}, "/proj", "/proj"),
+        ("path-qualified /bin/rm", "deny", {"command": "/bin/" + RM + " /etc/nginx"}, "/proj", "/proj"),
+        ("backslash-escaped rm", "deny", {"command": "\\" + RM + " /etc/nginx"}, "/proj", "/proj"),
+        ("timeout-wrapped rm", "deny", {"command": "timeout 5 " + RM + " /etc/nginx"}, "/proj", "/proj"),
+        ("echo rm text is not rm", "allow", {"command": "echo " + RM + " /etc/nginx"}, "/proj", "/proj"),
+        ("commit msg mentioning rm", "allow", {"command": "git commit -m '" + RM + " handling'"}, "/proj", "/proj"),
+        ("proj=/ rstrip-root bug", "deny", {"command": RM + " /etc/nginx"}, "/", "/"),
+        ("project under /tmp root wipe", "deny", {"command": RM + " ."}, "/tmp/ci-work", "/tmp/ci-work"),
+        ("project under /tmp other tmp ok", "allow", {"command": RM + " /tmp/other-job"}, "/tmp/ci-work", "/tmp/ci-work"),
+        ("relative cwd falls back to proj", "deny", {"command": RM + " ../escape"}, "not/absolute", "/proj"),
+        ("drive-absolute outside", "deny", {"command": RM + " C:/Users/Alice/victim"}, "C:/work/project", "C:/work/project"),
+        ("exclude opt is not access", "allow", {"command": "grep -r password . --exclude=.env"}, "/proj", "/proj"),
+        ("export mention is text", "allow", {"command": "export FOO=.env"}, "/proj", "/proj"),
+        ("echo .env to gitignore silent", "allow", {"command": "echo .env >> .gitignore"}, "/proj", "/proj"),
+        ("echo tamper still asks", "ask", {"command": "echo {} > .claude/settings.json"}, "/proj", "/proj"),
+        ("backslash fixtures exempt", "allow", {"command": "cat tests\\fixtures\\id_rsa"}, "/proj", "/proj"),
+    ]
+    ROUND3_GREP = [
+        ("class glob selects pem", "deny", {"path": "/proj", "glob": "**/*.p[ef]m", "pattern": "."}),
+        ("brace glob selects keys", "deny", {"path": "/proj", "glob": "**/*.{pem,key}", "pattern": "."}),
+        ("brace glob env pair", "deny", {"path": "/proj", "glob": "{.env,.env.local}", "pattern": "."}),
+        ("fixtures context exempts glob", "allow", {"path": "/proj/tests/fixtures", "glob": "*.pem", "pattern": "."}),
+        ("harmless glob", "allow", {"path": "/proj", "glob": "*.py", "pattern": "."}),
+    ]
+
+    def _check(self, r, want, label):
+        if want == "deny":
+            self.assertEqual(r.returncode, 2, (label, r.stdout))
+            self.assertIn("ccds-guard", r.stderr, label)
+        elif want == "ask":
+            self.assertEqual(r.returncode, 0, (label, r.stderr))
+            out = json.loads(r.stdout)
+            self.assertEqual(out["hookSpecificOutput"]["permissionDecision"],
+                             "ask", label)
+        else:
+            self.assertEqual(r.returncode, 0, (label, r.stderr))
+            self.assertEqual(r.stdout.strip(), "", label)
+
+    def test_round3_panel_matrix(self):
+        for label, want, tool_input, cwd, proj in self.ROUND3:
+            with self.subTest(label):
+                r = self.guard({"tool_name": "Bash", "tool_input": tool_input,
+                                "cwd": cwd},
+                               env={"CLAUDE_PROJECT_DIR": proj})
+                self._check(r, want, label)
+        for label, want, tool_input in self.ROUND3_GREP:
+            with self.subTest(label):
+                r = self.guard({"tool_name": "Grep",
+                                "tool_input": tool_input})
+                self._check(r, want, label)
+
+    @unittest.skipUnless(hasattr(os, "symlink") and sys.platform != "win32",
+                         "symlink test needs POSIX symlinks")
+    def test_symlink_cannot_smuggle_delete_outside_project(self):
+        # Round-3 codex finding: lexical containment must not trust an
+        # in-project symlink whose real target is outside the project.
+        # Victim lives under HOME, not /tmp, because /tmp deletes are policy-
+        # allowed and would mask the result.
+        parent = tempfile.mkdtemp(prefix=".ccds-symtest-",
+                                  dir=os.path.expanduser("~"))
+        self.addCleanup(shutil.rmtree, parent, ignore_errors=True)
+        proj = os.path.join(parent, "proj")
+        victim = os.path.join(parent, "victim")
+        os.makedirs(os.path.join(victim, "data"))
+        os.makedirs(proj)
+        os.symlink(victim, os.path.join(proj, "link"))
+        r = self.guard({"tool_name": "Bash",
+                        "tool_input": {"command": self.RM + " link/data"},
+                        "cwd": proj},
+                       env={"CLAUDE_PROJECT_DIR": proj})
+        self.assertEqual(r.returncode, 2, r.stdout)
+        self.assertIn(victim, r.stderr, "message names the real target")
+        # ...and a real in-project directory still deletes freely.
+        os.makedirs(os.path.join(proj, "real-dir"))
+        r2 = self.guard({"tool_name": "Bash",
+                         "tool_input": {"command": self.RM + " real-dir"},
+                         "cwd": proj},
+                        env={"CLAUDE_PROJECT_DIR": proj})
+        self.assertEqual(r2.returncode, 0, r2.stderr)
+
     def test_rm_block_message_teaches(self):
         r = self.guard({"tool_name": "Bash",
                         "tool_input": {"command": self.RM + " /etc/nginx"},

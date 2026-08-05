@@ -10,13 +10,17 @@ One script, two matchers (see hooks.json):
   Read|Write|Edit|NotebookEdit|Grep  -> secret-path deny, config-tamper ask
 
 Rules are DATA (guard-rules.txt beside this script, five categories); editing
-the table tunes the guard without touching code. Two checks live in CODE, not
-the table, because they need path resolution a regex cannot express (both
-lessons from the round-2 multi-model review, ADR-0012 addendum):
-  - recursive force-delete outside the project (rm -rf <target> where the
-    resolved target is not under the project dir),
+the table tunes the guard without touching code. Checks that need path
+resolution a regex cannot express live in CODE (lessons from three multi-model
+review rounds, ADR-0012 addendum):
+  - recursive force-delete outside the project: targets are resolved (quotes,
+    ~/$HOME, relative paths, drive-absolute forms) against the project dir,
+    with a realpath pass so an in-project symlink cannot smuggle the delete
+    outside;
   - path normalization (`tests/fixtures/../../.env` must not slip through the
-    fixtures exemption).
+    fixtures exemption);
+  - Grep glob expansion ({a,b} alternation and [xy] classes) joined with the
+    search path, so globs selecting secret-shaped names are seen in context.
 
 Decision paths, per the hooks reference (exit 2 + stderr blocks and stdout is
 ignored; JSON needs exit 0):
@@ -28,11 +32,12 @@ ignored; JSON needs exit 0):
 Charter (ADR-0012): protective only. Deny is reserved for actions with no
 legitimate in-session form; anything a user might genuinely want asks instead.
 Honest threat model: stops model mistakes and casual prompt injection, not a
-determined adversary — shell quoting/interpolation remains the documented,
-test-pinned limitation. Fail-open (with a stderr note when the rule table is
-empty): a guard that hard-fails when its data breaks gets removed, not fixed.
-Kill switch for operators: CCDS_GUARD_DISABLE=1. Hooks fire for subagent tool
-calls too (verified live 2026-08-04), so domain agents cannot bypass this.
+determined adversary — shell quoting/interpolation, `$VAR` indirection, and
+find/xargs-mediated deletes remain documented residual limitations. Fail-open
+(with a stderr note when the rule table is empty): a guard that hard-fails
+when its data breaks gets removed, not fixed. Kill switch:
+CCDS_GUARD_DISABLE=1. Hooks fire for subagent tool calls too (verified live
+2026-08-04), so domain agents cannot bypass this.
 """
 
 import json
@@ -49,13 +54,27 @@ WRITE_TOOLS = ("Write", "Edit", "NotebookEdit")
 CATEGORIES = ("allow-path", "deny-path", "ask-write-path",
               "deny-command", "ask-command")
 
-# Wrappers to skip when locating the real command word of a shell segment.
-WRAPPERS = ("sudo", "env", "command", "nice", "ionice", "time", "nohup")
+# Wrapper commands: when one of these leads a segment, `rm` may appear later
+# in the argv (wrappers take their own flags/args: `sudo -u root rm ...`).
+WRAPPERS = ("sudo", "env", "command", "nice", "ionice", "time", "nohup",
+            "timeout", "xargs", "stdbuf", "doas")
 
-# Fallback prefixes treated as system territory when no project dir is
-# resolvable. /tmp is deliberately absent: session scratch dirs live there.
+# Segment command words whose arguments are text, not file access — exempt
+# from the secret-token ask (echo .env >> .gitignore must stay silent), but
+# NOT from the tamper ask (echo {} > .claude/settings.json must still ask).
+TEXT_COMMANDS = ("echo", "printf", "export", "unset")
+
+# Option prefixes whose =value names files to EXCLUDE, not open.
+EXCLUDE_OPT_RE = re.compile(
+    r"--(?:exclude|exclude-dir|exclude-from|ignore|ignore-pattern|filter)"
+    r"(?:=\S+)?", re.IGNORECASE)
+
+# Fallback prefixes treated as system territory when containment cannot
+# decide. /tmp is deliberately absent: session scratch dirs live there.
 SYSTEM_ROOTS = ("etc", "usr", "var", "opt", "home", "Users", "root",
                 "srv", "boot", "dev", "bin", "sbin", "lib", "lib64", "mnt")
+
+MAX_GLOB_EXPANSIONS = 16
 
 
 def _load_rules():
@@ -93,6 +112,11 @@ def _norm(path):
     return posixpath.normpath(path.replace("\\", "/"))
 
 
+def _isabs(path):
+    """Absolute in the posix sense, or drive-absolute (C:/...)."""
+    return posixpath.isabs(path) or bool(re.match(r"^[A-Za-z]:(/|$)", path))
+
+
 def _ask(reasons):
     """Exit-0 JSON path: surface a permission prompt with a teaching reason."""
     sys.stdout.write(json.dumps({
@@ -117,33 +141,79 @@ def _project_dir(payload):
             or os.getcwd())
 
 
-def _tokens(cmd):
-    """Shell-ish tokens: split on whitespace and metacharacters, strip quotes
-    and glob tails, collapse ./.. — best-effort, quoting stays out of scope."""
+def _segments(cmd):
+    return re.split(r"[;|&\n]+", cmd)
+
+
+def _seg_tokens(seg):
+    return [t.strip("\"'`") for t in seg.split()]
+
+
+def _match_any(rx_list, text):
+    return any(rx.search(text) for rx, _ in rx_list)
+
+
+def _tokens_for_scan(seg):
+    """Path-ish tokens of one segment for rule matching: metachar-split,
+    quote/glob-stripped, ./.. collapsed. Exclude-style options are blanked
+    first — `--exclude=.env` names a file to skip, not to open."""
+    cleaned = EXCLUDE_OPT_RE.sub(" ", seg)
     out = []
-    for raw in re.split(r"[\s=<>|&;(){}]+", cmd):
+    for raw in re.split(r"[\s=<>|&;(){}]+", cleaned):
         tok = raw.strip("\"'`").rstrip("*?")
         if not tok:
             continue
-        out.append(_norm(tok) if "/" in tok else tok)
+        out.append(_norm(tok) if ("/" in tok or "\\" in tok) else tok)
     return out
 
 
+def _find_rm(toks):
+    """Index of the rm command word in a segment's tokens, or None.
+    argv[0] may be rm, a path to rm (/bin/rm), or backslash-escaped (\\rm);
+    when a known wrapper leads the segment, rm may appear anywhere later
+    (wrappers take their own flags/args: sudo -u root rm ...). Leading
+    VAR=val assignments are skipped. `git rm` never matches: git is not a
+    wrapper, so only argv[0] is considered and it is not rm."""
+    i = 0
+    while i < len(toks) and "=" in toks[i]:
+        i += 1
+    if i >= len(toks):
+        return None
+
+    def is_rm(tok):
+        return posixpath.basename(_norm(tok.lstrip("\\"))) == "rm"
+
+    if is_rm(toks[i]):
+        return i
+    if toks[i] in WRAPPERS or posixpath.basename(_norm(toks[i])) in WRAPPERS:
+        for j in range(i + 1, len(toks)):
+            if is_rm(toks[j]):
+                return j
+    return None
+
+
 def _rm_outside_project(cmd, payload):
-    """Return (bad_target, resolved) for a recursive force-delete whose target
-    resolves outside the project dir (or IS the project root/home/system).
-    Path logic, not regex: quoted paths, /Users, /mnt, ../sibling all resolve."""
+    """Return (target, resolved) for a recursive force-delete whose target
+    resolves outside the project dir (or IS the project root / home / system
+    territory). Path logic, not regex; realpath guards symlink smuggling."""
     proj = _norm(_project_dir(payload))
+    proj = proj.rstrip("/") or "/"
     cwd = _norm(payload.get("cwd") or proj)
+    if not _isabs(cwd):
+        cwd = proj if _isabs(proj) else cwd
     home = _norm(os.path.expanduser("~"))
-    for seg in re.split(r"[;|&\n]+", cmd):
-        toks = [t.strip("\"'`") for t in seg.split()]
-        i = 0
-        while i < len(toks) and toks[i] in WRAPPERS:
-            i += 1
-        if i >= len(toks) or toks[i] != "rm":
-            continue  # `git rm` etc. never reaches here: token != "rm"
-        args = toks[i + 1:]
+    real_proj = _norm(os.path.realpath(proj)) if _isabs(proj) else proj
+
+    def contained(path, root):
+        return root != "/" and _isabs(root) and \
+            (path + "/").startswith(root.rstrip("/") + "/")
+
+    for seg in _segments(cmd):
+        toks = _seg_tokens(seg)
+        idx = _find_rm(toks)
+        if idx is None:
+            continue
+        args = toks[idx + 1:]
         flags = [a for a in args if a.startswith("-")]
         recursive = any(re.match(r"-[a-z]*r", f, re.IGNORECASE)
                         or f == "--recursive" for f in flags)
@@ -158,21 +228,31 @@ def _rm_outside_project(cmd, payload):
             elif t.startswith("$HOME"):
                 t = home + t[len("$HOME"):]
             if "$" in t:
-                continue  # unresolvable variable: quoting limitation applies
-            resolved = _norm(t if posixpath.isabs(t)
-                             else posixpath.join(cwd, t))
+                continue  # unresolvable variable: documented limitation
+            resolved = _norm(t if _isabs(t) else posixpath.join(cwd, t))
+            if not _isabs(resolved):
+                continue  # cannot judge; give up on this target only
+
+            is_proj_root = resolved == proj or resolved == real_proj
+            if is_proj_root or resolved in ("/", home):
+                return target, resolved  # wiping the project/home/root itself
+
+            inside = contained(resolved, proj)
+            if inside:
+                # Lexically inside — but an intermediate symlink may point
+                # elsewhere; realpath both sides before trusting it.
+                real = _norm(os.path.realpath(resolved))
+                if real == real_proj:
+                    return target, real
+                if contained(real, real_proj) or real.startswith("/tmp/"):
+                    continue
+                return target, real
             if resolved.startswith("/tmp/") or resolved == "/tmp":
                 continue  # scratch space: agents clean up after themselves
-            inside = (resolved + "/").startswith(proj.rstrip("/") + "/")
-            is_proj_root = resolved == proj.rstrip("/")
-            if inside and not is_proj_root:
-                continue
-            if not posixpath.isabs(resolved):
-                continue
-            first = resolved.split("/")[1] if "/" in resolved else ""
-            if (is_proj_root or resolved in ("/", home)
-                    or not inside and (proj != "." and proj)
-                    or first in SYSTEM_ROOTS):
+            first = resolved.split("/")[1] if resolved.startswith("/") else ""
+            drive_abs = bool(re.match(r"^[A-Za-z]:(/|$)", resolved))
+            if (proj != "/" and _isabs(proj)) or first in SYSTEM_ROOTS \
+                    or drive_abs:
                 return target, resolved
     return None
 
@@ -203,18 +283,24 @@ def _guard_bash(cmd, payload, rules):
     # Secret-bearing or gate-bearing paths referenced in a shell command:
     # ask, don't deny — `cp .env.example .env` and `source .env` have
     # legitimate uses, but the user should knowingly approve them. Tokens are
-    # normalized (quotes, glob tails, ./..) and allow-path exemptions apply,
-    # so `cat .env.example` and fixtures stay silent.
+    # normalized and allow-path exemptions apply; text-only commands (echo,
+    # printf, export) skip the secret scan but never the tamper scan.
     secret_hit = tamper_hit = False
-    for tok in _tokens(cmd):
-        if any(rx.search(tok) for rx, _ in rules["allow-path"]):
-            continue
-        if not secret_hit and any(rx.search(tok)
-                                  for rx, _ in rules["deny-path"]):
-            secret_hit = True
-        if not tamper_hit and any(rx.search(tok)
-                                  for rx, _ in rules["ask-write-path"]):
-            tamper_hit = True
+    for seg in _segments(cmd):
+        toks = _seg_tokens(seg)
+        i = 0
+        while i < len(toks) and "=" in toks[i]:
+            i += 1
+        cmd_word = posixpath.basename(_norm(toks[i])) if i < len(toks) else ""
+        text_only = cmd_word in TEXT_COMMANDS
+        for tok in _tokens_for_scan(seg):
+            if _match_any(rules["allow-path"], tok):
+                continue
+            if not secret_hit and not text_only \
+                    and _match_any(rules["deny-path"], tok):
+                secret_hit = True
+            if not tamper_hit and _match_any(rules["ask-write-path"], tok):
+                tamper_hit = True
     if secret_hit:
         reasons.append(
             "this command touches a file that may hold secrets; approve only "
@@ -229,29 +315,61 @@ def _guard_bash(cmd, payload, rules):
     return 0
 
 
+def _expand_glob(glob):
+    """Expand {a,b} alternation and [xy] classes into concrete variants,
+    bounded; wildcards become path separators so fragments never glue into
+    fake basenames (a*b*c.env stays suffix-matchable, never 'abc.env')."""
+    variants = [glob]
+    changed = True
+    while changed and len(variants) <= MAX_GLOB_EXPANSIONS:
+        changed = False
+        nxt = []
+        for v in variants:
+            m = re.search(r"\{([^{}]*)\}", v)
+            if m:
+                for alt in m.group(1).split(","):
+                    nxt.append(v[:m.start()] + alt + v[m.end():])
+                changed = True
+                continue
+            m = re.search(r"\[([^\[\]]{1,6})\]", v)
+            if m:
+                for ch in m.group(1).lstrip("!^") or "?":
+                    nxt.append(v[:m.start()] + ch + v[m.end():])
+                changed = True
+                continue
+            nxt.append(v)
+        variants = nxt[:MAX_GLOB_EXPANSIONS + 1]
+    return [re.sub(r"[*?]+", "/", v) for v in variants[:MAX_GLOB_EXPANSIONS]]
+
+
 def _guard_file(tool, tool_input, rules):
     path = (tool_input.get("file_path")
             or tool_input.get("notebook_path")
             or (tool_input.get("path") if tool == "Grep" else None))
+    base = _norm(path) if isinstance(path, str) and path.strip() else None
+
     candidates = []
-    if isinstance(path, str) and path.strip():
-        candidates.append(_norm(path))
+    if base:
+        candidates.append(base)
     if tool == "Grep":
         # A directory passed without a trailing slash must still match dir
-        # rules, and the glob param selects files just like path does.
-        if candidates:
-            candidates.append(candidates[0] + "/")
+        # rules, and the glob param selects files just like path does — in
+        # the CONTEXT of the search path, so fixture exemptions apply.
+        if base:
+            candidates.append(base + "/")
         glob = tool_input.get("glob")
         if isinstance(glob, str) and glob.strip():
-            bare = glob.replace("*", "").replace("?", "").replace("[", "") \
-                       .replace("]", "")
-            if bare.strip("/"):
-                candidates.append(_norm(bare))
+            for variant in _expand_glob(glob):
+                if not variant.strip("/"):
+                    continue
+                joined = posixpath.join(base, variant.lstrip("/")) if base \
+                    else variant
+                candidates.append(_norm(joined))
     if not candidates:
         return 0
 
     for cand in candidates:
-        if any(rx.search(cand) for rx, _ in rules["allow-path"]):
+        if _match_any(rules["allow-path"], cand):
             continue
         for rx, label in rules["deny-path"]:
             if rx.search(cand):

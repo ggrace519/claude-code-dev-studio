@@ -959,6 +959,23 @@ Ship Gate 1 as a **new, separate plugin `ccds-guard`** — not folded into
    path); a dual launcher was rejected because `||` fallback would re-run
    the hook after legitimate exit-2 denials.
 
+   *Post-review hardening, round 3 (focused codex + grok pass on the new
+   path logic only):* wrapper-aware rm detection (assignments, wrapper args,
+   `/bin/rm`, `\\rm`, `timeout`/`xargs`; text in `echo`/commit messages
+   never matches), realpath containment so an in-project symlink cannot
+   smuggle a delete outside (verified with a real symlink), the
+   `proj="/"` rstrip-root containment collapse fixed, project-root
+   protection now precedes the `/tmp` scratch exemption (CI projects under
+   `/tmp`), relative-cwd resolution falls back to the project dir,
+   drive-absolute (`C:/…`) paths recognized, Grep glob `{a,b}`/`[xy]`
+   expansion joined with the search path (fixture context restored,
+   fragments never glue into fake basenames), exclude-style options
+   (`--exclude=.env`) and text-only commands (`echo`/`printf`/`export`)
+   exempt from the secret ask — the tamper ask always still fires. All
+   cases live in `test_round3_panel_matrix` + a real-symlink test. Newly
+   named residuals: `find -exec` / `xargs`-fed deletes (targets invisible
+   to the hook) and `~otheruser` expansion (resolves fail-closed).
+
 Mechanics, reusing the ADR-0011 substrate: one python3 hook script
 (`pretooluse-guard.py`) + one categorized data file (`guard-rules.txt`,
 `deny-path` / `allow-path` / `ask-write-path` / `deny-command` / `ask-command`)
