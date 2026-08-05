@@ -1,0 +1,9 @@
+  rust-quality:
+    name: Rust format + dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: cargo fmt (formatting)
+        run: cargo fmt --check
+      - name: cargo audit (known-vulnerable dependencies)
+        run: cargo install cargo-audit --locked && cargo audit || true

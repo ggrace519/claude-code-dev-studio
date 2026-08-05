@@ -1,0 +1,10 @@
+  node-quality:
+    name: Node dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: npm audit (known-vulnerable dependencies)
+        run: npm audit --audit-level=high || true
