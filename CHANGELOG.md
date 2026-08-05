@@ -5,6 +5,50 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **`ccds-guard` plugin — zero-config security guard (ADR-0012, pipeline
+  Gate 1).** New hooks-only plugin (17th in the marketplace) protecting any
+  project with no setup, aimed at users who configure nothing. What it does:
+  - **Secret-path guard**: Read/Write/Edit/NotebookEdit on secret-bearing
+    paths (`.env*`, `*.pem`/`*.key`/keystores, SSH keys, `.ssh/`,
+    `*credentials*`, `secrets/`, `.netrc`, `.git-credentials`, `*.tfstate`)
+    is blocked with a plain-language explanation; `.env.example`-style
+    templates are exempt. The same paths in a Bash command raise a permission
+    prompt instead of a block (`source .env` has legitimate uses).
+  - **Dangerous-command guard**: blocks force-push (`--force-with-lease`
+    exempted), curl/wget piped into a shell, `chmod 777`, TLS-verification
+    disables, and recursive force-deletes outside the project.
+  - **Install ask-gate (slopsquatting)**: installing a *named* package
+    (npm/pnpm/yarn/pip/uv/cargo/go/gem/composer) raises a permission prompt
+    telling the user to verify the package exists on the registry — models
+    sometimes invent package names that attackers then register. Bare
+    lockfile restores pass untouched.
+  - **Config tamper watch**: writes to `.claude/settings*.json`,
+    `.claude/hooks/`, or `.pre-commit-config.yaml` ask first; a
+    `ConfigChange` hook warns on any mid-session settings change.
+  Rules are a data file (`guard-rules.txt`) — tune without touching code.
+  Fail-open by design, backed next by Gate-2 settings deny rules (see
+  ADR-0012). Kill switch: `CCDS_GUARD_DISABLE=1`. Verified live: hooks fire
+  for subagent tool calls too, so domain agents cannot bypass the guard.
+- **Installers auto-install enforcement plugins.** Both installers (bash +
+  PowerShell) now register the ccds marketplace and install
+  `ccds-guard`/`ccds-loops` via the `claude` CLI by default — plugins are the
+  only hook-shipping mechanism, so the classic-install outlet no longer ships
+  the loop skills without their enforcement layer. Best-effort (a missing
+  `claude` CLI warns with the manual commands); opt out with
+  `--skip-plugins` / `-SkipPlugins`.
+
+### Changed
+
+- `build-marketplace.py` accepts hooks-only plugins (self-check previously
+  required agents/ or skills/) and gives `ccds-guard` the `security`
+  marketplace category.
+
+---
+
 ## v0.12.0 — 2026-07-11 — Loop enforcement layer + the inventive-engineer skill
 
 Two things ship: the loop enforcement layer, and `inventive-engineer` as a new
