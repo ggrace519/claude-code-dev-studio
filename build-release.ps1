@@ -60,6 +60,8 @@ $required = @(
     'catalog.json'
     'scripts\jit-claude.md'
     'scripts\ccds-user-setup.sh'
+    'scripts\stage-gates.py'
+    'templates'
     'scripts\ccds-completion.ps1'
     'scripts\ccds-completion.bash'
     'claude_auto_completion\Windows\claude-completion.ps1'
@@ -105,12 +107,14 @@ $copyMap = @(
     @{ Src = 'verify-agents.sh'        ; Dst = 'scripts\verify-agents.sh' }
     @{ Src = 'scripts\jit-claude.md'              ; Dst = 'scripts\jit-claude.md' }
     @{ Src = 'scripts\ccds-user-setup.sh'         ; Dst = 'scripts\ccds-user-setup.sh' }
+    @{ Src = 'scripts\stage-gates.py'             ; Dst = 'scripts\stage-gates.py' }
     @{ Src = 'scripts\ccds-completion.ps1'         ; Dst = 'scripts\ccds-completion.ps1' }
     @{ Src = 'scripts\ccds-completion.bash'        ; Dst = 'scripts\ccds-completion.bash' }
     @{ Src = 'claude_auto_completion\Windows\claude-completion.ps1' ; Dst = 'scripts\claude-completion.ps1' }
     @{ Src = 'claude_auto_completion\Linux\claude-completion.bash'  ; Dst = 'scripts\claude-completion.bash' }
     @{ Src = 'catalog.json'            ; Dst = 'catalog.json' }
     @{ Src = 'README.md'               ; Dst = 'README.md' }
+    @{ Src = 'templates'               ; Dst = 'templates' }
 )
 
 Write-Step "Staging files to $stageDir"
@@ -121,7 +125,7 @@ foreach ($entry in $copyMap) {
     if (-not (Test-Path -LiteralPath $dstDir)) {
         New-Item -ItemType Directory -Path $dstDir -Force | Out-Null
     }
-    Copy-Item -LiteralPath $srcFull -Destination $dstFull -Force
+    Copy-Item -LiteralPath $srcFull -Destination $dstFull -Force -Recurse
 }
 
 # Copy the agents library flat to agents/ (all always-on .md files; installer decides what goes where)

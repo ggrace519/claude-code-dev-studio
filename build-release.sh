@@ -62,6 +62,8 @@ cp "$REPO_ROOT/scripts/jit-claude.md"      "$PKG_ROOT/scripts/"
 cp "$REPO_ROOT/scripts/ccds-user-setup.sh" "$PKG_ROOT/scripts/"
 cp "$REPO_ROOT/Sync-AgentPacks.sh"         "$PKG_ROOT/scripts/Sync-AgentPacks.sh"
 cp "$REPO_ROOT/verify-agents.sh"           "$PKG_ROOT/scripts/verify-agents.sh"
+cp "$REPO_ROOT/scripts/stage-gates.py"     "$PKG_ROOT/scripts/stage-gates.py"
+cp -r "$REPO_ROOT/templates"               "$PKG_ROOT/templates"
 chmod 755 "$PKG_ROOT/scripts/"*.sh
 cp "$REPO_ROOT/bin/ccds.sh"  "$PKG_ROOT/bin/"
 cp "$REPO_ROOT/bin/ccds.ps1" "$PKG_ROOT/bin/"
