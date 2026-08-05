@@ -1046,3 +1046,84 @@ purely protective: zero dependencies, always fires.
 ### Supersedes
 None. Composes with ADR-0011 (ccds-loops enforcement layer); implements Gate 1
 of the five-gate pipeline; ADR-0001 (BOM-less UTF-8) applies to all new files.
+
+---
+
+## ADR-0013: Gate Staging — `ccds sync` Stages Gates 2/3/4 with Never-Destroy Semantics
+
+**Date:** 2026-08-04
+**Status:** Accepted
+**Phase:** Architecture
+**Deciders:** Greg Grace
+
+### Context
+
+ADR-0012 shipped Gate 1 (the ccds-guard hook plugin) deliberately fail-open,
+time-boxed against a Gate-2 hard layer: harness-enforced `permissions.deny`
+rules with no runtime dependency. The pipeline handoff further requires Gate 3
+(pre-commit) and Gate 4 (CI) staged per detected stack, all zero-config for an
+audience that configures nothing. Exploration confirmed sync had no per-file
+overwrite protection (managed dirs are rm-rf+cp), no templates directory, an
+allow-listed release layout, and a `sync-agents` skill whose manual-copy step
+bypassed the manifest entirely.
+
+### Decision
+
+1. **Gates stage by default in `ccds sync`; `--no-gates` opts out.** The sync
+   twins call one shared engine, `scripts/stage-gates.py` (python3 — JSON
+   merging in shell is how user files get corrupted). No python3 → gates skip
+   with a warning; skills staging is unaffected.
+2. **Templates live in a new top-level `templates/`**, keyed by
+   `templates/stack-matrix.json` (signals → toolchain files; data, not
+   logic). Stacks v1: base (always: gitleaks + hygiene), python (ruff,
+   pip-audit), node (prettier, npm audit), go (gofmt, govulncheck), rust
+   (cargo fmt/audit). Detection is deterministic file-presence in the
+   engine; multi-stack projects get the union. Shipped by both release
+   builders; not cataloged and not under `skills/` (marketplace/catalog
+   lints stay untouched).
+3. **Per-artifact never-destroy semantics:**
+   - `.claude/settings.json`: merge-with-backup — timestamped
+     `.ccds-backup-*`, then ADD missing deny entries only; key order and all
+     other content preserved; unparseable JSON is never touched. The deny
+     set (`templates/settings-deny.json`) mirrors ccds-guard's deny-paths —
+     changing one without the other fails a pairing test. **This closes
+     ADR-0012's fail-open time-box.**
+   - `CLAUDE.md`: managed block between `# >>> ccds-standards >>>` /
+     `# <<< ccds-standards <<<` (distinct markers from the user-scope block;
+     doctor's exactly-one check unaffected), strip-and-append with backup —
+     the ccds-user-setup semantics, project-scoped. Content: plain-language
+     process standards (small PRs, explainable diffs, AI code as untrusted
+     contributor code, parameterization, pinned deps, branch protection).
+   - `.pre-commit-config.yaml` / `.github/workflows/ccds-quality.yml`:
+     created only when absent (loop-init refusal precedent); ccds-created
+     files are hash-tracked in the manifest and `--clean` removes them only
+     while unmodified — user edits always win.
+4. **Manifest schema v3**: `managedGateFiles` ([{path, sha256}]) and
+   `gateEdits` join the existing keys. The bash twin's manifest writer
+   prefers python3 (preserving the engine's keys; skills travel as argv —
+   a heredoc owns stdin); the printf fallback is skills-only, consistent
+   because gates need python3 anyway. The fallback manifest parser is scoped
+   to the managedSkills line, and `--clean` on a schema-3 manifest without
+   python3 refuses rather than misparsing gate paths as skill names.
+5. **`sync-agents` skill prefers `ccds sync`** — fixing the pre-existing
+   hole where hand-copied skills escaped the manifest — with manual copy
+   retained only for plugin-only installs (documented as untracked).
+
+### Consequences
+
+- `--clean` strips the standards block and removes unmodified ccds-created
+  files, but deliberately leaves deny rules in settings.json (protective,
+  harmless; removing them would silently re-open Gate 2). Documented in the
+  clean output itself.
+- Gate staging requires the installed library (`ccds` CLI outlet); plugin-only
+  installs get Gate 1 only. Named limitation, revisit if plugins grow a
+  scaffolding mechanism.
+- Doctor checks for staged gates are follow-up work (doctor twins are
+  unlinted; kept out to bound this change).
+- Both release builders and the install sentinel list now ship `templates/`
+  + `stage-gates.py`; cli-parity covers the command surface, and the new
+  `--no-gates` flag exists in both dispatchers and both sync twins.
+
+### Supersedes
+None. Implements pipeline Gates 2–4 staging; composes with ADR-0012 (Gate 1)
+and closes its fail-open follow-on; extends ADR-0004/0007's sync mechanism.

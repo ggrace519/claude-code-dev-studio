@@ -59,8 +59,38 @@ New sessions should read this file first to get up to speed before doing anythin
   `claude` CLI warns with the manual commands); opt out with
   `--skip-plugins` / `-SkipPlugins`.
 
+- **Gate staging in `ccds sync` (ADR-0013, pipeline Gates 2–4).** Syncing a
+  pack now also stages stack-matched quality/security scaffolding into the
+  project — zero-config, opt out with `--no-gates`:
+  - **Settings deny rules (Gate 2)**: `.claude/settings.json` gains
+    harness-enforced `permissions.deny` rules mirroring the ccds-guard
+    secret paths — the hard layer under the hook's teaching layer, closing
+    ADR-0012's fail-open time-box. Existing files are merged with a
+    timestamped backup: entries are only added, nothing is removed or
+    reordered.
+  - **CLAUDE.md standards block (Gate 2)**: a managed `ccds-standards`
+    block with plain-language process rules (small PRs, explainable diffs,
+    AI output as untrusted contributor code, parameterized SQL/commands,
+    pinned deps, branch protection how-to). User text outside the markers
+    is always preserved.
+  - **Pre-commit + CI (Gates 3/4)**: `.pre-commit-config.yaml` and
+    `.github/workflows/ccds-quality.yml` created only when absent —
+    gitleaks secret scanning everywhere, plus ruff/pip-audit (python),
+    prettier/npm-audit (node), gofmt/govulncheck (go), cargo fmt/audit
+    (rust) per detected stack (`templates/stack-matrix.json`).
+  ccds-created files are hash-tracked; `--clean` removes them only while
+  unmodified (user edits always win) and strips the standards block, but
+  leaves deny rules in place by design. Requires python3; without it gates
+  skip with a warning and skills stage normally.
+- **`sync-agents` skill now prefers `ccds sync`** over hand-copying, fixing
+  a hole where manually copied skills escaped the manifest and `--clean`.
+
 ### Changed
 
+- Sync manifest schema v2 → v3 (`managedGateFiles`, `gateEdits`); the bash
+  fallback manifest parser was scoped so gate-file paths can never be
+  misread as skill names to delete, and cleaning a v3 manifest without
+  python3 refuses instead of guessing.
 - `build-marketplace.py` accepts hooks-only plugins (self-check previously
   required agents/ or skills/) and gives `ccds-guard` the `security`
   marketplace category.
