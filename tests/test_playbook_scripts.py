@@ -1540,6 +1540,389 @@ class TestDebPostinst(unittest.TestCase):
         self.assertFalse(os.path.isdir(os.path.join(self.home, ".claude", "agents")))
 
 
+STAGE_GATES = os.path.join(REPO_ROOT, "scripts", "stage-gates.py")
+TEMPLATES = os.path.join(REPO_ROOT, "templates")
+
+
+@unittest.skipUnless(os.path.isfile(STAGE_GATES),
+                     "stage-gates.py not on this branch yet")
+class TestGateStaging(unittest.TestCase):
+    """ADR-0013: Gates 2/3/4 staging with never-destroy semantics."""
+
+    def setUp(self):
+        self.proj = tempfile.mkdtemp(prefix="ccds-gates-test-")
+        self.addCleanup(shutil.rmtree, self.proj, ignore_errors=True)
+
+    def gates(self, *args):
+        return run(STAGE_GATES, "--target", self.proj,
+                   "--templates", TEMPLATES, *args)
+
+    def path(self, rel):
+        return os.path.join(self.proj, rel)
+
+    def test_fresh_python_project_stages_all_gates(self):
+        write(self.path("pyproject.toml"), "[project]\n")
+        r = self.gates()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("python", r.stdout)
+        settings = json.loads(read(self.path(".claude/settings.json")))
+        self.assertIn("Read(**/.env)", settings["permissions"]["deny"])
+        self.assertIn("# >>> ccds-standards >>>", read(self.path("CLAUDE.md")))
+        pc = read(self.path(".pre-commit-config.yaml"))
+        self.assertIn("gitleaks", pc)
+        self.assertIn("ruff", pc)
+        ci = read(self.path(".github/workflows/ccds-quality.yml"))
+        self.assertIn("gitleaks", ci)
+        self.assertIn("pip-audit", ci)
+
+    def test_multi_stack_gets_union(self):
+        write(self.path("pyproject.toml"), "[project]\n")
+        write(self.path("package.json"), "{}\n")
+        self.gates()
+        pc = read(self.path(".pre-commit-config.yaml"))
+        self.assertIn("ruff", pc)
+        self.assertIn("prettier", pc)
+
+    def test_idempotent_second_run_no_backup_churn(self):
+        write(self.path("pyproject.toml"), "[project]\n")
+        self.gates()
+        r2 = self.gates()
+        self.assertEqual(r2.stdout.count("up to date"), 4, r2.stdout)
+        backups = [f for f in os.listdir(self.proj) if ".ccds-backup-" in f]
+        self.assertEqual(backups, [], "no backups when nothing changed")
+
+    def test_settings_merge_adds_only_missing_preserves_rest(self):
+        original = {"permissions": {"allow": ["Bash(npm test:*)"],
+                                    "deny": ["Read(./.env)"]},
+                    "hooks": {}}
+        write(self.path(".claude/settings.json"),
+              json.dumps(original, indent=2) + "\n")
+        r = self.gates()
+        self.assertIn("added", r.stdout)
+        merged = json.loads(read(self.path(".claude/settings.json")))
+        self.assertEqual(list(merged), ["permissions", "hooks"],
+                         "top-level key order preserved")
+        self.assertEqual(merged["permissions"]["allow"], ["Bash(npm test:*)"])
+        self.assertEqual(merged["permissions"]["deny"][0], "Read(./.env)",
+                         "existing entries stay first")
+        self.assertEqual(len([d for d in merged["permissions"]["deny"]
+                              if d == "Read(./.env)"]), 1, "no duplicates")
+        claude_dir = os.listdir(self.path(".claude"))
+        self.assertTrue(any(".ccds-backup-" in f for f in claude_dir),
+                        "backup taken before merging a user file")
+
+    def test_unparseable_settings_never_touched(self):
+        write(self.path(".claude/settings.json"), "{not json")
+        r = self.gates()
+        self.assertIn("left untouched", r.stdout)
+        self.assertEqual(read(self.path(".claude/settings.json")), "{not json")
+
+    def test_claude_md_user_text_preserved(self):
+        write(self.path("CLAUDE.md"), "# Mine\n\nKeep this.\n")
+        self.gates()
+        content = read(self.path("CLAUDE.md"))
+        self.assertIn("Keep this.", content)
+        self.assertIn("# >>> ccds-standards >>>", content)
+        self.gates()  # second run must not duplicate the block
+        self.assertEqual(read(self.path("CLAUDE.md")).count(
+            "# >>> ccds-standards >>>"), 1)
+
+    def test_existing_precommit_and_ci_untouched(self):
+        write(self.path(".pre-commit-config.yaml"), "repos: []  # mine\n")
+        write(self.path(".github/workflows/ccds-quality.yml"), "# mine\n")
+        r = self.gates()
+        self.assertEqual(r.stdout.count("kept as-is"), 2, r.stdout)
+        self.assertEqual(read(self.path(".pre-commit-config.yaml")),
+                         "repos: []  # mine\n")
+        self.assertEqual(read(self.path(".github/workflows/ccds-quality.yml")),
+                         "# mine\n")
+
+    def test_clean_removes_pristine_keeps_edited_strips_block(self):
+        write(self.path("pyproject.toml"), "[project]\n")
+        write(self.path("CLAUDE.md"), "# Mine\n")
+        self.gates()
+        with open(self.path(".pre-commit-config.yaml"), "a",
+                  encoding="utf-8") as f:
+            f.write("# my tweak\n")
+        r = self.gates("--clean")
+        self.assertIn("has your edits", r.stdout)
+        self.assertTrue(os.path.isfile(self.path(".pre-commit-config.yaml")),
+                        "edited file kept")
+        self.assertFalse(os.path.isfile(
+            self.path(".github/workflows/ccds-quality.yml")),
+            "pristine ccds file removed")
+        content = read(self.path("CLAUDE.md"))
+        self.assertIn("# Mine", content)
+        self.assertNotIn("ccds-standards", content)
+        merged = json.loads(read(self.path(".claude/settings.json")))
+        self.assertIn("Read(**/.env)", merged["permissions"]["deny"],
+                      "deny rules deliberately survive clean")
+
+    def test_dry_run_writes_nothing(self):
+        write(self.path("pyproject.toml"), "[project]\n")
+        r = self.gates("--dry-run")
+        self.assertIn("dry run", r.stdout)
+        self.assertEqual(sorted(os.listdir(self.proj)), ["pyproject.toml"])
+
+    # --- panel-review regression cases (ADR-0013 hardening addendum) ---
+
+    def test_unbalanced_markers_leave_claude_md_untouched(self):
+        # Review blocker: begin-without-end previously deleted everything
+        # below the marker.
+        original = ("# Mine\n\nImportant notes.\n\n# >>> ccds-standards >>>\n"
+                    "## Runbook that must survive\n")
+        write(self.path("CLAUDE.md"), original)
+        r = self.gates()
+        self.assertIn("unbalanced", r.stdout)
+        self.assertEqual(read(self.path("CLAUDE.md")), original)
+
+    def test_clean_traversal_paths_rejected(self):
+        # Review blocker: a tampered manifest could delete files outside
+        # the project via absolute or ../ paths.
+        victim = os.path.join(tempfile.mkdtemp(prefix="ccds-victim-"),
+                              "precious.txt")
+        self.addCleanup(shutil.rmtree, os.path.dirname(victim),
+                        ignore_errors=True)
+        write(victim, "do not delete\n")
+        import hashlib
+        h = hashlib.sha256(read(victim).encode()).hexdigest()
+        write(self.path(".claude/skills/.skill-manifest.json"), json.dumps({
+            "schema": 3,
+            "managedGateFiles": [
+                {"path": victim, "sha256": h},
+                {"path": "../" + os.path.basename(victim), "sha256": h},
+            ]}) + "\n")
+        r = self.gates("--clean")
+        self.assertEqual(r.stdout.count("escapes the project"), 2, r.stdout)
+        self.assertTrue(os.path.isfile(victim), "outside file untouched")
+
+    def test_env_example_and_pub_keys_not_denied(self):
+        # Review finding: Gate 2 must honor Gate 1's allow-list.
+        import fnmatch
+        deny = json.loads(read(os.path.join(
+            TEMPLATES, "settings-deny.json")))["deny"]
+        globs = [d[len("Read("):-1] for d in deny if d.startswith("Read(")]
+        for path in ("proj/.env.example", "proj/.env.sample",
+                     "proj/.env.template", "home/.ssh/id_rsa.pub",
+                     "home/.ssh/id_ed25519.pub"):
+            hits = [g for g in globs
+                    if fnmatch.fnmatch(path, g.lstrip("~/"))
+                    or fnmatch.fnmatch(os.path.basename(path),
+                                       g.replace("**/", ""))]
+            self.assertEqual(hits, [], "%s wrongly denied by %s" % (path, hits))
+
+    def test_gate_edits_survive_idempotent_rerun(self):
+        write(self.path("pyproject.toml"), "[project]\n")
+        self.gates()
+        self.gates()  # no-op run previously wiped gateEdits to []
+        m = json.loads(read(self.path(
+            ".claude/skills/.skill-manifest.json")))
+        self.assertIn(".claude/settings.json", m["gateEdits"])
+        self.assertIn("CLAUDE.md", m["gateEdits"])
+
+    def test_crlf_claude_md_round_trips(self):
+        write(self.path("CLAUDE.md"), "# Mine\r\n\r\nKeep CRLF.\r\n")
+        self.gates()
+        with open(self.path("CLAUDE.md"), encoding="utf-8", newline="") as f:
+            content = f.read()
+        self.assertIn("Keep CRLF.\r\n", content, "user lines keep CRLF")
+        self.assertIn("ccds-standards >>>\r\n", content,
+                      "block written in the file's own convention")
+
+    def test_duplicate_json_keys_leave_settings_untouched(self):
+        raw = ('{"permissions": {"deny": ["a"]}, '
+               '"permissions": {"deny": ["b"]}}')
+        write(self.path(".claude/settings.json"), raw)
+        r = self.gates()
+        self.assertIn("left untouched", r.stdout)
+        self.assertEqual(read(self.path(".claude/settings.json")), raw)
+
+    def test_empty_preexisting_claude_md_survives_clean(self):
+        write(self.path("CLAUDE.md"), "")
+        self.gates()
+        self.gates("--clean")
+        self.assertTrue(os.path.isfile(self.path("CLAUDE.md")),
+                        "pre-existing file not deleted by clean")
+        self.assertEqual(read(self.path("CLAUDE.md")), "")
+
+    def test_malformed_manifest_values_never_crash(self):
+        write(self.path(".claude/skills/.skill-manifest.json"), json.dumps({
+            "schema": "not-a-number", "managedGateFiles": "not-a-list",
+            "gateEdits": {"also": "wrong"}}) + "\n")
+        r = self.gates()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        r2 = self.gates("--clean")
+        self.assertEqual(r2.returncode, 0, r2.stderr)
+
+    def test_refresh_takes_backup(self):
+        write(self.path("pyproject.toml"), "[project]\n")
+        self.gates()
+        # simulate a template change by rewriting the tracked hash to match
+        # a modified-on-disk state where content differs from the template
+        m_path = self.path(".claude/skills/.skill-manifest.json")
+        m = json.loads(read(m_path))
+        pc = self.path(".pre-commit-config.yaml")
+        write(pc, "# old ccds template\n")
+        import hashlib
+        for e in m["managedGateFiles"]:
+            if e["path"] == ".pre-commit-config.yaml":
+                e["sha256"] = hashlib.sha256(
+                    read(pc).encode()).hexdigest()
+        write(m_path, json.dumps(m) + "\n")
+        r = self.gates()
+        self.assertIn("refreshed", r.stdout)
+        backups = [f for f in os.listdir(self.proj)
+                   if f.startswith(".pre-commit-config.yaml.ccds-backup-")]
+        self.assertTrue(backups, "refresh keeps last known good")
+
+    def test_ci_templates_have_toolchains_and_advisory_audits(self):
+        for stack, needles in (("rust", ["rust-toolchain"]),
+                               ("python", ["setup-python"]),
+                               ("go", ["setup-go"]),
+                               ("node", ["setup-node"])):
+            content = read(os.path.join(TEMPLATES, "ci", stack + ".yml"))
+            for needle in needles:
+                self.assertIn(needle, content, stack)
+            self.assertIn("continue-on-error: true", content,
+                          "%s audits are advisory, not || true" % stack)
+            self.assertNotIn("|| true", content, stack)
+
+    def test_settings_deny_mirrors_guard_rules(self):
+        # ADR-0013: the Gate-2 deny set and the Gate-1 guard deny-paths are a
+        # pair — a secret class named in one must be named in the other.
+        deny = json.loads(read(os.path.join(
+            TEMPLATES, "settings-deny.json")))["deny"]
+        deny_blob = " ".join(deny)
+        guard_rules = read(os.path.join(
+            REPO_ROOT, "plugin-extras", "ccds-guard", "hooks",
+            "guard-rules.txt"))
+        # Substrings, not exact rule text: the guard writes regex alternations
+        # (\.(pem|key|...)) where settings writes globs (**/*.pem).
+        for concept in (".env", "pem", "key", "p12", "pfx", "keystore",
+                        "rsa", "ed25519", ".ssh", "credentials", "secrets",
+                        ".netrc", ".git-credentials", "tfstate"):
+            self.assertIn(concept, guard_rules, concept)
+            self.assertIn(concept, deny_blob, concept)
+
+
+SYNC_SH = os.path.join(REPO_ROOT, "Sync-AgentPacks.sh")
+
+
+@unittest.skipUnless(shutil.which("bash") and sys.platform != "win32"
+                     and os.path.isfile(STAGE_GATES),
+                     "bash sync integration needs POSIX")
+class TestSyncGateIntegration(unittest.TestCase):
+    """Sync twins call the gate engine and keep its manifest keys (ADR-0013)."""
+
+    def setUp(self):
+        self.proj = tempfile.mkdtemp(prefix="ccds-syncgates-")
+        self.addCleanup(shutil.rmtree, self.proj, ignore_errors=True)
+        write(os.path.join(self.proj, "pyproject.toml"), "[project]\n")
+
+    def sync(self, *args):
+        return subprocess.run(
+            ["bash", SYNC_SH, "--target-project", self.proj,
+             "--library-root", REPO_ROOT, *args],
+            capture_output=True, text=True)
+
+    def manifest(self):
+        return json.loads(read(os.path.join(
+            self.proj, ".claude", "skills", ".skill-manifest.json")))
+
+    def test_sync_stages_skills_and_gates_schema3(self):
+        r = self.sync("--packs", "ai")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        m = self.manifest()
+        self.assertEqual(m["schema"], 3)
+        self.assertTrue(m["managedSkills"], "skills recorded (argv fix)")
+        self.assertTrue(m["managedGateFiles"])
+        self.assertIn(".claude/settings.json", m["gateEdits"])
+        # Re-sync: keeps skills, preserves gate keys, stays idempotent.
+        r2 = self.sync("--packs", "ai")
+        self.assertIn("Keep   : %d" % len(m["managedSkills"]), r2.stdout)
+        self.assertIn("managedGateFiles", read(os.path.join(
+            self.proj, ".claude", "skills", ".skill-manifest.json")))
+
+    def test_no_gates_skips_gate_staging(self):
+        r = self.sync("--packs", "ai", "--no-gates")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("gates:", r.stdout)
+        self.assertFalse(os.path.isfile(
+            os.path.join(self.proj, ".pre-commit-config.yaml")))
+
+    def test_v2_manifest_upgrades_in_place(self):
+        write(os.path.join(self.proj, ".claude", "skills",
+                           ".skill-manifest.json"),
+              json.dumps({"schema": 2, "updated": "x", "libraryRoot": "y",
+                          "packs": ["ai"], "managedSkills": []}) + "\n")
+        r = self.sync("--packs", "ai")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.manifest()["schema"], 3)
+
+    def test_clean_removes_gates_and_skills(self):
+        self.sync("--packs", "ai")
+        r = self.sync("--clean")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("gates: clean", r.stdout)
+        self.assertFalse(os.path.isfile(
+            os.path.join(self.proj, ".pre-commit-config.yaml")))
+        self.assertFalse(os.path.isdir(
+            os.path.join(self.proj, ".claude", "skills", "ai-rag")))
+
+    def _python3_less_env(self):
+        """PATH with a python3/python shim that always fails, so the twins'
+        no-python fallbacks run (review blockers shipped untested)."""
+        shim = tempfile.mkdtemp(prefix="ccds-nopy-")
+        self.addCleanup(shutil.rmtree, shim, ignore_errors=True)
+        for name in ("python3", "python"):
+            p = os.path.join(shim, name)
+            write(p, "#!/bin/sh\nexit 127\n")
+            os.chmod(p, 0o755)
+        env = dict(os.environ)
+        env["PATH"] = shim + os.pathsep + env.get("PATH", "")
+        return env
+
+    def test_python3less_resync_keeps_gate_keys(self):
+        # Review blocker: the printf fallback truncated managedGateFiles/
+        # gateEdits from a schema-3 manifest on a plain re-sync.
+        self.sync("--packs", "ai")
+        r = subprocess.run(
+            ["bash", SYNC_SH, "--target-project", self.proj,
+             "--library-root", REPO_ROOT, "--packs", "ai"],
+            capture_output=True, text=True, env=self._python3_less_env())
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("manifest NOT updated", r.stderr)
+        m = self.manifest()
+        self.assertTrue(m.get("managedGateFiles"), "gate keys survive")
+        self.assertTrue(m.get("gateEdits"))
+
+    def test_python3less_clean_refuses_on_schema3(self):
+        # Review blocker (bash had this; PS gained parity — bash pinned here).
+        self.sync("--packs", "ai")
+        r = subprocess.run(
+            ["bash", SYNC_SH, "--target-project", self.proj,
+             "--library-root", REPO_ROOT, "--clean"],
+            capture_output=True, text=True, env=self._python3_less_env())
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("schema 3+", r.stderr)
+        self.assertTrue(os.path.isfile(os.path.join(
+            self.proj, ".claude", "skills", ".skill-manifest.json")),
+            "manifest survives the refusal")
+
+    def test_python3less_fallback_parser_reads_multiline_manifest(self):
+        # Review finding: the scoped grep fallback returned nothing for
+        # python-written (multi-line) manifests; sed-range must find skills.
+        self.sync("--packs", "ai")
+        r = subprocess.run(
+            ["bash", SYNC_SH, "--target-project", self.proj,
+             "--library-root", REPO_ROOT, "--packs", "ai"],
+            capture_output=True, text=True, env=self._python3_less_env())
+        self.assertEqual(r.returncode, 0, r.stderr)
+        m = self.manifest()
+        self.assertRegex(r.stdout, r"Keep\s*:\s*%d" % len(m["managedSkills"]),
+                         "fallback parser recognized previously-staged skills")
+
+
 GUARD_SRC = os.path.join(REPO_ROOT, "plugin-extras", "ccds-guard", "hooks")
 GUARD = os.path.join(GUARD_SRC, "pretooluse-guard.py")
 CONFIG_WATCH = os.path.join(GUARD_SRC, "configchange-watch.py")

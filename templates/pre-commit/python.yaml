@@ -1,0 +1,8 @@
+  # python (detected): ruff lints and formats — fast, zero-config, catches
+  # real bugs (unused vars, bare excepts, injection-prone patterns).
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.8
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format

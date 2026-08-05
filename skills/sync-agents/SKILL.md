@@ -62,12 +62,25 @@ with the work ahead (`kind: skill`, `pack: <pack>`). Prefer targeted selection �
 focused task needs 2–5 skills, not the whole pack. The domain agent for the pack is
 already loaded; you are only staging the skills it will compose.
 
-## Step 4 — Copy selected skills
+## Step 4 — Stage skills (and gates)
+
+Prefer the CLI — it records what it staged in `.claude/skills/.skill-manifest.json`
+(so `--clean` and re-sync reconcile correctly) and also stages the quality/security
+gates (ADR-0013: settings deny rules, CLAUDE.md standards block, pre-commit, CI —
+stack-matched, never overwriting user content):
+
+```bash
+ccds sync <pack>[,<pack>] --target .
+# skills only: add --no-gates
+```
+
+Fallback ONLY when the `ccds` CLI is not installed (plugin-only setups):
 
 ```bash
 mkdir -p ./.claude/skills
 cp -r ~/.claude/playbook/skills/<name> ./.claude/skills/<name>
-# repeat per selected skill; skip any already present unless the source changed
+# repeat per selected skill; note: hand-copied skills are not manifest-tracked,
+# so tell the user they must be removed by hand, and no gates are staged.
 ```
 
 ## Step 5 — Summary and refresh
@@ -86,6 +99,11 @@ Present what was staged:
 | ai-rag | Retrieval, chunking, embeddings, reranking |
 
 Always-available: playbook-conventions, api-design, ux-design, common-*, loop-* (global)
+
+**Gates staged** (from the `gates:` lines in the sync output): settings deny
+rules (secrets stay out of the model's context), CLAUDE.md standards block,
+pre-commit config, CI workflow — say which were created, merged, or skipped
+because the project already had its own.
 
 > Newly copied skills are discovered at session start. Restart or refresh the session
 > so the domain agents can compose them.

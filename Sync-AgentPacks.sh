@@ -18,13 +18,14 @@
 
 set -euo pipefail
 
-SCHEMA_VERSION=2
+SCHEMA_VERSION=3
 LIBRARY_ROOT_DEFAULT="${CCDS_LIBRARY_ROOT:-$HOME/.claude/playbook}"
 VALID_PREFIXES=(game saas mobile ai dataplat ecom fintech devtool desktop ext embed media orch infra)
 
 DRY_RUN=0
 WRITE_ADR=0
 CLEAN=0
+NO_GATES=0
 ALLOW_LIBRARY_TARGET=0
 LIBRARY_ROOT="$LIBRARY_ROOT_DEFAULT"
 TARGET_PROJECT=""
@@ -47,6 +48,8 @@ Required (activate):
 Options:
   --library-root PATH     Override library (default: $CCDS_LIBRARY_ROOT or ~/.claude/playbook)
   --clean                 Remove all skills staged by a previous sync (per manifest)
+                          and ccds-created gate files (unmodified ones only)
+  --no-gates              Skip quality/security gate staging (ADR-0013)
   --dry-run               Show plan without writing
   --write-adr             Append an activation ADR to <target>/DECISIONS.md
   --allow-library-target  Override self-target guard
@@ -71,6 +74,7 @@ while (( $# > 0 )); do
         --packs)                PACKS_CSV="$2"; shift 2 ;;
         --library-root)         LIBRARY_ROOT="$2"; shift 2 ;;
         --clean)                CLEAN=1; shift ;;
+        --no-gates)             NO_GATES=1; shift ;;
         --dry-run)              DRY_RUN=1; shift ;;
         --write-adr)            WRITE_ADR=1; shift ;;
         --allow-library-target) ALLOW_LIBRARY_TARGET=1; shift ;;
@@ -89,11 +93,30 @@ LIB_SKILLS="$LIBRARY_ROOT/skills"
 TGT_SKILLS="$TARGET_PROJECT/.claude/skills"
 MANIFEST="$TGT_SKILLS/.skill-manifest.json"
 
+# --- Gate staging engine (ADR-0013) -----------------------------------------
+GATES_SCRIPT="$LIBRARY_ROOT/scripts/stage-gates.py"
+TEMPLATES_DIR="$LIBRARY_ROOT/templates"
+have_gates() {
+    # python3 must actually RUN (present-but-broken python — pyenv/venv
+    # breakage — must behave exactly like absent python, review finding).
+    [[ -f "$GATES_SCRIPT" ]] && python3 -c "" >/dev/null 2>&1
+}
+run_gates() {  # args appended to the engine invocation
+    python3 "$GATES_SCRIPT" --target "$TARGET_PROJECT" \
+        --templates "$TEMPLATES_DIR" "$@" \
+        || warn "gate staging reported a problem (skills staging unaffected)"
+}
+
 # --- Load previous manifest -------------------------------------------------
 declare -A PREV=()
 if [[ -f "$MANIFEST" ]]; then
+    # Fallback parser is scoped to the managedSkills ARRAY (sed range: the
+    # key line through its closing bracket — python-written manifests put
+    # entries on following lines). Uppercase-free skill names can never
+    # collide with the camelCase key names, and gate-file paths (dots,
+    # slashes) fall outside both the range and the character class.
     while IFS= read -r line; do [[ -n "$line" ]] && PREV["$line"]=1; done < <(
-        python3 - "$MANIFEST" 2>/dev/null <<'PY' || grep -oE '"[a-z0-9-]+"' "$MANIFEST" | tr -d '"'
+        python3 - "$MANIFEST" 2>/dev/null <<'PY' || sed -n '/"managedSkills"/,/\]/p' "$MANIFEST" | grep -oE '"[a-z0-9][a-z0-9-]*"' | tr -d '"'
 import json, sys
 try:
     d = json.load(open(sys.argv[1]))
@@ -106,10 +129,24 @@ fi
 
 # --- Clean mode -------------------------------------------------------------
 if (( CLEAN == 1 )); then
-    if (( ${#PREV[@]} == 0 )); then echo "Nothing to clean (no manifest)."; exit 0; fi
+    # Gate files must be cleaned via the engine (hash-checked so user edits
+    # survive). A schema>=3 manifest without python3 cannot be cleaned safely.
+    if [[ -f "$MANIFEST" ]] && ! have_gates \
+            && grep -qE '"schema":[[:space:]]*([3-9]|[0-9]{2,})' "$MANIFEST"; then
+        err "This manifest (schema 3+) records staged gate files; cleaning them safely needs python3 and $GATES_SCRIPT. Restore them and re-run --clean."
+    fi
+    if (( ${#PREV[@]} == 0 )) && ! [[ -f "$MANIFEST" ]]; then
+        echo "Nothing to clean (no manifest)."; exit 0
+    fi
     echo "=== Clean plan"
     for n in "${!PREV[@]}"; do printf '    - %s\n' "$n"; done
-    if (( DRY_RUN == 1 )); then echo; echo "DRY RUN - no changes made."; exit 0; fi
+    if (( DRY_RUN == 1 )); then
+        have_gates && run_gates --clean --dry-run
+        echo; echo "DRY RUN - no changes made."; exit 0
+    fi
+    # Gate clean always runs when the engine is available: --no-gates means
+    # "don't STAGE gates", not "leave gate files orphaned on clean".
+    have_gates && run_gates --clean
     for n in "${!PREV[@]}"; do rm -rf -- "${TGT_SKILLS:?}/$n"; done
     rm -f -- "$MANIFEST"
     printf 'OK Removed %d staged skills from %s\n' "${#PREV[@]}" "$TGT_SKILLS"
@@ -168,7 +205,13 @@ printf '  + Add    : %d\n  - Remove : %d\n  = Keep   : %d\n' "${#TO_ADD[@]}" "${
 (( ${#TO_ADD[@]}    )) && { echo '  Adding:';   for n in "${TO_ADD[@]}";    do printf '    + %s\n' "$n"; done; }
 (( ${#TO_REMOVE[@]} )) && { echo '  Removing:'; for n in "${TO_REMOVE[@]}"; do printf '    - %s\n' "$n"; done; }
 
-if (( DRY_RUN == 1 )); then echo; echo 'DRY RUN - no changes made.'; exit 0; fi
+if (( DRY_RUN == 1 )); then
+    if (( NO_GATES == 0 )); then
+        if have_gates; then run_gates --dry-run
+        else echo 'gates: skipped (python3 or templates unavailable)'; fi
+    fi
+    echo; echo 'DRY RUN - no changes made.'; exit 0
+fi
 
 # --- Apply ------------------------------------------------------------------
 mkdir -p "$TGT_SKILLS"
@@ -179,12 +222,67 @@ for n in "${TO_ADD[@]}"; do
 done
 
 # --- Write manifest (BOM-less UTF-8) ----------------------------------------
+# python3 path preserves the gate keys (managedGateFiles/gateEdits) the gate
+# engine stores in the same manifest; the printf fallback (no python3) writes
+# skills-only — consistent, because gate staging also needs python3.
 mapfile -t SORTED < <(printf '%s\n' "${!DESIRED[@]}" | sort)
-PACKS_JSON=""; for p in "${PACKS[@]}"; do pt="$(echo "$p" | tr -d '[:space:]')"; [[ -n "$pt" ]] && PACKS_JSON+="${PACKS_JSON:+,}\"$pt\""; done
-FILES_JSON=""; for n in "${SORTED[@]}"; do FILES_JSON+="${FILES_JSON:+,}\"$n\""; done
 UPDATED_ISO="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
-printf '{\n  "schema": %s,\n  "updated": "%s",\n  "libraryRoot": "%s",\n  "packs": [%s],\n  "managedSkills": [%s]\n}\n' \
-    "$SCHEMA_VERSION" "$UPDATED_ISO" "$LIBRARY_ROOT" "$PACKS_JSON" "$FILES_JSON" > "$MANIFEST"
+MANIFEST_WRITTEN=0
+if command -v python3 >/dev/null 2>&1; then
+    # Skill names travel as argv, NOT stdin — the heredoc already owns stdin
+    # (piping them was silently read as part of the script and lost). The
+    # invocation sits in an if-condition so a broken python3 falls through
+    # to the guarded fallback instead of killing the sync under set -e.
+    if python3 - "$MANIFEST" "$SCHEMA_VERSION" \
+        "$UPDATED_ISO" "$LIBRARY_ROOT" "$PACKS_CSV" "${SORTED[@]}" <<'PY'
+import json, os, sys
+manifest, schema, updated, lib, packs_csv = sys.argv[1:6]
+skills = [s for s in sys.argv[6:] if s.strip()]
+data = {}
+if os.path.isfile(manifest):
+    try:
+        with open(manifest, encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        data = {}
+if not isinstance(data, dict):
+    data = {}
+data["schema"] = int(schema)
+data["updated"] = updated
+data["libraryRoot"] = lib
+data["packs"] = [p.strip() for p in packs_csv.split(",") if p.strip()]
+data["managedSkills"] = skills
+os.makedirs(os.path.dirname(manifest), exist_ok=True)
+with open(manifest, "w", encoding="utf-8", newline="\n") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PY
+    then MANIFEST_WRITTEN=1; fi
+fi
+if (( ! MANIFEST_WRITTEN )); then
+    if [[ -f "$MANIFEST" ]] \
+            && grep -qE '"schema":[[:space:]]*([3-9]|[0-9]{2,})' "$MANIFEST"; then
+        # Review blocker: the printf fallback would rewrite a schema-3
+        # manifest WITHOUT its gate keys, permanently orphaning ccds-created
+        # gate files. Skills are staged; the manifest stays as-is (stale but
+        # safe).
+        warn "manifest NOT updated (python3 unavailable/broken and it records gate files); re-run ccds sync once python3 works"
+    else
+        PACKS_JSON=""; for p in "${PACKS[@]}"; do pt="$(echo "$p" | tr -d '[:space:]')"; [[ -n "$pt" ]] && PACKS_JSON+="${PACKS_JSON:+,}\"$pt\""; done
+        FILES_JSON=""; for n in "${SORTED[@]}"; do FILES_JSON+="${FILES_JSON:+,}\"$n\""; done
+        printf '{\n  "schema": %s,\n  "updated": "%s",\n  "libraryRoot": "%s",\n  "packs": [%s],\n  "managedSkills": [%s]\n}\n' \
+            "$SCHEMA_VERSION" "$UPDATED_ISO" "$LIBRARY_ROOT" "$PACKS_JSON" "$FILES_JSON" > "$MANIFEST"
+    fi
+fi
+
+# --- Gate staging (ADR-0013): Gates 2/3/4, stack-matched, never-destroy -----
+if (( NO_GATES == 0 )); then
+    if have_gates; then
+        run_gates
+    else
+        warn "gates skipped: python3 or $GATES_SCRIPT unavailable (skills staged normally)"
+    fi
+fi
 
 echo
 printf 'OK Sync complete. %d skills staged; manifest: %s\n' "${#DESIRED[@]}" "$MANIFEST"

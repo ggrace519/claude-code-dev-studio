@@ -404,7 +404,7 @@ install_from_zip() {
     unzip -q "$zip_path" -d "$new_dir"
 
     # Sanity: key files must exist in the extracted tree.
-    for sentinel in "bin/ccds.sh" "catalog.json" "agents" "skills"; do
+    for sentinel in "bin/ccds.sh" "catalog.json" "agents" "skills" "templates"; do
         if [[ ! -e "$new_dir/$sentinel" ]]; then
             rm -rf "$new_dir"
             die "Extraction did not produce '$sentinel' -- archive layout is unexpected."

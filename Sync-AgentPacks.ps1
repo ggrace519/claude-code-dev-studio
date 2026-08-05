@@ -77,13 +77,36 @@ param(
     [Parameter(Mandatory, ParameterSetName = 'Clean')][switch]$Clean,
     [switch]$DryRun,
     [switch]$WriteAdr,
+    [switch]$NoGates,
     [string]$LibraryRoot = (Join-Path $env:USERPROFILE '.claude\playbook'),
     [switch]$AllowLibraryTarget
 )
 
 $ErrorActionPreference = 'Stop'
 
-$SchemaVersion = 2
+$SchemaVersion = 3
+
+# --- Gate staging engine (ADR-0013): one python implementation for both twins
+$GatesScript  = Join-Path $LibraryRoot 'scripts\stage-gates.py'
+$TemplatesDir = Join-Path $LibraryRoot 'templates'
+# (no ?? operator: must run on Windows PowerShell 5.1)
+$PythonCmd = Get-Command python3 -ErrorAction SilentlyContinue
+if (-not $PythonCmd) { $PythonCmd = Get-Command python -ErrorAction SilentlyContinue }
+function Test-Gates {
+    # python must actually RUN (present-but-broken behaves like absent).
+    if (($null -eq $PythonCmd) -or -not (Test-Path -LiteralPath $GatesScript)) { return $false }
+    try {
+        & $PythonCmd.Source -c "" 2>$null | Out-Null
+        return ($LASTEXITCODE -eq 0)
+    } catch { return $false }
+}
+function Invoke-Gates {
+    param([string[]]$ExtraArgs = @())
+    & $PythonCmd.Source $GatesScript --target $TargetProject --templates $TemplatesDir @ExtraArgs
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "gate staging reported a problem (skills staging unaffected)"
+    }
+}
 
 # --- Validate target existence first (before Join-Path, which fails hard on missing drives)
 if (-not (Test-Path -LiteralPath $TargetProject)) { throw "TargetProject does not exist: $TargetProject" }
@@ -94,6 +117,7 @@ $TgtSkills = Join-Path $TgtClaude 'skills'
 $Manifest  = Join-Path $TgtSkills '.skill-manifest.json'
 
 # --- Load existing manifest (managedSkills)
+$prev = $null
 $prevSet = New-Object 'System.Collections.Generic.HashSet[string]'
 if (Test-Path -LiteralPath $Manifest) {
     try {
@@ -106,15 +130,31 @@ if (Test-Path -LiteralPath $Manifest) {
 
 # --- Clean mode -------------------------------------------------------------
 if ($Clean) {
-    if ($prevSet.Count -eq 0) { Write-Host "Nothing to clean (no manifest)."; return }
+    if ($prevSet.Count -eq 0 -and -not (Test-Path -LiteralPath $Manifest)) {
+        Write-Host "Nothing to clean (no manifest)."; return
+    }
+    # Parity with the bash twin (review blocker): a schema-3 manifest records
+    # gate files whose safe (hash-checked) removal needs the python engine.
+    # Cleaning without it would delete the manifest and orphan those files.
+    $prevSchema = 0
+    if ($null -ne $prev -and $prev.PSObject.Properties['schema']) {
+        $prevSchema = [int]$prev.schema
+    }
+    if ($prevSchema -ge 3 -and -not (Test-Gates)) {
+        throw "This manifest (schema 3+) records staged gate files; cleaning them safely needs python. Install python 3 and re-run -Clean."
+    }
     Write-Host ""
     Write-Host "=== Clean plan" -ForegroundColor Cyan
     foreach ($n in ($prevSet | Sort-Object)) { Write-Host ("    - {0}" -f $n) -ForegroundColor Yellow }
     if ($DryRun) {
+        if (Test-Gates) { Invoke-Gates -ExtraArgs @('--clean', '--dry-run') }
         Write-Host ""
         Write-Host "DRY RUN - no changes made." -ForegroundColor Magenta
         return
     }
+    # Gate clean always runs when the engine is available: -NoGates means
+    # "don't STAGE gates", not "leave gate files orphaned on clean".
+    if (Test-Gates) { Invoke-Gates -ExtraArgs @('--clean') }
     foreach ($n in $prevSet) {
         $tgt = Join-Path $TgtSkills $n
         if (Test-Path -LiteralPath $tgt) { Remove-Item -LiteralPath $tgt -Recurse -Force }
@@ -194,6 +234,10 @@ if ($toAdd.Count    -gt 0) { Write-Host "  Adding:";   $toAdd    | ForEach-Objec
 if ($toRemove.Count -gt 0) { Write-Host "  Removing:"; $toRemove | ForEach-Object { Write-Host "    - $_" -ForegroundColor Yellow } }
 
 if ($DryRun) {
+    if (-not $NoGates) {
+        if (Test-Gates) { Invoke-Gates -ExtraArgs @('--dry-run') }
+        else { Write-Host "gates: skipped (python or templates unavailable)" }
+    }
     Write-Host ""
     Write-Host "DRY RUN - no changes made." -ForegroundColor Magenta
     return
@@ -217,16 +261,26 @@ foreach ($n in $toAdd) {
     Copy-Item -LiteralPath $src -Destination $tgt -Recurse -Force
 }
 
-# --- Write manifest (BOM-less UTF-8)
-$manifestObj = [pscustomobject]@{
+# --- Write manifest (BOM-less UTF-8) — preserve the gate engine's keys
+$manifestObj = [ordered]@{
     schema        = $SchemaVersion
     updated       = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.000Z")
     libraryRoot   = $LibraryRoot
     packs         = $Packs
     managedSkills = @($desired | Sort-Object)
 }
-$json = $manifestObj | ConvertTo-Json -Depth 5
+if ($null -ne $prev) {
+    if ($prev.PSObject.Properties['managedGateFiles']) { $manifestObj['managedGateFiles'] = $prev.managedGateFiles }
+    if ($prev.PSObject.Properties['gateEdits'])        { $manifestObj['gateEdits']        = $prev.gateEdits }
+}
+$json = [pscustomobject]$manifestObj | ConvertTo-Json -Depth 5
 [System.IO.File]::WriteAllText($Manifest, $json, [System.Text.UTF8Encoding]::new($false))
+
+# --- Gate staging (ADR-0013): Gates 2/3/4, stack-matched, never-destroy
+if (-not $NoGates) {
+    if (Test-Gates) { Invoke-Gates }
+    else { Write-Warning "gates skipped: python or $GatesScript unavailable (skills staged normally)" }
+}
 
 Write-Host ""
 Write-Host ("OK Sync complete. {0} skills staged; manifest: {1}" -f $desired.Count, $Manifest) -ForegroundColor Green

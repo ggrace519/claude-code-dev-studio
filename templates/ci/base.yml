@@ -1,0 +1,23 @@
+# Staged by ccds (Gate 4, ADR-0013). What this does: on every push and pull
+# request, GitHub runs these checks automatically — a secret scan plus checks
+# for your detected stack. Why: the checks that run on your laptop can be
+# skipped; the ones here cannot, and they protect you even on a machine that
+# has nothing installed. Costs nothing on public repos. Remove: delete this
+# file. Tune: edit freely — ccds never overwrites an existing workflow.
+name: ccds quality gates
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

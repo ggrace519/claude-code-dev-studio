@@ -1,0 +1,30 @@
+{
+  "_comment": "ccds stack matrix (ADR-0013): detection signals -> toolchain templates. Data, not logic — scripts/stage-gates.py reads this. Signals are file presence checks relative to the target project root; a project matching several stacks gets the union. 'base' always applies.",
+  "stacks": {
+    "base": {
+      "signals": [],
+      "precommit": "pre-commit/base.yaml",
+      "ci": "ci/base.yml"
+    },
+    "python": {
+      "signals": ["pyproject.toml", "requirements.txt", "setup.py", "Pipfile"],
+      "precommit": "pre-commit/python.yaml",
+      "ci": "ci/python.yml"
+    },
+    "node": {
+      "signals": ["package.json"],
+      "precommit": "pre-commit/node.yaml",
+      "ci": "ci/node.yml"
+    },
+    "go": {
+      "signals": ["go.mod"],
+      "precommit": "pre-commit/go.yaml",
+      "ci": "ci/go.yml"
+    },
+    "rust": {
+      "signals": ["Cargo.toml"],
+      "precommit": "pre-commit/rust.yaml",
+      "ci": "ci/rust.yml"
+    }
+  }
+}

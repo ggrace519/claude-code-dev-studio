@@ -1,0 +1,18 @@
+# Staged by ccds (Gate 3, ADR-0013). What this does: before every git commit,
+# these checks run automatically and block the commit if they fail — a secret
+# scanner (gitleaks) plus basic file hygiene. Why: catching a leaked API key
+# BEFORE it enters git history is the difference between a 5-second fix and
+# rotating every credential you own. Setup (one time): `pip install
+# pre-commit && pre-commit install`. Remove: delete this file.
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.3
+    hooks:
+      - id: gitleaks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-merge-conflict
+      - id: detect-private-key

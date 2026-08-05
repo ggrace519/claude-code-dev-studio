@@ -1,0 +1,5 @@
+  # rust (detected): cargo fmt keeps the codebase rustfmt-clean.
+  - repo: https://github.com/doublify/pre-commit-rust
+    rev: v1.0
+    hooks:
+      - id: fmt

@@ -1,0 +1,5 @@
+  # go (detected): gofmt is the one true Go formatter.
+  - repo: https://github.com/dnephin/pre-commit-golang
+    rev: v0.5.1
+    hooks:
+      - id: go-fmt

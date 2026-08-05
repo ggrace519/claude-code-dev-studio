@@ -71,7 +71,11 @@ USAGE
 
 COMMANDS
   sync <packs>         Stage domain skills for the packs into ./.claude/skills/
-      --clean               Remove all skills staged by a previous sync
+                       and quality/security gates (settings deny rules,
+                       CLAUDE.md standards, pre-commit, CI) stack-matched to
+                       the project (ADR-0013)
+      --clean               Remove staged skills + unmodified ccds-created gate files
+      --no-gates            Skip gate staging (skills only)
       --dry-run             Preview changes without writing
       --write-adr           Record activation as an ADR in DECISIONS.md
       --target <path>       Target project path (default: current directory)
@@ -134,6 +138,7 @@ EOF
 DRY_RUN=0
 WRITE_ADR=0
 CLEAN=0
+NO_GATES=0
 TARGET=""
 ROLLBACK=0
 INCLUDE_PRERELEASE=0
@@ -156,6 +161,7 @@ while (( $# > 0 )); do
         --dry-run)            DRY_RUN=1; shift ;;
         --write-adr)          WRITE_ADR=1; shift ;;
         --clean)              CLEAN=1; shift ;;
+        --no-gates)           NO_GATES=1; shift ;;
         --rollback)           ROLLBACK=1; shift ;;
         --include-prerelease) INCLUDE_PRERELEASE=1; shift ;;
         --target)
@@ -196,6 +202,7 @@ cmd_sync() {
     fi
     (( DRY_RUN ))   && args+=(--dry-run)
     (( WRITE_ADR )) && args+=(--write-adr)
+    (( NO_GATES ))  && args+=(--no-gates)
 
     exec "$SYNC_SCRIPT" "${args[@]}"
 }

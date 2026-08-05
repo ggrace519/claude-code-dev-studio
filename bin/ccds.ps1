@@ -99,7 +99,11 @@ USAGE
 
 COMMANDS
   sync <packs>         Stage domain skills for the packs into .\.claude\skills\
-      --clean               Remove all skills staged by a previous sync
+                       and quality/security gates (settings deny rules,
+                       CLAUDE.md standards, pre-commit, CI) stack-matched to
+                       the project (ADR-0013)
+      --clean               Remove staged skills + unmodified ccds-created gate files
+      --no-gates            Skip gate staging (skills only)
       --dry-run             Preview changes without writing
       --write-adr           Record activation as an ADR in DECISIONS.md
       --target <path>       Target project path (default: current directory)
@@ -168,6 +172,7 @@ function ConvertTo-Hashtable {
         DryRun            = $false
         WriteAdr          = $false
         Clean             = $false
+        NoGates           = $false
         Target            = $null
         Rollback          = $false
         IncludePrerelease = $false
@@ -180,6 +185,7 @@ function ConvertTo-Hashtable {
             '^--dry-run$'             { $result.DryRun = $true; $i++; continue }
             '^--write-adr$'           { $result.WriteAdr = $true; $i++; continue }
             '^--clean$'               { $result.Clean = $true; $i++; continue }
+            '^--no-gates$'            { $result.NoGates = $true; $i++; continue }
             '^--rollback$'            { $result.Rollback = $true; $i++; continue }
             '^--include-prerelease$'  { $result.IncludePrerelease = $true; $i++; continue }
             '^--target$' {
@@ -217,7 +223,8 @@ function Invoke-SyncCommand {
             -LibraryRoot   $libraryRoot `
             -Clean `
             -DryRun:$Opts.DryRun `
-            -WriteAdr:$Opts.WriteAdr
+            -WriteAdr:$Opts.WriteAdr `
+            -NoGates:$Opts.NoGates
         exit $LASTEXITCODE
     }
 
@@ -244,7 +251,8 @@ function Invoke-SyncCommand {
         -Packs         ([string[]]$packList) `
         -LibraryRoot   $libraryRoot `
         -DryRun:$Opts.DryRun `
-        -WriteAdr:$Opts.WriteAdr
+        -WriteAdr:$Opts.WriteAdr `
+        -NoGates:$Opts.NoGates
 
     exit $LASTEXITCODE
 }
