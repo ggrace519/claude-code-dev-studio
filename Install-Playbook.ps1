@@ -52,6 +52,10 @@
 .PARAMETER IncludePrerelease
     When -Version is 'latest', include prerelease tags in the resolution.
 
+.PARAMETER SkipPlugins
+    Skip installing the ccds-guard / ccds-loops enforcement plugins via the
+    claude CLI (ADR-0012: plugins are the only hook-shipping mechanism).
+
 .PARAMETER DryRun
     Print what would happen without touching the filesystem or PATH.
 
@@ -106,6 +110,9 @@ param(
     [Parameter(ParameterSetName = 'Install')]
     [Parameter(ParameterSetName = 'Uninstall')]
     [switch]$NoPath,
+
+    [Parameter(ParameterSetName = 'Install')]
+    [switch]$SkipPlugins,
 
     [Parameter(ParameterSetName = 'Install')]
     [switch]$Force,
@@ -681,6 +688,9 @@ function Invoke-Uninstall {
     Remove-CompletionBlock -DryRun:$DryRun
 
     Write-WarnMsg "Always-on agents in $(Join-Path $env:USERPROFILE '.claude\agents') and cross-cutting skills in $(Join-Path $env:USERPROFILE '.claude\skills') were NOT removed."
+    Write-WarnMsg "Plugins installed via Claude Code were NOT removed. If desired:"
+    Write-WarnMsg "  claude plugin uninstall ccds-guard@ccds"
+    Write-WarnMsg "  claude plugin uninstall ccds-loops@ccds"
     Write-WarnMsg "Delete them manually if desired."
 }
 
@@ -775,6 +785,47 @@ try {
         Write-Info "Install manually: . '$Prefix\scripts\ccds-completion.ps1'"
     }
 
+    # Enforcement plugins (ADR-0012): plugins are the ONLY hook-shipping
+    # mechanism, so every outlet installs them by default. Best-effort — a
+    # failure warns with the manual commands and never fails the install.
+    $pluginsStatus = 'skipped (-SkipPlugins)'
+    if (-not $SkipPlugins) {
+        Write-Step "Installing enforcement plugins (ccds-guard, ccds-loops)"
+        $claudeCmd = Get-Command claude -ErrorAction SilentlyContinue
+        if (-not $claudeCmd) {
+            $pluginsStatus = 'skipped (claude CLI not on PATH)'
+            Write-WarnMsg "claude CLI not found -- skipping plugin install."
+            Write-WarnMsg "After installing Claude Code, run:"
+            Write-WarnMsg "  claude plugin marketplace add $Script:Owner/$Script:Repo"
+            Write-WarnMsg "  claude plugin install ccds-guard@ccds --scope user"
+            Write-WarnMsg "  claude plugin install ccds-loops@ccds --scope user"
+        } else {
+            # Native-command stderr under EAP 'Stop' can raise NativeCommandError
+            # on Windows PowerShell 5.1 — relax locally; exit codes decide.
+            $prevEap = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
+            try {
+                & claude plugin marketplace add "$Script:Owner/$Script:Repo" 2>$null | Out-Null
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Info "marketplace 'ccds' already registered (or add failed; continuing)"
+                }
+                $pluginsStatus = 'installed (ccds-guard, ccds-loops)'
+                foreach ($plugin in @('ccds-guard', 'ccds-loops')) {
+                    & claude plugin install "$plugin@ccds" --scope user 2>$null | Out-Null
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-OkMsg "$plugin plugin installed (user scope)"
+                    } else {
+                        $pluginsStatus = 'partial -- see warnings'
+                        Write-WarnMsg "Could not install $plugin automatically. Run:"
+                        Write-WarnMsg "  claude plugin install $plugin@ccds --scope user"
+                    }
+                }
+            } finally {
+                $ErrorActionPreference = $prevEap
+            }
+        }
+    }
+
     Write-Host ""
     Write-Host "=== Claude Code Dev Studio installed ===" -ForegroundColor Green
     Write-Host "Prefix  : $Prefix"
@@ -789,6 +840,7 @@ try {
     Write-Host "Agents  : 19 always-on -> $(Join-Path $env:USERPROFILE '.claude\agents') (14 domain + 5 core)"
     Write-Host "Skills  : $(Join-Path $Prefix 'skills') (domain skills, JIT per project; cross-cutting -> $(Join-Path $env:USERPROFILE '.claude\skills'))"
     Write-Host "CLAUDE  : $(Join-Path $env:USERPROFILE '.claude\CLAUDE.md') (ccds pointer block injected)"
+    Write-Host "Plugins : $pluginsStatus"
     Write-Host ""
     Write-Host "Smoke test:" -ForegroundColor Yellow
     Write-Host "  ccds version"

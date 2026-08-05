@@ -32,6 +32,7 @@
 #   --local-zip <file>        Install from a locally built ZIP instead of downloading
 #   --token <pat>             GitHub PAT for private-repo downloads (or $GITHUB_TOKEN)
 #   --no-path                 Skip shell-rc PATH update
+#   --skip-plugins            Skip installing the ccds-guard/ccds-loops plugins
 #   --include-prerelease      When resolving 'latest', include prereleases
 #   --dry-run                 Show actions without changing the filesystem
 #   --force                   Overwrite existing install without confirmation
@@ -59,6 +60,7 @@ PREFIX="${HOME}/.claude/playbook"
 LOCAL_ZIP=""
 TOKEN=""
 NO_PATH=0
+SKIP_PLUGINS=0
 INCLUDE_PRERELEASE=0
 DRY_RUN=0
 FORCE=0
@@ -81,7 +83,7 @@ die()       { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 # ---------------------------------------------------------------------------
 # Arg parsing
 # ---------------------------------------------------------------------------
-show_help() { sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'; }
+show_help() { sed -n '2,41p' "$0" | sed 's/^# \{0,1\}//'; }
 
 while (( $# > 0 )); do
     case "$1" in
@@ -90,6 +92,7 @@ while (( $# > 0 )); do
         --local-zip)         [[ -n "${2:-}" ]] || die "--local-zip requires a path"; LOCAL_ZIP="$2"; shift 2 ;;
         --token)             [[ -n "${2:-}" ]] || die "--token requires a value"; TOKEN="$2"; shift 2 ;;
         --no-path)           NO_PATH=1; shift ;;
+        --skip-plugins)      SKIP_PLUGINS=1; shift ;;
         --include-prerelease) INCLUDE_PRERELEASE=1; shift ;;
         --dry-run)           DRY_RUN=1; shift ;;
         --force)             FORCE=1; shift ;;
@@ -479,6 +482,9 @@ do_uninstall() {
 
     log_warn "Agents in $HOME/.claude/agents and skills in $HOME/.claude/skills were NOT removed."
     log_warn "Delete them manually if desired."
+    log_warn "Plugins installed via Claude Code were NOT removed. If desired:"
+    log_warn "  claude plugin uninstall ccds-guard@ccds"
+    log_warn "  claude plugin uninstall ccds-loops@ccds"
 }
 
 # ---------------------------------------------------------------------------
@@ -557,6 +563,39 @@ if (( NO_PATH == 0 )); then
     add_to_path_rc "$PREFIX/bin"
 fi
 
+# ---------------------------------------------------------------------------
+# Enforcement plugins (ADR-0012): plugins are the ONLY hook-shipping mechanism,
+# so every outlet installs them by default. Best-effort — a failure here warns
+# with the exact manual commands and never fails the main install.
+# ---------------------------------------------------------------------------
+PLUGINS_STATUS="skipped (--skip-plugins)"
+if (( SKIP_PLUGINS == 0 )); then
+    log_step "Installing enforcement plugins (ccds-guard, ccds-loops)"
+    if ! command -v claude >/dev/null 2>&1; then
+        PLUGINS_STATUS="skipped (claude CLI not on PATH)"
+        log_warn "claude CLI not found -- skipping plugin install."
+        log_warn "After installing Claude Code, run:"
+        log_warn "  claude plugin marketplace add ${OWNER}/${REPO}"
+        log_warn "  claude plugin install ccds-guard@ccds --scope user"
+        log_warn "  claude plugin install ccds-loops@ccds --scope user"
+    else
+        # Marketplace add is idempotent-ish: tolerate "already exists".
+        if ! claude plugin marketplace add "${OWNER}/${REPO}" </dev/null >/dev/null 2>&1; then
+            log_info "marketplace 'ccds' already registered (or add failed; continuing)"
+        fi
+        PLUGINS_STATUS="installed (ccds-guard, ccds-loops)"
+        for plugin in ccds-guard ccds-loops; do
+            if claude plugin install "${plugin}@ccds" --scope user </dev/null >/dev/null 2>&1; then
+                log_ok "${plugin} plugin installed (user scope)"
+            else
+                PLUGINS_STATUS="partial -- see warnings"
+                log_warn "Could not install ${plugin} automatically. Run:"
+                log_warn "  claude plugin install ${plugin}@ccds --scope user"
+            fi
+        done
+    fi
+fi
+
 printf '\n'
 printf '%s=== Claude Code Dev Studio installed ===%s\n' "$C_GREEN" "$C_RESET"
 printf 'Prefix  : %s\n' "$PREFIX"
@@ -564,6 +603,7 @@ printf 'Version : %s\n' "$INSTALLED_VERSION"
 printf 'Agents  : 19 always-on → ~/.claude/agents (14 domain + 5 core)\n'
 printf 'Skills  : %s/skills (domain skills, JIT per project; cross-cutting → ~/.claude/skills)\n' "$PREFIX"
 printf 'CLAUDE  : %s/.claude/CLAUDE.md (ccds pointer block injected)\n' "$HOME"
+printf 'Plugins : %s\n' "$PLUGINS_STATUS"
 if (( NO_PATH == 0 )); then
     printf 'PATH    : %s (added to shell rc files)\n' "$PREFIX/bin"
     printf '\n'
