@@ -842,17 +842,30 @@ class TestEvidenceLog(unittest.TestCase):
         return path
 
     def stub_psql(self, exit_code=0):
-        shim = os.path.join(self.bindir, "psql")
-        write(shim, "#!/usr/bin/env bash\n"
-                    'printf "%%s\\n" "$@" >> "%s"\nexit %d\n' % (self.psql_log, exit_code))
-        os.chmod(shim, 0o755)
+        """Record psql's argv, on either platform.
+
+        A Python recorder invoked through CCDS_EVIDENCE_PSQL rather than a
+        shell shim on PATH: the hook is Python and genuinely cross-platform,
+        but a `#!` script has no extension for Windows PATHEXT to find, and a
+        .cmd shim cannot survive psql's multi-line SQL argument through cmd's
+        quoting. subprocess passes argv straight to the recorder — no shell in
+        the path at all."""
+        recorder = os.path.join(self.bindir, "psql_recorder.py")
+        write(recorder,
+              "import sys\n"
+              "with open(%r, 'a', encoding='utf-8') as f:\n"
+              "    for a in sys.argv[1:]:\n"
+              "        f.write(a + '\\n')\n"
+              "sys.exit(%d)\n" % (self.psql_log, exit_code))
+        self.psql_cmd = '"%s" "%s"' % (sys.executable, recorder)
 
     def run_hook(self, file_path, dsn=None, with_psql=False):
-        env = {k: v for k, v in os.environ.items() if k != "CCDS_EVIDENCE_DSN"}
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("CCDS_EVIDENCE_DSN", "CCDS_EVIDENCE_PSQL")}
         if with_psql:
-            env["PATH"] = self.bindir + os.pathsep + env["PATH"]
+            env["CCDS_EVIDENCE_PSQL"] = self.psql_cmd
         else:
-            # scrub any real psql so "no psql" paths are deterministic
+            # scrub any real psql so the "no psql" paths stay deterministic
             env["PATH"] = self.bindir
             write(os.path.join(self.bindir, ".keep"), "")
         if dsn is not None:
@@ -1362,6 +1375,7 @@ PACKAGING = os.path.join(REPO_ROOT, "packaging")
 POSTINST = os.path.join(PACKAGING, "postinst")
 USER_SETUP = os.path.join(SCRIPTS, "ccds-user-setup.sh")
 INSTALLER = os.path.join(REPO_ROOT, "install-playbook.sh")
+INSTALLER_PS1 = os.path.join(REPO_ROOT, "Install-Playbook.ps1")
 BASH = shutil.which("bash")
 UNZIP = shutil.which("unzip")
 
@@ -1735,6 +1749,54 @@ class TestDebPostinst(unittest.TestCase):
         self.assertFalse(os.path.isdir(os.path.join(self.home, ".claude", "agents")))
 
 
+def build_test_release_zip():
+    """Build one release ZIP mirroring what build-release.ps1 stages.
+
+    Shared by both installer suites — bash and PowerShell install the same
+    artifact, so they must exercise the same payload. Returns
+    (tmpdir, zip_path, stage_dir); the caller owns cleanup.
+    """
+    tmp = tempfile.mkdtemp(prefix="ccds-installer-zip-")
+    stage = os.path.join(tmp, "stage")
+    os.makedirs(os.path.join(stage, "agents"))
+    os.makedirs(os.path.join(stage, "scripts"))
+    os.makedirs(os.path.join(stage, "bin"))
+    for md in os.listdir(os.path.join(REPO_ROOT, ".claude", "agents")):
+        if md.endswith(".md"):
+            shutil.copy(os.path.join(REPO_ROOT, ".claude", "agents", md),
+                        os.path.join(stage, "agents", md))
+    shutil.copytree(os.path.join(REPO_ROOT, "skills"),
+                    os.path.join(stage, "skills"))
+    shutil.copytree(os.path.join(REPO_ROOT, "templates"),
+                    os.path.join(stage, "templates"))
+    for src, dst in (("bin/ccds.sh", "bin/ccds.sh"),
+                     ("bin/ccds.ps1", "bin/ccds.ps1"),
+                     ("catalog.json", "catalog.json"),
+                     ("README.md", "README.md"),
+                     ("Sync-AgentPacks.sh", "scripts/Sync-AgentPacks.sh"),
+                     ("Sync-AgentPacks.ps1", "scripts/Sync-AgentPacks.ps1"),
+                     ("verify-agents.sh", "scripts/verify-agents.sh"),
+                     ("Verify-Agents.ps1", "scripts/Verify-Agents.ps1"),
+                     ("scripts/stage-gates.py", "scripts/stage-gates.py"),
+                     ("scripts/jit-claude.md", "scripts/jit-claude.md"),
+                     ("scripts/ccds-user-setup.sh",
+                      "scripts/ccds-user-setup.sh"),
+                     # Completion payload — the real ZIP ships all four, and
+                     # each installer's loader block sources its own pair.
+                     ("scripts/ccds-completion.bash",
+                      "scripts/ccds-completion.bash"),
+                     ("scripts/ccds-completion.ps1",
+                      "scripts/ccds-completion.ps1"),
+                     ("claude_auto_completion/Linux/claude-completion.bash",
+                      "scripts/claude-completion.bash"),
+                     ("claude_auto_completion/Windows/claude-completion.ps1",
+                      "scripts/claude-completion.ps1")):
+        shutil.copy(os.path.join(REPO_ROOT, src), os.path.join(stage, dst))
+    write(os.path.join(stage, "version.txt"), "v9.9.9-test\n")
+    return tmp, shutil.make_archive(os.path.join(tmp, "ccds-test"),
+                                    "zip", stage), stage
+
+
 @unittest.skipUnless(BASH and UNZIP and sys.platform != "win32",
                      "install-playbook.sh is a bash script needing unzip")
 class TestInstallPlaybook(unittest.TestCase):
@@ -1749,43 +1811,7 @@ class TestInstallPlaybook(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        """Build one release ZIP for the whole class — it is the expensive
-        part, and every test installs the same payload."""
-        cls.tmp = tempfile.mkdtemp(prefix="ccds-installer-zip-")
-        stage = os.path.join(cls.tmp, "stage")
-        os.makedirs(os.path.join(stage, "agents"))
-        os.makedirs(os.path.join(stage, "scripts"))
-        os.makedirs(os.path.join(stage, "bin"))
-        for md in os.listdir(os.path.join(REPO_ROOT, ".claude", "agents")):
-            if md.endswith(".md"):
-                shutil.copy(os.path.join(REPO_ROOT, ".claude", "agents", md),
-                            os.path.join(stage, "agents", md))
-        shutil.copytree(os.path.join(REPO_ROOT, "skills"),
-                        os.path.join(stage, "skills"))
-        shutil.copytree(os.path.join(REPO_ROOT, "templates"),
-                        os.path.join(stage, "templates"))
-        for src, dst in (("bin/ccds.sh", "bin/ccds.sh"),
-                         ("bin/ccds.ps1", "bin/ccds.ps1"),
-                         ("catalog.json", "catalog.json"),
-                         ("README.md", "README.md"),
-                         ("Sync-AgentPacks.sh", "scripts/Sync-AgentPacks.sh"),
-                         ("verify-agents.sh", "scripts/verify-agents.sh"),
-                         ("scripts/stage-gates.py", "scripts/stage-gates.py"),
-                         ("scripts/jit-claude.md", "scripts/jit-claude.md"),
-                         ("scripts/ccds-user-setup.sh",
-                          "scripts/ccds-user-setup.sh"),
-                         # Completion payload — the real ZIP ships these, and
-                         # the installer's rc block sources them.
-                         ("scripts/ccds-completion.bash",
-                          "scripts/ccds-completion.bash"),
-                         ("claude_auto_completion/Linux/claude-completion.bash",
-                          "scripts/claude-completion.bash")):
-            shutil.copy(os.path.join(REPO_ROOT, src),
-                        os.path.join(stage, dst))
-        write(os.path.join(stage, "version.txt"), "v9.9.9-test\n")
-        cls.zip = shutil.make_archive(os.path.join(cls.tmp, "ccds-test"),
-                                      "zip", stage)
-        cls.stage = stage
+        cls.tmp, cls.zip, cls.stage = build_test_release_zip()
 
     @classmethod
     def tearDownClass(cls):
@@ -1974,6 +2000,153 @@ class TestInstallPlaybook(unittest.TestCase):
         r = self.install(zip_path=zip_copy)
         self.assertNotEqual(r.returncode, 0, "checksum mismatch must abort")
         self.assertFalse(os.path.exists(self.prefix))
+
+
+PWSH = (shutil.which("pwsh") or shutil.which("powershell")
+        if sys.platform == "win32" else None)
+
+
+@unittest.skipUnless(PWSH, "Install-Playbook.ps1 is Windows-targeted "
+                           "($env:USERPROFILE, User-scope PATH, ';' separator)")
+class TestInstallPlaybookPs1(unittest.TestCase):
+    """Coverage for Install-Playbook.ps1 — the primary install path for every
+    Windows user, previously checked only by PSScriptAnalyzer.
+
+    Windows-only by design: the script exists because install-playbook.sh
+    covers Linux/macOS. Hermetic via -LocalZip (no GitHub lookup), a sandboxed
+    USERPROFILE and -Prefix, CCDS_PS_PROFILE (the completion block otherwise
+    lands in the operator's REAL profile — $PROFILE.CurrentUserAllHosts is not
+    derived from USERPROFILE), a stubbed CCDS_CLAUDE_CMD, and -NoPath on every
+    case, because the PATH write goes to the real User-scope registry.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp, cls.zip, cls.stage = build_test_release_zip()
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="ccds-ps-installer-")
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.home = os.path.join(self.root, "home")
+        os.makedirs(self.home)
+        self.prefix = os.path.join(self.root, "playbook")
+        self.profile = os.path.join(self.root, "Profile.ps1")
+        self.log = os.path.join(self.root, "claude-calls.log")
+        # Recording `claude` stub: a .cmd so CreateProcess/Get-Command find it.
+        self.claude = os.path.join(self.root, "claude.cmd")
+        write(self.claude, "@echo off\r\necho %%* >> \"%s\"\r\nexit /b 0\r\n"
+                           % self.log)
+
+    def install(self, *extra, zip_path=None):
+        args = [PWSH, "-NoProfile", "-ExecutionPolicy", "Bypass",
+                "-File", INSTALLER_PS1,
+                "-LocalZip", zip_path or self.zip,
+                "-Prefix", self.prefix, "-NoPath"]
+        args.extend(extra)
+        return subprocess.run(
+            args, capture_output=True, text=True,
+            env={**os.environ, "USERPROFILE": self.home,
+                 "CCDS_PS_PROFILE": self.profile,
+                 "CCDS_CLAUDE_CMD": self.claude,
+                 "CCDS_MARKETPLACE_SOURCE": "test-owner/test-repo"})
+
+    def claude_calls(self):
+        if not os.path.isfile(self.log):
+            return []
+        return [l.strip() for l in read(self.log).splitlines() if l.strip()]
+
+    def test_local_zip_install_populates_prefix_home_and_plugins(self):
+        r = self.install()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        for sentinel in ("bin\\ccds.ps1", "catalog.json", "agents", "skills",
+                         "templates"):
+            self.assertTrue(os.path.exists(os.path.join(self.prefix, sentinel)),
+                            "missing from install tree: " + sentinel)
+        self.assertFalse(os.path.exists(self.prefix + ".new"),
+                         "staging dir must be promoted, not left behind")
+        agents = os.path.join(self.home, ".claude", "agents")
+        self.assertEqual(
+            len([f for f in os.listdir(agents) if f.endswith(".md")]), 19)
+        for name in GLOBAL_SKILLS:
+            self.assertTrue(os.path.isfile(os.path.join(
+                self.home, ".claude", "skills", name, "SKILL.md")), name)
+        claude_md = read(os.path.join(self.home, ".claude", "CLAUDE.md"))
+        self.assertEqual(claude_md.count("# >>> ccds >>>"), 1)
+        calls = " ".join(self.claude_calls())
+        self.assertIn("marketplace add test-owner/test-repo", calls)
+        self.assertIn("install ccds-guard@ccds", calls)
+        self.assertIn("install ccds-loops@ccds", calls)
+
+    def test_seams_keep_the_real_profile_and_marketplace_untouched(self):
+        """The seams are the reason this suite is safe to run at all: without
+        them the completion block lands in the operator's real PowerShell
+        profile and the plugin calls hit their real marketplace."""
+        r = self.install()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(os.path.isfile(self.profile),
+                        "completion block did not go to CCDS_PS_PROFILE")
+        self.assertIn("# >>> ccds-completion >>>", read(self.profile))
+        self.assertNotIn("ggrace519", " ".join(self.claude_calls()))
+
+    def test_skip_plugins_makes_no_claude_calls(self):
+        r = self.install("-SkipPlugins")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.claude_calls(), [])
+        self.assertTrue(os.path.isdir(os.path.join(self.home, ".claude", "agents")))
+
+    def test_dry_run_changes_nothing(self):
+        r = self.install("-DryRun")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(self.prefix))
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".claude")))
+        self.assertEqual(self.claude_calls(), [])
+        self.assertFalse(os.path.isfile(self.profile))
+
+    def test_reinstall_snapshots_and_rollback_restores(self):
+        self.assertEqual(self.install().returncode, 0)
+        write(os.path.join(self.prefix, "marker.txt"), "first install\n")
+        self.assertEqual(self.install("-Force").returncode, 0)
+        prev = self.prefix + ".previous"
+        self.assertTrue(os.path.isdir(prev), "no rollback snapshot taken")
+        self.assertTrue(os.path.isfile(os.path.join(prev, "marker.txt")))
+        r = subprocess.run(
+            [PWSH, "-NoProfile", "-ExecutionPolicy", "Bypass",
+             "-File", INSTALLER_PS1, "-Rollback", "-Prefix", self.prefix],
+            capture_output=True, text=True,
+            env={**os.environ, "USERPROFILE": self.home,
+                 "CCDS_PS_PROFILE": self.profile})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(os.path.isfile(os.path.join(self.prefix, "marker.txt")),
+                        "rollback did not restore the previous tree")
+
+    def test_uninstall_removes_prefix_and_completion_block(self):
+        self.assertEqual(self.install().returncode, 0)
+        r = subprocess.run(
+            [PWSH, "-NoProfile", "-ExecutionPolicy", "Bypass",
+             "-File", INSTALLER_PS1, "-Uninstall", "-Prefix", self.prefix,
+             "-NoPath"],
+            capture_output=True, text=True,
+            env={**os.environ, "USERPROFILE": self.home,
+                 "CCDS_PS_PROFILE": self.profile})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(self.prefix))
+
+    def test_bad_archive_layout_aborts_without_touching_an_install(self):
+        self.assertEqual(self.install().returncode, 0)
+        junk = os.path.join(self.root, "junk")
+        os.makedirs(junk)
+        write(os.path.join(junk, "nothing.txt"), "not a playbook\n")
+        junk_zip = shutil.make_archive(os.path.join(self.root, "junk"),
+                                       "zip", junk)
+        r = self.install("-Force", zip_path=junk_zip)
+        self.assertNotEqual(r.returncode, 0, "a junk archive must not succeed")
+        self.assertIn("archive layout is unexpected", r.stdout + r.stderr)
+        self.assertTrue(os.path.isfile(os.path.join(self.prefix, "bin", "ccds.ps1")),
+                        "the good install must survive a failed one")
 
 
 @unittest.skipUnless(BASH and sys.platform != "win32",

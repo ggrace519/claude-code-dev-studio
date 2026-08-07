@@ -1632,3 +1632,93 @@ multi-line body simple; the block therefore moves to the end of the rc file.
 ### Supersedes
 None. Extends ADR-0012's every-outlet principle from hooks to the release
 payload itself.
+
+---
+
+## ADR-0018: The Suite Runs on Both Platforms
+
+**Date:** 2026-08-07
+**Status:** Accepted
+**Phase:** Testing
+**Deciders:** Greg Grace
+
+### Context
+
+ccds ships a bash half and a PowerShell half, and CI only ever ran the test
+suite on Linux. `Install-Playbook.ps1` — the primary install path for every
+Windows user — had no behavioral coverage at all; PSScriptAnalyzer linted it
+at Error severity and nothing exercised it.
+
+The first plan for this proposed a Windows job running **one hand-picked test
+class**. Greg rejected it: *"the tool works on both windows and linux, then it
+should be tested on both … testing certain files out of context is not smart."*
+A job that runs one class proves nothing about the product; it makes a green
+check appear. He also corrected a false premise — these sessions run in WSL on
+a Windows machine, so Windows is directly reachable (`powershell.exe` is
+Windows PowerShell 5.1, `python.exe` is Windows Python 3.14) and none of this
+needed to be guessed at through CI.
+
+### Decision
+
+1. **One suite, both runners.** A `windows-latest` job runs
+   `python -m unittest discover -s tests -v`, exactly as the Linux job does.
+   Each platform runs what applies and skips what does not — the existing
+   `sys.platform != "win32"` guards already express that, and
+   `TestInstallPlaybookPs1` carries the mirror guard. Result today: 268 tests
+   collected on both, 59 skipped on Windows, 7 on Linux.
+   `core.autocrlf false` before checkout, because the generators emit LF and
+   several tests compare their output against checked-in files.
+2. **`Install-Playbook.ps1` stays Windows-targeted** and is tested on Windows.
+   It exists precisely because `install-playbook.sh` covers Linux/macOS;
+   reworking `$env:USERPROFILE`, User-scope registry PATH and `;` separators
+   into cross-platform equivalents would duplicate that for no gain.
+3. **Seams, because the script had none.** It inlines its per-user work rather
+   than delegating, so it was the one component with its externals hardcoded:
+   `CCDS_MARKETPLACE_SOURCE`, `CCDS_CLAUDE_CMD`, and `CCDS_PS_PROFILE`. The
+   last one is load-bearing for safety, not just testing —
+   `$PROFILE.CurrentUserAllHosts` is **not** derived from `$env:USERPROFILE`
+   (it resolves from the Documents known folder, often OneDrive-redirected), so
+   sandboxing `USERPROFILE` alone would still have written the completion block
+   into the operator's real profile on every test run. Every test also passes
+   `-NoPath`: the PATH write goes to the real User-scope registry.
+
+### Two product bugs this found immediately
+
+Both were invisible while the suite was Linux-only, and both are Windows-only
+failures in shipped code:
+
+- **`ccds-guard` could never adjudicate on Windows.** `shlex.split` defaults to
+  POSIX mode, where backslash is an escape character, so any
+  `CCDS_GUARD_ADJUDICATOR_CMD` containing an absolute path was destroyed
+  (`C:\Python314\python.exe` → `C:Python314python.exe`), the adjudicator failed
+  to start, and every unattended ask-gate hit denied. The documented way to
+  override the judge was broken on Windows; only the default command worked,
+  and only because it contains no backslashes. Fixed with a Windows-aware split
+  that also strips the quote pair non-POSIX mode leaves behind — otherwise
+  `--tools ""` would arrive as a literal `""` instead of an empty string.
+- **`posttooluse-evidence-log.py` invoked a bare `psql`.** On Windows
+  `CreateProcess` resolves only `.exe`, so a psql shipped as `.cmd`/`.bat` was
+  found by `which()` and then failed to start. Now it invokes the resolved
+  path, and honors a `CCDS_EVIDENCE_PSQL` override — a real need (versioned
+  installs, Program Files) as well as the test seam.
+
+### Consequences
+
+- Windows regressions surface in CI instead of in users' installs.
+- `TestInstallPlaybookPs1` (7 cases) covers install, the seams, `-SkipPlugins`,
+  `-DryRun`, snapshot + `-Rollback`, `-Uninstall`, and a wrong-shaped archive.
+  Both installer suites now share one `build_test_release_zip()` fixture — the
+  two installers install the same artifact, so they must exercise the same
+  payload.
+- Mutation-verified, as with every suite since v0.17.0: removing the archive
+  sentinels, ignoring the `CCDS_PS_PROFILE` seam, and ignoring `-SkipPlugins`
+  each failed exactly the intended test. The profile mutation was deliberately
+  written to point *inside the sandbox* rather than at the real `$PROFILE`, so
+  a mutation could not damage the operator's environment.
+- **A reported bug that was not one:** `Set-ClaudePlaybookBlock`'s `$backup` was
+  flagged as possibly-unassigned. It is only read inside `if ($backup)`, and
+  the script sets no `StrictMode`, so an unassigned value is `$null` and the
+  branch is skipped. Left alone rather than "fixed" to tidy a checklist.
+
+### Supersedes
+None.

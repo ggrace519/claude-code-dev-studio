@@ -72,6 +72,27 @@ jobs:
       - name: Run unittest suite
         run: python3 -m unittest discover -s tests -v
 
+  python-tests-windows:
+    name: Script tests (Windows)
+    runs-on: windows-latest
+    steps:
+      # The generators write LF and the suite compares their output against
+      # checked-in files; autocrlf would rewrite *.md/*.json on checkout and
+      # report false drift.
+      - name: Disable autocrlf
+        run: git config --global core.autocrlf false
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # Same suite as the Linux job. The product runs on both platforms, so it
+      # is tested on both: each platform runs what applies and skips what does
+      # not (bash/deb classes carry sys.platform guards; the PowerShell
+      # installer class is Windows-only for the same reason).
+      - name: Run unittest suite
+        shell: pwsh
+        run: python -m unittest discover -s tests -v
+
   verify-agents-windows:
     name: Verify agents (Windows)
     runs-on: windows-latest

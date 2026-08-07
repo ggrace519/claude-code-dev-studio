@@ -9,6 +9,21 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ### Fixed
 
+- **ccds-guard could never adjudicate on Windows (ADR-0018).** Overriding the
+  judge with `CCDS_GUARD_ADJUDICATOR_CMD` is the documented escape hatch, and
+  on Windows it was broken: the command line was split in POSIX mode, where a
+  backslash is an escape character, so `C:\Python314\python.exe` became
+  `C:Python314python.exe`, the adjudicator failed to start, and **every**
+  unattended ask-gate hit denied. Only the default command worked, and only
+  because it contains no backslashes. Found by running the test suite on
+  Windows for the first time.
+- **The evidence-log hook could not find a non-`.exe` psql on Windows.** It
+  invoked a bare `psql`, and `CreateProcess` resolves only `.exe` — a psql
+  shipped as `.cmd`/`.bat` was found by the PATH check and then failed to
+  start. It now invokes the resolved path, and honors a new
+  `CCDS_EVIDENCE_PSQL` override for installs where psql is not on PATH under
+  that name (versioned installs, Program Files).
+
 - **bash users now get shell completion — they never had it (ADR-0017).** The
   PowerShell installer has loaded `ccds` and `claude` completions into the PS
   profile since it shipped; `install-playbook.sh` and the `.deb`/`.rpm` had no
@@ -34,6 +49,20 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ### Infrastructure
 
+- **The test suite now runs on Windows as well as Linux (ADR-0018).** ccds
+  ships a bash half and a PowerShell half; CI only ever exercised the Linux
+  one. A `windows-latest` job now runs the same `unittest discover` as the
+  Linux job — each platform running what applies and skipping what does not
+  (268 collected on both; 59 skipped on Windows, 7 on Linux). Getting there
+  found the two Windows-only product bugs above.
+- **`Install-Playbook.ps1` has behavioral coverage for the first time** — 7
+  tests covering install, `-SkipPlugins`, `-DryRun`, the reinstall snapshot,
+  `-Rollback`, `-Uninstall`, and a wrong-shaped archive. It gains the seams
+  every other component already had (`CCDS_MARKETPLACE_SOURCE`,
+  `CCDS_CLAUDE_CMD`, `CCDS_PS_PROFILE`); the last is a safety fix as much as a
+  test one, since `$PROFILE.CurrentUserAllHosts` is not derived from
+  `$env:USERPROFILE` and a test run would otherwise have written the
+  completion block into the operator's real PowerShell profile.
 - **New `release-parity` lint check (#12).** The two release builders staged
   the payload from independent hand-maintained lists with no cross-check, and
   had drifted six files apart. The contract is now stated and enforced —

@@ -212,6 +212,31 @@ def _load_rules():
     return rules
 
 
+def _split_cmd(cmd):
+    """Split an adjudicator command line, correctly on Windows too.
+
+    `shlex.split` defaults to POSIX mode, where a backslash is an escape
+    character — so on Windows every absolute path in
+    CCDS_GUARD_ADJUDICATOR_CMD was silently destroyed
+    (`C:\\Python314\\python.exe` -> `C:Python314python.exe`), the adjudicator
+    could never start, and every unattended ask-gate hit denied. The documented
+    way to override the judge was therefore broken on Windows; only the default
+    command survived, and only because it contains no backslashes.
+
+    Non-POSIX mode keeps backslashes but also keeps the surrounding quotes as
+    part of the token, which would turn `--tools ""` into a literal `""`
+    argument instead of an empty string — so strip one matched pair.
+    """
+    if os.name != "nt":
+        return shlex.split(cmd)
+    out = []
+    for tok in shlex.split(cmd, posix=False):
+        if len(tok) >= 2 and tok[0] == tok[-1] and tok[0] in "\"'":
+            tok = tok[1:-1]
+        out.append(tok)
+    return out
+
+
 def _norm(path):
     """Slash-normalize and collapse ./.. so traversal can't dodge the rules."""
     return posixpath.normpath(path.replace("\\", "/"))
@@ -270,7 +295,7 @@ def _adjudicate(tool, detail, reasons):
     workdir = tempfile.mkdtemp(prefix="ccds-guard-adj-")
     try:
         proc = subprocess.run(
-            shlex.split(cmd), input=prompt, capture_output=True,
+            _split_cmd(cmd), input=prompt, capture_output=True,
             text=True, timeout=timeout, env=env, cwd=workdir)
     except (OSError, ValueError):
         return False, "adjudicator CLI could not be started (%s)" % cmd
