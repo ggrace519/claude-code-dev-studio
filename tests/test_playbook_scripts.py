@@ -1490,6 +1490,8 @@ class TestDebPostinst(unittest.TestCase):
         os.makedirs(self.home)
         self.stubbin = os.path.join(self.root, "stubbin")
         os.makedirs(self.stubbin)
+        self.claude_log = os.path.join(self.root, "claude-argv.log")
+        self._stub_claude()
 
     def _stub(self, name, body):
         path = os.path.join(self.stubbin, name)
@@ -1497,8 +1499,28 @@ class TestDebPostinst(unittest.TestCase):
             f.write("#!/bin/bash\n" + body + "\n")
         os.chmod(path, 0o755)
 
+    def _stub_claude(self, exit_code=0):
+        """Record every `claude` invocation instead of running the real CLI.
+
+        Load-bearing safety, not convenience: per-user setup shells out to
+        `claude plugin marketplace add/update` and `claude plugin install`.
+        `_run` keeps the real PATH appended (postinst needs getent/chmod/su),
+        so without this stub a test run would reach the developer's actual
+        `claude` and mutate their real marketplace registration."""
+        self._stub("claude", 'printf "%%s\\n" "$*" >> "%s"\nexit %d'
+                             % (self.claude_log, exit_code))
+
+    def claude_calls(self):
+        if not os.path.isfile(self.claude_log):
+            return []
+        return [l for l in read(self.claude_log).splitlines() if l.strip()]
+
     def _run(self, env_overrides):
-        env = {"HOME": self.home, "PATH": self.stubbin + os.pathsep + os.environ["PATH"]}
+        env = {"HOME": self.home, "PATH": self.stubbin + os.pathsep + os.environ["PATH"],
+               # Belt and braces with the PATH stub: the seam pins the command
+               # by absolute path, so no code path can reach a real `claude`.
+               "CCDS_CLAUDE_CMD": os.path.join(self.stubbin, "claude"),
+               "CCDS_MARKETPLACE_SOURCE": "test-owner/test-repo"}
         env.update(env_overrides)
         return subprocess.run([BASH, self.postinst],
                               capture_output=True, text=True, env=env)
@@ -1530,6 +1552,19 @@ class TestDebPostinst(unittest.TestCase):
         self.assertIn("# >>> ccds >>>", claude_md)
         self.assertIn("# <<< ccds <<<", claude_md)
 
+    def test_package_install_wires_the_enforcement_plugins(self):
+        """ADR-0016: the .deb/.rpm outlet used to install agents and skills and
+        then stop, leaving the user with no ccds-guard and no ccds-loops —
+        a product that looks complete and has no security layer."""
+        self._stub("runuser", 'shift 3\nexec "$@"')
+        r = self._run({"SUDO_USER": getpass.getuser()})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.claude_calls(), [
+            "plugin marketplace add test-owner/test-repo",
+            "plugin install ccds-guard@ccds --scope user",
+            "plugin install ccds-loops@ccds --scope user",
+        ], r.stdout + r.stderr)
+
     def test_headless_root_prints_instructions_and_no_op(self):
         # No identifiable user: SUDO_USER/PKEXEC_UID unset, logname fails.
         self._stub("logname", "exit 1")
@@ -1539,6 +1574,149 @@ class TestDebPostinst(unittest.TestCase):
         # The bug under test: nothing must be silently half-installed, but also
         # the install must not error out — ~/.claude stays untouched here.
         self.assertFalse(os.path.isdir(os.path.join(self.home, ".claude", "agents")))
+
+
+@unittest.skipUnless(BASH and sys.platform != "win32",
+                     "ccds-user-setup.sh is a bash script (POSIX shells only)")
+class TestUserSetupPlugins(unittest.TestCase):
+    """ADR-0016: the enforcement plugins install from per-user setup, the one
+    path EVERY outlet funnels through — not from the installers, where the
+    step used to live and which .deb/.rpm and `ccds setup` never run.
+
+    The `claude` CLI is pinned by absolute path via CCDS_CLAUDE_CMD and the
+    marketplace by CCDS_MARKETPLACE_SOURCE, so no test can reach a real CLI
+    or a real marketplace."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="ccds-setup-plugins-")
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.home = os.path.join(self.root, "home")
+        self.log = os.path.join(self.root, "calls.log")
+        os.makedirs(self.home)
+
+        # Minimal package layout: setup only needs agents/, skills/, jit-claude.
+        self.pkg = os.path.join(self.root, "pkg")
+        os.makedirs(os.path.join(self.pkg, "agents"))
+        os.makedirs(os.path.join(self.pkg, "scripts"))
+        for md in os.listdir(os.path.join(REPO_ROOT, ".claude", "agents")):
+            if md.endswith(".md"):
+                shutil.copy(os.path.join(REPO_ROOT, ".claude", "agents", md),
+                            os.path.join(self.pkg, "agents", md))
+        shutil.copytree(os.path.join(REPO_ROOT, "skills"),
+                        os.path.join(self.pkg, "skills"))
+        shutil.copy(os.path.join(SCRIPTS, "jit-claude.md"),
+                    os.path.join(self.pkg, "scripts", "jit-claude.md"))
+        self.claude = self.stub_claude()
+
+    def stub_claude(self, body='exit 0'):
+        """Records argv, then runs `body` (which may branch on "$*")."""
+        path = os.path.join(self.root, "claude-stub")
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
+            f.write('#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s"\n%s\n'
+                    % (self.log, body))
+        os.chmod(path, 0o755)
+        return path
+
+    def setup(self, *flags, claude=None):
+        env = {**os.environ, "HOME": self.home,
+               "CCDS_CLAUDE_CMD": self.claude if claude is None else claude,
+               "CCDS_MARKETPLACE_SOURCE": "test-owner/test-repo"}
+        return subprocess.run([BASH, USER_SETUP, self.pkg, *flags],
+                              capture_output=True, text=True, env=env)
+
+    def calls(self):
+        if not os.path.isfile(self.log):
+            return []
+        return [l for l in read(self.log).splitlines() if l.strip()]
+
+    def test_installs_both_plugins_from_the_shared_setup(self):
+        r = self.setup()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.calls(), [
+            "plugin marketplace add test-owner/test-repo",
+            "plugin install ccds-guard@ccds --scope user",
+            "plugin install ccds-loops@ccds --scope user",
+        ])
+        self.assertIn("Plugins     : installed", r.stdout)
+
+    def test_skip_plugins_suppresses_every_call(self):
+        r = self.setup("--skip-plugins")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.calls(), [])
+        # The rest of setup still ran.
+        self.assertTrue(os.path.isdir(os.path.join(self.home, ".claude", "agents")))
+
+    def test_dry_run_makes_no_calls_and_no_changes(self):
+        r = self.setup("--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.calls(), [])
+        self.assertIn("would run", r.stdout)
+        self.assertFalse(os.path.isdir(os.path.join(self.home, ".claude", "agents")))
+
+    def test_flags_work_in_either_order(self):
+        for flags in (("--dry-run", "--skip-plugins"),
+                      ("--skip-plugins", "--dry-run")):
+            with self.subTest(flags):
+                self.assertEqual(self.setup(*flags).returncode, 0)
+
+    def test_unknown_flag_is_an_error_not_a_silent_noop(self):
+        # The old positional parsing ignored anything that wasn't exactly
+        # "--dry-run" in $2 — a typo'd --dry-run made real changes.
+        r = self.setup("--drr-run")
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn("unknown argument", r.stderr)
+        self.assertFalse(os.path.isdir(os.path.join(self.home, ".claude", "agents")))
+
+    def test_missing_claude_cli_warns_but_setup_still_succeeds(self):
+        r = self.setup(claude=os.path.join(self.root, "nonexistent-claude"))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.calls(), [])
+        self.assertIn("no security guard", r.stderr)
+        # Best-effort contract: the rest of the playbook is still installed.
+        self.assertTrue(os.path.isdir(os.path.join(self.home, ".claude", "agents")))
+
+    def test_existing_marketplace_is_refreshed_not_assumed_current(self):
+        # A registration predating ccds-guard would not know that plugin
+        # exists, so an "already exists" failure must trigger an update.
+        self.claude = self.stub_claude(
+            'case "$*" in "plugin marketplace add"*) exit 1 ;; esac\nexit 0')
+        r = self.setup()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("plugin marketplace update ccds", self.calls())
+        self.assertIn("already registered", r.stdout)
+
+    def test_one_failing_plugin_reports_partial_and_still_tries_the_other(self):
+        self.claude = self.stub_claude(
+            'case "$*" in *ccds-guard*) exit 1 ;; esac\nexit 0')
+        r = self.setup()
+        self.assertEqual(r.returncode, 0, "a plugin failure must not fail setup")
+        self.assertIn("plugin install ccds-loops@ccds --scope user", self.calls())
+        self.assertIn("Plugins     : partial", r.stdout)
+        self.assertIn("claude plugin install ccds-guard@ccds", r.stderr)
+
+    def test_ccds_setup_dispatcher_reaches_the_plugin_step(self):
+        """`ccds setup` is the outlet a package user actually runs."""
+        # ccds.sh preflights the installed layout, so stage what it looks for
+        # (build-release.sh:59-74) — a thinner stage fails before setup runs.
+        os.makedirs(os.path.join(self.pkg, "bin"), exist_ok=True)
+        shutil.copy(USER_SETUP, os.path.join(self.pkg, "scripts",
+                                             "ccds-user-setup.sh"))
+        for src, dst in (("bin/ccds.sh", "bin/ccds.sh"),
+                         ("Sync-AgentPacks.sh", "scripts/Sync-AgentPacks.sh"),
+                         ("verify-agents.sh", "scripts/verify-agents.sh"),
+                         ("scripts/stage-gates.py", "scripts/stage-gates.py"),
+                         ("catalog.json", "catalog.json")):
+            shutil.copy(os.path.join(REPO_ROOT, src),
+                        os.path.join(self.pkg, dst))
+        with open(os.path.join(self.pkg, "version.txt"), "w") as f:
+            f.write("v0.0.0-test\n")
+        r = subprocess.run([BASH, os.path.join(self.pkg, "bin", "ccds.sh"), "setup"],
+                           capture_output=True, text=True,
+                           env={**os.environ, "HOME": self.home,
+                                "CCDS_CLAUDE_CMD": self.claude,
+                                "CCDS_MARKETPLACE_SOURCE": "test-owner/test-repo"})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("plugin install ccds-guard@ccds --scope user", self.calls())
 
 
 STAGE_GATES = os.path.join(REPO_ROOT, "scripts", "stage-gates.py")

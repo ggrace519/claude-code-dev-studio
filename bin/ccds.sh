@@ -93,8 +93,11 @@ COMMANDS
                        (skill cross-refs, catalog freshness, URL/description
                        conventions). Requires a repo clone (dev layout).
 
-  setup                Install the 19 agents + cross-cutting skills, inject CLAUDE.md block
+  setup                Install the 19 agents + cross-cutting skills, inject the
+                       CLAUDE.md block, and install the ccds-guard + ccds-loops
+                       enforcement plugins (ADR-0016)
       --dry-run             Preview without writing
+      --skip-plugins        Skip the enforcement-plugin install
 
   loop init            Scaffold the long-horizon loop state-file kit into ./.loop/
                        (feature_list.json, progress.md, PROMPT.md, init.sh — see the
@@ -139,6 +142,7 @@ DRY_RUN=0
 WRITE_ADR=0
 CLEAN=0
 NO_GATES=0
+SKIP_PLUGINS=0
 TARGET=""
 ROLLBACK=0
 INCLUDE_PRERELEASE=0
@@ -162,6 +166,7 @@ while (( $# > 0 )); do
         --write-adr)          WRITE_ADR=1; shift ;;
         --clean)              CLEAN=1; shift ;;
         --no-gates)           NO_GATES=1; shift ;;
+        --skip-plugins)       SKIP_PLUGINS=1; shift ;;
         --rollback)           ROLLBACK=1; shift ;;
         --include-prerelease) INCLUDE_PRERELEASE=1; shift ;;
         --target)
@@ -181,9 +186,10 @@ cmd_setup() {
         echo "ERROR: ccds-user-setup.sh not found at $SETUP_SCRIPT" >&2
         exit 2
     }
-    local dry=""
-    (( DRY_RUN )) && dry="--dry-run"
-    bash "$SETUP_SCRIPT" "$INSTALL_ROOT" $dry
+    local flags=()
+    (( DRY_RUN )) && flags+=(--dry-run)
+    (( SKIP_PLUGINS )) && flags+=(--skip-plugins)
+    bash "$SETUP_SCRIPT" "$INSTALL_ROOT" ${flags[@]+"${flags[@]}"}
 }
 
 cmd_sync() {

@@ -5,12 +5,19 @@
 #   1. Copies all 19 always-on agents to ~/.claude/agents/
 #   2. Copies the cross-cutting (global) skills to ~/.claude/skills/
 #   3. Injects / updates the ccds pointer block in ~/.claude/CLAUDE.md
+#   4. Installs the enforcement plugins (ccds-guard, ccds-loops)
 #
 # Called by:
 #   - install-playbook.sh  (after promoting the install tree)
 #   - ccds setup           (dispatcher, package installs and manual re-runs)
+#   - packaging/postinst   (deb/rpm, via ccds setup's script)
 #
-# Usage: ccds-user-setup.sh <install_root> [--dry-run]
+# Step 4 lives HERE, not in the installers, because this script is the one
+# thing every outlet funnels through (ADR-0016). It used to live only in
+# install-playbook.sh / Install-Playbook.ps1, so .deb/.rpm and `ccds setup`
+# users silently ran with no ccds-guard and no ccds-loops at all.
+#
+# Usage: ccds-user-setup.sh <install_root> [--dry-run] [--skip-plugins]
 #
 # <install_root> must contain:
 #   agents/<name>.md           for each always-on agent
@@ -22,11 +29,26 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Args
 # ---------------------------------------------------------------------------
-INSTALL_ROOT="${1:-}"
-DRY_RUN=0
-[[ "${2:-}" == "--dry-run" ]] && DRY_RUN=1
+usage() {
+    echo "usage: ccds-user-setup.sh <install_root> [--dry-run] [--skip-plugins]" >&2
+}
 
-[[ -n "$INSTALL_ROOT" ]] || { echo "ERROR: usage: ccds-user-setup.sh <install_root> [--dry-run]" >&2; exit 2; }
+INSTALL_ROOT="${1:-}"
+shift || true
+DRY_RUN=0
+SKIP_PLUGINS=0
+# Flags in any order. An unknown flag is an error, not a silent no-op: the old
+# positional form ([[ "$2" == --dry-run ]]) would have ignored a misspelled
+# --dry-run and made real changes.
+while (( $# )); do
+    case "$1" in
+        --dry-run)      DRY_RUN=1; shift ;;
+        --skip-plugins) SKIP_PLUGINS=1; shift ;;
+        *) echo "ERROR: unknown argument: $1" >&2; usage; exit 2 ;;
+    esac
+done
+
+[[ -n "$INSTALL_ROOT" ]] || { echo "ERROR: install_root is required" >&2; usage; exit 2; }
 [[ -d "$INSTALL_ROOT" ]] || { echo "ERROR: install_root does not exist: $INSTALL_ROOT" >&2; exit 2; }
 
 # ---------------------------------------------------------------------------
@@ -64,6 +86,15 @@ GLOBAL_SKILLS=(
     loop-long-horizon
     loop-compound
 )
+
+# ---------------------------------------------------------------------------
+# Enforcement plugins (ADR-0012): plugins are the ONLY hook-shipping mechanism.
+# Source is the GitHub repo, the same one the marketplace docs name — both are
+# overridable so tests never touch a real marketplace or a real CLI.
+# ---------------------------------------------------------------------------
+MARKETPLACE_SOURCE="${CCDS_MARKETPLACE_SOURCE:-ggrace519/claude-code-dev-studio}"
+CLAUDE_CMD="${CCDS_CLAUDE_CMD:-claude}"
+ENFORCEMENT_PLUGINS=(ccds-guard ccds-loops)
 
 # ---------------------------------------------------------------------------
 # Step 1 — Copy all always-on agents to ~/.claude/agents/
@@ -191,6 +222,60 @@ set_claude_playbook_block() {
 }
 
 # ---------------------------------------------------------------------------
+# Step 4 — Install the enforcement plugins (ccds-guard, ccds-loops)
+#
+# Best-effort by contract: a failure here warns with the exact manual commands
+# and never fails setup. Half a playbook beats a failed install — but a silent
+# half is what ADR-0016 exists to prevent, so every outcome is reported.
+# ---------------------------------------------------------------------------
+PLUGINS_STATUS="skipped (--skip-plugins)"
+
+install_plugins() {
+    if (( SKIP_PLUGINS )); then
+        log_info "Skipping enforcement plugins (--skip-plugins)"
+        return
+    fi
+    if (( DRY_RUN )); then
+        PLUGINS_STATUS="dry run"
+        log_info "DRY RUN -- would run:"
+        log_info "  $CLAUDE_CMD plugin marketplace add $MARKETPLACE_SOURCE"
+        for plugin in "${ENFORCEMENT_PLUGINS[@]}"; do
+            log_info "  $CLAUDE_CMD plugin install ${plugin}@ccds --scope user"
+        done
+        return
+    fi
+    if ! command -v "$CLAUDE_CMD" >/dev/null 2>&1; then
+        PLUGINS_STATUS="skipped (claude CLI not on PATH)"
+        log_warn "claude CLI not found -- skipping plugin install."
+        log_warn "Without these, this install has no security guard and no loop"
+        log_warn "enforcement. After installing Claude Code, run:"
+        log_warn "  claude plugin marketplace add $MARKETPLACE_SOURCE"
+        for plugin in "${ENFORCEMENT_PLUGINS[@]}"; do
+            log_warn "  claude plugin install ${plugin}@ccds --scope user"
+        done
+        return
+    fi
+    # `marketplace add` fails when the marketplace is already registered. That
+    # registration may predate a plugin (ccds-guard did not always exist), so
+    # refresh rather than assume the catalog knows about both.
+    if ! "$CLAUDE_CMD" plugin marketplace add "$MARKETPLACE_SOURCE" </dev/null >/dev/null 2>&1; then
+        log_info "marketplace 'ccds' already registered; refreshing catalog"
+        "$CLAUDE_CMD" plugin marketplace update ccds </dev/null >/dev/null 2>&1 \
+            || log_warn "could not refresh marketplace 'ccds'; plugin installs may see a stale catalog"
+    fi
+    PLUGINS_STATUS="installed (${ENFORCEMENT_PLUGINS[*]})"
+    for plugin in "${ENFORCEMENT_PLUGINS[@]}"; do
+        if "$CLAUDE_CMD" plugin install "${plugin}@ccds" --scope user </dev/null >/dev/null 2>&1; then
+            log_ok "${plugin} plugin installed (user scope)"
+        else
+            PLUGINS_STATUS="partial -- see warnings"
+            log_warn "Could not install ${plugin} automatically. Run:"
+            log_warn "  claude plugin install ${plugin}@ccds --scope user"
+        fi
+    done
+}
+
+# ---------------------------------------------------------------------------
 # Run
 # ---------------------------------------------------------------------------
 log_step "Installing always-on agents to $HOME/.claude/agents"
@@ -202,6 +287,9 @@ install_global_skills
 log_step "Updating ccds block in $HOME/.claude/CLAUDE.md"
 set_claude_playbook_block
 
+log_step "Installing enforcement plugins (${ENFORCEMENT_PLUGINS[*]})"
+install_plugins
+
 if (( DRY_RUN )); then
     printf '\n%sDRY RUN -- no changes made.%s\n' "$C_YELLOW" "$C_RESET"
 else
@@ -209,4 +297,5 @@ else
     printf 'Agents      : %s/.claude/agents/ (19 always-on)\n' "$HOME"
     printf 'Skills      : %s/.claude/skills/ (%d cross-cutting)\n' "$HOME" "${#GLOBAL_SKILLS[@]}"
     printf 'ccds block  : %s/.claude/CLAUDE.md\n' "$HOME"
+    printf 'Plugins     : %s\n' "$PLUGINS_STATUS"
 fi

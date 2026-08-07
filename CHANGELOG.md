@@ -5,6 +5,44 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **Every install outlet now installs the enforcement plugins (ADR-0016).**
+  What was wrong: `ccds-guard` (the whole Gate 1 security layer) and
+  `ccds-loops` (process enforcement) were only ever installed by the two
+  script installers. If you installed the `.deb`/`.rpm`, ran `ccds setup`, or
+  let `ccds sync` do its first-run setup, you got the 19 agents and the
+  cross-cutting skills and **neither hook layer** — no secret-file guard, no
+  dangerous-command blocks, no install ask-gate — with nothing in the output
+  saying so. The product looked complete and was not. ADR-0012 had already
+  decided every outlet should converge on the plugin install; only the
+  installers implemented it.
+
+  The step now lives in per-user setup, the one path every outlet runs, so
+  deb/rpm, `ccds setup`, `ccds sync`'s lazy first-run setup, and the
+  installers all share one implementation. Opt out with `--skip-plugins` /
+  `-SkipPlugins`. It stays best-effort and never fails an install: with no
+  `claude` CLI on `PATH` it warns, names what you are missing, and prints the
+  exact commands for later. Manual extraction of the release ZIP still wires
+  nothing — the ZIP carries no plugin tree; use an installer or the plugin
+  marketplace.
+
+### Changed
+
+- **PowerShell `ccds sync` now performs first-run per-user setup**, matching
+  bash. Previously a Windows user who only ever ran `ccds sync` never got
+  agents, skills, or the `CLAUDE.md` block installed at all unless they
+  thought to run `ccds setup` — and after the fix above, would have been the
+  one outlet still missing the plugins.
+- `ccds-user-setup.sh` accepts `--dry-run` and `--skip-plugins` in any order,
+  and now **rejects an unknown flag** instead of ignoring it. The old
+  positional parsing treated anything that wasn't exactly `--dry-run` in the
+  second slot as absent, so a typo'd `--dry-run` silently made real changes.
+
+---
+
 ## v0.15.0 — 2026-08-07 — Unattended loops stop stalling on the guard's ask-gates
 
 **Heads-up: this release raises the minimum Claude Code version to v2.1.169**

@@ -26,7 +26,11 @@ composable expertise any agent (or the main loop) pulls in place. Authoring rule
 thumb: isolated multi-step work → agent; reference/checklist others must reach → skill.
 
 A third layer, **hooks**, ships only via plugins (never via the installer writing user
-settings — ADR-0012): `ccds-loops` carries the process-enforcement hooks (ADR-0011) and
+settings — ADR-0012), and **every outlet installs them from per-user setup** —
+`scripts/ccds-user-setup.sh` step 4 and its `bin/ccds.ps1` twin, which the deb/rpm
+postinst, `ccds setup`, `ccds sync`'s first run, and the installers all funnel through
+(ADR-0016). Put outlet-wide install behavior there, never in an installer.
+`ccds-loops` carries the process-enforcement hooks (ADR-0011) and
 `ccds-guard` the zero-config security guard (secret-path denies, dangerous-command
 blocks, install ask-gate, config tamper watch; rules in `hooks/guard-rules.txt`, kill
 switch `CCDS_GUARD_DISABLE=1`; in unattended/auto-accept sessions ask-gates are decided

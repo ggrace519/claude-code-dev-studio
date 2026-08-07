@@ -118,8 +118,11 @@ COMMANDS
                        Exit 0 = healthy (WARNs allowed), 1 = failures found.
 
   setup                Install the always-on agents + cross-cutting skills into
-                       %USERPROFILE%\.claude\, inject the CLAUDE.md block
+                       %USERPROFILE%\.claude\, inject the CLAUDE.md block, and
+                       install the ccds-guard + ccds-loops enforcement plugins
+                       (ADR-0016)
       --dry-run             Preview without writing
+      --skip-plugins        Skip the enforcement-plugin install
 
   lint                 Lint the playbook library's semantic invariants
                        (skill cross-refs, catalog freshness, URL/description
@@ -173,6 +176,7 @@ function ConvertTo-Hashtable {
         WriteAdr          = $false
         Clean             = $false
         NoGates           = $false
+        SkipPlugins       = $false
         Target            = $null
         Rollback          = $false
         IncludePrerelease = $false
@@ -186,6 +190,7 @@ function ConvertTo-Hashtable {
             '^--write-adr$'           { $result.WriteAdr = $true; $i++; continue }
             '^--clean$'               { $result.Clean = $true; $i++; continue }
             '^--no-gates$'            { $result.NoGates = $true; $i++; continue }
+            '^--skip-plugins$'        { $result.SkipPlugins = $true; $i++; continue }
             '^--rollback$'            { $result.Rollback = $true; $i++; continue }
             '^--include-prerelease$'  { $result.IncludePrerelease = $true; $i++; continue }
             '^--target$' {
@@ -211,8 +216,32 @@ function ConvertTo-Hashtable {
 # ---------------------------------------------------------------------------
 # Command: sync
 # ---------------------------------------------------------------------------
+# Twin of bin/ccds.sh needs_user_setup / run_user_setup_if_needed. Without
+# this, a Windows user who only ever ran `ccds sync` never got per-user setup
+# at all -- and after ADR-0016 that also means never got the enforcement
+# plugins, while the bash user did. Same outlet, same result.
+function Test-NeedsUserSetup {
+    $claudeHome = Join-Path $env:USERPROFILE '.claude'
+    if (-not (Test-Path -LiteralPath (Join-Path $claudeHome 'agents\plan-architect.md'))) { return $true }
+    $claudeMd = Join-Path $claudeHome 'CLAUDE.md'
+    if (-not (Test-Path -LiteralPath $claudeMd)) { return $true }
+    if (-not (Select-String -LiteralPath $claudeMd -SimpleMatch '# >>> ccds >>>' -Quiet)) { return $true }
+    return $false
+}
+
+function Invoke-UserSetupIfNeeded {
+    param([hashtable]$Opts)
+    if (Test-NeedsUserSetup) {
+        Write-Host "==> First run: performing per-user setup..." -ForegroundColor Cyan
+        Invoke-SetupCommand -Opts $Opts
+        Write-Host ""
+    }
+}
+
 function Invoke-SyncCommand {
     param([hashtable]$Opts)
+
+    Invoke-UserSetupIfNeeded -Opts $Opts
 
     $target = if ($Opts.Target) { $Opts.Target } else { (Get-Location).Path }
 
@@ -388,10 +417,9 @@ function Invoke-SetupCommand {
     if (-not (Test-Path -LiteralPath $jitSrc)) {
         Write-Host "!!  jit-claude.md not found at $jitSrc -- skipping CLAUDE.md injection" -ForegroundColor Yellow
     } elseif ($Opts.DryRun) {
+        # No early return: Step 4 must still report what it *would* do, and the
+        # single "DRY RUN -- no changes made." line is printed at the end.
         Write-Host "    DRY RUN -- would inject/update ccds block in $claudeMd"
-        Write-Host ""
-        Write-Host "DRY RUN -- no changes made." -ForegroundColor Yellow
-        return
     } else {
         if (-not (Test-Path -LiteralPath $claudeHome)) {
             New-Item -ItemType Directory -Path $claudeHome -Force | Out-Null
@@ -422,12 +450,64 @@ function Invoke-SetupCommand {
         Write-Host "OK  Refreshed ccds block in $claudeMd" -ForegroundColor Green
     }
 
+    # Step 4 -- enforcement plugins (ADR-0016). Twin of ccds-user-setup.sh
+    # install_plugins: plugins are the only hook-shipping mechanism, so every
+    # outlet installs them. Best-effort; never fails setup.
+    $pluginStatus = 'skipped (-SkipPlugins)'
+    if (-not $Opts.SkipPlugins) {
+        $marketplace = if ($env:CCDS_MARKETPLACE_SOURCE) { $env:CCDS_MARKETPLACE_SOURCE }
+                       else { 'ggrace519/claude-code-dev-studio' }
+        $claudeCmd   = if ($env:CCDS_CLAUDE_CMD) { $env:CCDS_CLAUDE_CMD } else { 'claude' }
+        $plugins     = @('ccds-guard', 'ccds-loops')
+        Write-Host "==> Installing enforcement plugins ($($plugins -join ', '))" -ForegroundColor Cyan
+        if ($Opts.DryRun) {
+            $pluginStatus = 'dry run'
+            Write-Host "    DRY RUN -- would run:"
+            Write-Host "      $claudeCmd plugin marketplace add $marketplace"
+            foreach ($p in $plugins) {
+                Write-Host "      $claudeCmd plugin install $p@ccds --scope user"
+            }
+        } elseif (-not (Get-Command $claudeCmd -ErrorAction SilentlyContinue)) {
+            $pluginStatus = 'skipped (claude CLI not on PATH)'
+            Write-Host "!!  claude CLI not found -- skipping plugin install." -ForegroundColor Yellow
+            Write-Host "!!  Without these, this install has no security guard and no loop" -ForegroundColor Yellow
+            Write-Host "!!  enforcement. After installing Claude Code, run:" -ForegroundColor Yellow
+            Write-Host "!!    claude plugin marketplace add $marketplace" -ForegroundColor Yellow
+            foreach ($p in $plugins) {
+                Write-Host "!!    claude plugin install $p@ccds --scope user" -ForegroundColor Yellow
+            }
+        } else {
+            # `marketplace add` fails when already registered, and that
+            # registration may predate a plugin -- refresh instead of assuming.
+            & $claudeCmd plugin marketplace add $marketplace 2>$null | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "    marketplace 'ccds' already registered; refreshing catalog"
+                & $claudeCmd plugin marketplace update ccds 2>$null | Out-Null
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Host "!!  could not refresh marketplace 'ccds'; plugin installs may see a stale catalog" -ForegroundColor Yellow
+                }
+            }
+            $pluginStatus = "installed ($($plugins -join ', '))"
+            foreach ($p in $plugins) {
+                & $claudeCmd plugin install "$p@ccds" --scope user 2>$null | Out-Null
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "OK  $p plugin installed (user scope)" -ForegroundColor Green
+                } else {
+                    $pluginStatus = 'partial -- see warnings'
+                    Write-Host "!!  Could not install $p automatically. Run:" -ForegroundColor Yellow
+                    Write-Host "!!    claude plugin install $p@ccds --scope user" -ForegroundColor Yellow
+                }
+            }
+        }
+    }
+
     if ($Opts.DryRun) {
         Write-Host ""
         Write-Host "DRY RUN -- no changes made." -ForegroundColor Yellow
     } else {
         Write-Host ""
         Write-Host "User setup complete." -ForegroundColor Green
+        Write-Host "Plugins     : $pluginStatus"
     }
 }
 

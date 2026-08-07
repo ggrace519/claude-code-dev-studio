@@ -1403,3 +1403,106 @@ prompt:
 ### Supersedes
 None. Amends the ADR-0012 charter's ask-tier behavior for unattended
 sessions.
+
+---
+
+## ADR-0016: Enforcement Plugins Install From Per-User Setup, Not the Installers
+
+**Date:** 2026-08-07
+**Status:** Accepted
+**Phase:** Architecture
+**Deciders:** Greg Grace
+
+### Context
+
+ADR-0012 decided that plugins are the only hook-shipping mechanism and that
+every outlet converges on it: "the classic installer … registers the repo as a
+marketplace and runs `claude plugin install ccds-guard@ccds` (and
+`ccds-loops@ccds`) by default, with a `--skip-plugins` flag to opt out."
+
+Only the two *script* installers ever implemented it. Traced outlet by outlet
+against the shipped v0.15.0 tree:
+
+| Outlet | Plugins wired? |
+|---|---|
+| `install-playbook.sh` / `Install-Playbook.ps1` | yes |
+| `ccds update` (re-invokes the installer) | yes |
+| `/plugin marketplace add` (documented "recommended" path) | yes — plugins *are* the artifact |
+| **`.deb` / `.rpm`** → `packaging/postinst` → `ccds-user-setup.sh` | **no** |
+| **`ccds setup`** (bash and PowerShell) | **no** |
+| **`ccds sync` first-run lazy setup** (bash) | **no** |
+| **Manual ZIP extraction** | **no** — and the ZIP contains no `plugins/` at all |
+
+A `.deb` user therefore got the 19 agents and the cross-cutting skills and
+**no `ccds-guard` and no `ccds-loops`** — the entire Gate 1 security layer and
+the process-enforcement layer, absent, with nothing in the output saying so.
+The product looked complete and was not.
+
+Root cause is placement, not logic: the step lived in the outermost layer
+(the installers) instead of the innermost one every outlet shares.
+
+### Decision
+
+1. **Per-user setup owns the plugin step.** `scripts/ccds-user-setup.sh` gains
+   Step 4 (`install_plugins`) and its own `Plugins :` status line; the bash
+   installer deletes its copy and forwards `--skip-plugins`. Every outlet that
+   runs per-user setup — deb/rpm postinst, `ccds setup`, `ccds sync`'s lazy
+   first-run setup, and the installer itself — now converges on one
+   implementation. Flags parse in any order and an **unknown flag is an error**
+   (the old positional `[[ "$2" == --dry-run ]]` silently ignored a typo and
+   made real changes).
+2. **Source and CLI are seams.** `CCDS_MARKETPLACE_SOURCE` (default
+   `ggrace519/claude-code-dev-studio`) and `CCDS_CLAUDE_CMD` (default `claude`)
+   follow the data-not-logic pattern of the guard's rule table. They exist so
+   tests can never reach a real marketplace or a real CLI — see Consequences.
+3. **`bin/ccds.ps1` gains the twin**, plus `Test-NeedsUserSetup` /
+   `Invoke-UserSetupIfNeeded` so PowerShell `ccds sync` performs first-run
+   setup like its bash counterpart. Without that, fixing `ccds setup` would
+   have left a *new* asymmetry: a Windows user who only ever runs `ccds sync`
+   would still get nothing.
+4. **`Install-Playbook.ps1` keeps its own copy.** It is a curl-piped
+   standalone script that cannot depend on an installed `ccds-user-setup.sh`
+   or `bin/ccds.ps1`. Named duplication, not an oversight.
+
+### Rationale
+
+- The fix belongs at the narrowest waist every outlet passes through. Adding
+  the step to each outlet instead would have re-created the same bug the next
+  time an outlet is added.
+- Best-effort, never fatal: a missing `claude` CLI warns, **names what is
+  missing** ("no security guard and no loop enforcement"), prints the exact
+  commands, and setup still succeeds. A security layer that fails an install
+  gets uninstalled; one that explains itself gets fixed.
+- GitHub stays the marketplace source (Greg's call), matching what the
+  installers and the README already do. Bundling `plugins/` into the packages
+  would make offline installs work and lock plugin versions to the package —
+  rejected for now as a second mechanism to maintain.
+
+### Consequences
+
+- deb/rpm and `ccds setup` users gain both hook layers. This is new
+  user-visible behavior on those outlets, hence a minor release, not a patch.
+- **Test hazard, fixed first in its own commit:** `TestDebPostinst._run`
+  appends the real `PATH` (postinst needs `getent`/`chmod`/`su`), so once
+  setup shelled out to `claude`, a plain `pytest` run would have hit the
+  developer's real CLI and mutated their actual marketplace registration —
+  `marketplace add`, then `update` on the already-exists path. The harness now
+  stubs `claude`, records argv for assertions, and pins `CCDS_CLAUDE_CMD` by
+  absolute path.
+- Still not covered, and stated rather than hidden: **manual ZIP extraction**
+  with no installer run wires nothing, because the ZIP ships no `plugins/`
+  tree and no `.claude-plugin/marketplace.json`. The README documents the
+  installer and the marketplace as the supported paths.
+- `install-playbook.sh` and `Install-Playbook.ps1` have **no test coverage at
+  all** (confirmed while tracing this). Deleting the bash installer's block
+  was verified by hand — `bash -n`, `--help`, and a real `--dry-run` run —
+  not by the suite. Test coverage for the installers is the standing gap this
+  ADR did not close.
+- Deferred follow-up, joining ADR-0015's `ccds doctor` CLI-version check: a
+  **doctor check that the two plugins are actually installed**. It is the
+  backstop that would have caught this entire class of bug, and it is a new
+  check in both dispatchers — its own PR.
+
+### Supersedes
+None. Completes ADR-0012's distribution decision, which was only
+half-implemented.

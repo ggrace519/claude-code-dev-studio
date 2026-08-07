@@ -112,7 +112,9 @@ staging via `ccds sync`.
 
 ## Install
 
-The installer downloads a GitHub Release ZIP, verifies its SHA256 against the sidecar, stages to `<prefix>.new`, snapshots the existing install to `<prefix>.previous`, and atomically promotes. It copies the 19 agents to `~/.claude/agents/`, the cross-cutting skills to `~/.claude/skills/`, injects the ccds block into `~/.claude/CLAUDE.md`, and updates `PATH` so `ccds` resolves in new shells. It also registers the ccds marketplace and installs the `ccds-guard` + `ccds-loops` enforcement plugins via the `claude` CLI (plugins are the only hook-shipping mechanism, ADR-0012) — skip with `--skip-plugins` / `-SkipPlugins`.
+The installer downloads a GitHub Release ZIP, verifies its SHA256 against the sidecar, stages to `<prefix>.new`, snapshots the existing install to `<prefix>.previous`, and atomically promotes. It copies the 19 agents to `~/.claude/agents/`, the cross-cutting skills to `~/.claude/skills/`, injects the ccds block into `~/.claude/CLAUDE.md`, and updates `PATH` so `ccds` resolves in new shells.
+
+**Every outlet installs the enforcement plugins** (ADR-0016). Per-user setup — which the script installers, the `.deb`/`.rpm` packages, and `ccds setup` all run — registers the ccds marketplace and installs `ccds-guard` + `ccds-loops` via the `claude` CLI, because plugins are the only hook-shipping mechanism (ADR-0012). Opt out with `--skip-plugins` / `-SkipPlugins`. It is best-effort and never fails the install: if the `claude` CLI is not on `PATH`, setup warns — naming what you are missing — and prints the exact commands to run later. Requires Claude Code on `PATH` and network access to reach the marketplace.
 
 **Windows (PowerShell 5.1 or 7+):**
 
@@ -141,7 +143,7 @@ sudo apt install ./ccds_<version>_all.deb     # Debian/Ubuntu
 sudo dnf install ./ccds-<version>-1.noarch.rpm # RHEL/Fedora
 ```
 
-The package installs the shared library to `/usr/share/ccds` and the `ccds` launcher to `/usr/bin/ccds`. Because the agents/skills/`CLAUDE.md` block are **per-user** (they live under `~/.claude/`), per-user setup runs for the installing user automatically when the package can identify them (`sudo`, polkit/GUI installers, or a login terminal).
+The package installs the shared library to `/usr/share/ccds` and the `ccds` launcher to `/usr/bin/ccds`. Because the agents/skills/`CLAUDE.md` block and the plugins are **per-user** (they live under `~/.claude/`), per-user setup — including the enforcement-plugin install above — runs for the installing user automatically when the package can identify them (`sudo`, polkit/GUI installers, or a login terminal). Other users on the box run `ccds setup` once.
 
 If you install from a bare root shell or a headless/CI/Docker context, the package cannot tell which user to set up — run setup yourself once per user:
 
