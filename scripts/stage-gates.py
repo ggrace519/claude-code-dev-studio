@@ -224,7 +224,15 @@ def stage_claude_block(target, templates, dry, edits):
     if not os.path.isfile(block_path):
         log("standards: template missing; skipped")
         return
-    block = read_text(block_path).rstrip("\n")
+    # Normalize the template's newlines before comparing. `existing` is
+    # LF-normalized below, so a CRLF template made new_content != existing
+    # forever: every `ccds sync` rewrote CLAUDE.md and dropped another
+    # timestamped backup. Windows checkouts produce exactly that — .gitattributes
+    # marks *.md `text`, and Git converts those to core.eol (native = CRLF on
+    # Windows) regardless of core.autocrlf. Caught by running the suite on
+    # Windows (ADR-0018); reproduced on Linux by CRLF-ing the template.
+    # The file is still WRITTEN in its own existing convention, below.
+    block = read_text(block_path).replace("\r\n", "\n").rstrip("\n")
     path = os.path.join(target, "CLAUDE.md")
     existing = read_text(path) if os.path.isfile(path) else ""
     kept = strip_standards_block(existing.replace("\r\n", "\n"))

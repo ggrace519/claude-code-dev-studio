@@ -28,6 +28,7 @@ Model-agnostic, secrets via env only, stack-agnostic when the DSN is unset.
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -73,8 +74,27 @@ def _mirror_to_postgres(record):
     dsn = os.environ.get("CCDS_EVIDENCE_DSN", "").strip()
     if not dsn:
         return None
-    if not shutil.which("psql"):
-        return "durable tier: psql not on PATH; skipped Postgres mirror"
+    # CCDS_EVIDENCE_PSQL overrides how psql is invoked — a full command line,
+    # not just a path, so a wrapper or an interpreter works. Real need: psql is
+    # often not on PATH under that exact name (versioned installs, Windows
+    # installs under Program Files). Also the test seam, same data-not-logic
+    # pattern as CCDS_GUARD_ADJUDICATOR_CMD.
+    #
+    # Resolve once and invoke the resolved path. A bare "psql" handed to
+    # subprocess on Windows goes through CreateProcess, which finds only .exe —
+    # a psql shipped as .cmd/.bat is found by which() and then fails to start.
+    override = os.environ.get("CCDS_EVIDENCE_PSQL", "").strip()
+    if override:
+        # posix=False keeps Windows backslashes intact; strip one quote pair so
+        # a quoted path does not arrive with its quotes attached.
+        parts = shlex.split(override, posix=(os.name != "nt"))
+        psql_cmd = [p[1:-1] if len(p) >= 2 and p[0] == p[-1] and p[0] in "\"'"
+                    else p for p in parts]
+    else:
+        resolved = shutil.which("psql")
+        if not resolved:
+            return "durable tier: psql not on PATH; skipped Postgres mirror"
+        psql_cmd = [resolved]
     try:
         with open(DDL_FILE, encoding="utf-8") as f:
             ddl = f.read()
@@ -83,7 +103,7 @@ def _mirror_to_postgres(record):
     ev_json = json.dumps(record, separators=(",", ":"))
     try:
         r = subprocess.run(
-            ["psql", dsn, "-v", "ON_ERROR_STOP=1", "-q",
+            psql_cmd + [dsn, "-v", "ON_ERROR_STOP=1", "-q",
              "--set", "ev=" + ev_json, "-c", ddl + "\n" + INSERT_SQL],
             capture_output=True, text=True, timeout=15)
     except (OSError, subprocess.SubprocessError) as e:

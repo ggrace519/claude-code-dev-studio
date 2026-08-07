@@ -134,6 +134,28 @@ $ErrorActionPreference = 'Stop'
 $Script:Owner = 'ggrace519'
 $Script:Repo  = 'claude-code-dev-studio'
 
+# Data-not-logic seams, matching scripts/ccds-user-setup.sh and bin/ccds.ps1.
+# This script inlines its per-user work instead of delegating, so until now it
+# was the one component with its externals hardcoded — no way to point it at a
+# different marketplace, and no way to exercise it without mutating the
+# operator's real plugin state and real PowerShell profile.
+#   CCDS_MARKETPLACE_SOURCE  owner/repo the plugins install from
+#   CCDS_CLAUDE_CMD          the claude executable to invoke
+#   CCDS_PS_PROFILE          profile file the completion block is written to.
+#                            $PROFILE.CurrentUserAllHosts is NOT derived from
+#                            $env:USERPROFILE — it resolves from the Documents
+#                            known folder, often OneDrive-redirected — so
+#                            sandboxing USERPROFILE alone does not contain it.
+$Script:MarketplaceSource = if ($env:CCDS_MARKETPLACE_SOURCE) {
+    $env:CCDS_MARKETPLACE_SOURCE
+} else { "$Script:Owner/$Script:Repo" }
+$Script:ClaudeCmd = if ($env:CCDS_CLAUDE_CMD) { $env:CCDS_CLAUDE_CMD } else { 'claude' }
+
+function Get-CcdsProfilePath {
+    if ($env:CCDS_PS_PROFILE) { return $env:CCDS_PS_PROFILE }
+    return $PROFILE.CurrentUserAllHosts
+}
+
 # Cross-cutting (global) skills installed once to ~/.claude/skills/ (ADR-0007).
 # Must match scripts/ccds-user-setup.sh GLOBAL_SKILLS and catalog scope=global.
 $Script:GlobalSkills = @(
@@ -472,7 +494,7 @@ function Install-Completions {
 
     $ccdsCmpl   = Join-Path $Prefix 'scripts\ccds-completion.ps1'
     $claudeCmpl = Join-Path $Prefix 'scripts\claude-completion.ps1'
-    $profilePath = $PROFILE.CurrentUserAllHosts
+    $profilePath = Get-CcdsProfilePath
     $marker      = '# >>> ccds-completion >>>'
     $endMarker   = '# <<< ccds-completion <<<'
 
@@ -519,7 +541,7 @@ $endMarker
 function Remove-CompletionBlock {
     param([switch]$DryRun)
 
-    $profilePath = $PROFILE.CurrentUserAllHosts
+    $profilePath = Get-CcdsProfilePath
     if (-not (Test-Path -LiteralPath $profilePath)) { return }
 
     $existing = [System.IO.File]::ReadAllText($profilePath, [System.Text.Encoding]::UTF8)
@@ -791,12 +813,12 @@ try {
     $pluginsStatus = 'skipped (-SkipPlugins)'
     if (-not $SkipPlugins) {
         Write-Step "Installing enforcement plugins (ccds-guard, ccds-loops)"
-        $claudeCmd = Get-Command claude -ErrorAction SilentlyContinue
+        $claudeCmd = Get-Command $Script:ClaudeCmd -ErrorAction SilentlyContinue
         if (-not $claudeCmd) {
             $pluginsStatus = 'skipped (claude CLI not on PATH)'
             Write-WarnMsg "claude CLI not found -- skipping plugin install."
             Write-WarnMsg "After installing Claude Code, run:"
-            Write-WarnMsg "  claude plugin marketplace add $Script:Owner/$Script:Repo"
+            Write-WarnMsg "  claude plugin marketplace add $Script:MarketplaceSource"
             Write-WarnMsg "  claude plugin install ccds-guard@ccds --scope user"
             Write-WarnMsg "  claude plugin install ccds-loops@ccds --scope user"
         } else {
@@ -805,19 +827,19 @@ try {
             $prevEap = $ErrorActionPreference
             $ErrorActionPreference = 'Continue'
             try {
-                & claude plugin marketplace add "$Script:Owner/$Script:Repo" 2>$null | Out-Null
+                & $Script:ClaudeCmd plugin marketplace add "$Script:MarketplaceSource" 2>$null | Out-Null
                 if ($LASTEXITCODE -ne 0) {
                     # Stale pre-guard registration would not know ccds-guard
                     # exists — refresh the catalog (round-2 review finding).
                     Write-Info "marketplace 'ccds' already registered; refreshing catalog"
-                    & claude plugin marketplace update ccds 2>$null | Out-Null
+                    & $Script:ClaudeCmd plugin marketplace update ccds 2>$null | Out-Null
                     if ($LASTEXITCODE -ne 0) {
                         Write-WarnMsg "could not refresh marketplace 'ccds'; plugin installs may see a stale catalog"
                     }
                 }
                 $pluginsStatus = 'installed (ccds-guard, ccds-loops)'
                 foreach ($plugin in @('ccds-guard', 'ccds-loops')) {
-                    & claude plugin install "$plugin@ccds" --scope user 2>$null | Out-Null
+                    & $Script:ClaudeCmd plugin install "$plugin@ccds" --scope user 2>$null | Out-Null
                     if ($LASTEXITCODE -eq 0) {
                         Write-OkMsg "$plugin plugin installed (user scope)"
                     } else {

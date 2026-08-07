@@ -72,6 +72,30 @@ jobs:
       - name: Run unittest suite
         run: python3 -m unittest discover -s tests -v
 
+  python-tests-windows:
+    name: Script tests (Windows)
+    runs-on: windows-latest
+    steps:
+      # Check out LF, matching what the generators emit — several tests compare
+      # generated output against checked-in files. core.autocrlf alone is NOT
+      # enough: .gitattributes marks *.md/*.json `text`, and Git converts those
+      # to core.eol (native = CRLF on Windows) whatever autocrlf says.
+      - name: Check out with LF line endings
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # Same suite as the Linux job. The product runs on both platforms, so it
+      # is tested on both: each platform runs what applies and skips what does
+      # not (bash/deb classes carry sys.platform guards; the PowerShell
+      # installer class is Windows-only for the same reason).
+      - name: Run unittest suite
+        shell: pwsh
+        run: python -m unittest discover -s tests -v
+
   verify-agents-windows:
     name: Verify agents (Windows)
     runs-on: windows-latest
