@@ -5,6 +5,29 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **ccds-guard: unattended sessions never stall on ask-gates (ADR-0015).**
+  What was wrong: a hook `ask` forces a permission prompt even in
+  bypassPermissions mode, so in unattended loop sessions every ask-gate hit
+  (named package install, secret-shaped path in a Bash command, config-tamper
+  write) hung the session waiting for a human who wasn't there. Now, in any
+  auto-accept permission mode (or with `CCDS_GUARD_UNATTENDED=1`), a
+  fresh-context LLM adjudicator decides instead: an explicit ALLOW lets the
+  call proceed (logged to the transcript), and anything else — DENY verdict,
+  garbage output, timeout, missing CLI — becomes a teaching deny the model
+  can route around, so the loop keeps moving. Adjudicator command and timeout
+  are tunable (`CCDS_GUARD_ADJUDICATOR_CMD`, `CCDS_GUARD_ADJUDICATOR_TIMEOUT`;
+  default headless `claude -p --model haiku` with tools disabled, neutral
+  cwd so it judges the flagged input on its face). Deny-tier rules are never
+  adjudicated; attended sessions are byte-identical. Live-verified: real
+  package ALLOW ~9s, typo-squat / settings-tamper / injection-in-command all
+  DENY.
+
+---
+
 ## v0.14.0 — 2026-08-05 — Gate 5: AI-review principles complete the pipeline
 
 The final layer of the five-gate quality/security pipeline: the review skills
