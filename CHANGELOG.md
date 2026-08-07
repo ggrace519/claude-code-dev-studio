@@ -17,6 +17,14 @@ New sessions should read this file first to get up to speed before doing anythin
   unattended ask-gate hit denied. Only the default command worked, and only
   because it contains no backslashes. Found by running the test suite on
   Windows for the first time.
+- **`ccds sync` rewrote your `CLAUDE.md` on every run, on Windows.** The
+  standards gate compared the template against the existing file with only one
+  side newline-normalized, so a CRLF template never matched: every run
+  "updated" the block and left another timestamped `CLAUDE.md.ccds-backup-*`
+  behind. Windows checkouts produce exactly that template — `.gitattributes`
+  marks `*.md` as `text`, and Git converts those to `core.eol` (native = CRLF
+  on Windows) whatever `core.autocrlf` says. Your file is still written in
+  whichever convention it already used.
 - **The evidence-log hook could not find a non-`.exe` psql on Windows.** It
   invoked a bare `psql`, and `CreateProcess` resolves only `.exe` — a psql
   shipped as `.cmd`/`.bat` was found by the PATH check and then failed to

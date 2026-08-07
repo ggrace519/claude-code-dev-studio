@@ -76,11 +76,14 @@ jobs:
     name: Script tests (Windows)
     runs-on: windows-latest
     steps:
-      # The generators write LF and the suite compares their output against
-      # checked-in files; autocrlf would rewrite *.md/*.json on checkout and
-      # report false drift.
-      - name: Disable autocrlf
-        run: git config --global core.autocrlf false
+      # Check out LF, matching what the generators emit — several tests compare
+      # generated output against checked-in files. core.autocrlf alone is NOT
+      # enough: .gitattributes marks *.md/*.json `text`, and Git converts those
+      # to core.eol (native = CRLF on Windows) whatever autocrlf says.
+      - name: Check out with LF line endings
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
 
       - name: Checkout
         uses: actions/checkout@v5

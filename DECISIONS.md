@@ -1682,10 +1682,12 @@ needed to be guessed at through CI.
    into the operator's real profile on every test run. Every test also passes
    `-NoPath`: the PATH write goes to the real User-scope registry.
 
-### Two product bugs this found immediately
+### Three product bugs this found immediately
 
-Both were invisible while the suite was Linux-only, and both are Windows-only
-failures in shipped code:
+All were invisible while the suite was Linux-only, and all are Windows-only
+failures in shipped code. The third surfaced only in CI, on a runner whose
+checkout differs from this machine's — which is the argument for the job
+existing rather than trusting one developer's box:
 
 - **`ccds-guard` could never adjudicate on Windows.** `shlex.split` defaults to
   POSIX mode, where backslash is an escape character, so any
@@ -1701,6 +1703,17 @@ failures in shipped code:
   found by `which()` and then failed to start. Now it invokes the resolved
   path, and honors a `CCDS_EVIDENCE_PSQL` override — a real need (versioned
   installs, Program Files) as well as the test seam.
+- **`ccds sync` rewrote `CLAUDE.md` on every run for Windows users.**
+  `stage_claude_block` LF-normalized the existing file but not the template it
+  compared against, so a CRLF `templates/claude-standards.md` never matched:
+  each run "updated" the block and dropped another timestamped backup — the
+  backup churn its own test exists to prevent. Windows checkouts produce
+  exactly that template, because `.gitattributes` marks `*.md` as `text` and
+  Git converts those to `core.eol` (native = CRLF on Windows) **regardless of
+  `core.autocrlf`** — which is also why the Windows CI job sets `core.eol lf`
+  and not just `core.autocrlf false`. Reproduced on Linux by CRLF-ing the
+  template, fixed by normalizing the template side; the file is still written
+  in whatever convention it already had.
 
 ### Consequences
 
