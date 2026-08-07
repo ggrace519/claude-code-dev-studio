@@ -5,7 +5,14 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
-## [Unreleased]
+## v0.17.0 — 2026-08-07 — Making the silent failures loud
+
+Three bugs shipped this week and every one had the same character: a safety
+mechanism stopped working and nothing told you. This release is the response —
+`ccds doctor` now detects both conditions that went undetected, and the
+primary install path finally has tests. Run `ccds doctor` after updating; a
+`plugins-installed` FAIL means the install has no security layer, and the
+remedy line names the fix.
 
 ### Infrastructure
 
