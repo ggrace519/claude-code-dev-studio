@@ -554,50 +554,18 @@ if [[ -f "$PREFIX/version.txt" ]]; then
     INSTALLED_VERSION="$(tr -d '[:space:]' < "$PREFIX/version.txt")"
 fi
 
-# Per-user setup: generalist agents + CLAUDE.md JIT block
-dry_flag=""
-(( DRY_RUN )) && dry_flag="--dry-run"
-bash "$PREFIX/scripts/ccds-user-setup.sh" "$PREFIX" $dry_flag
+# Per-user setup: generalist agents + CLAUDE.md JIT block + enforcement plugins.
+# The plugin step lives in ccds-user-setup.sh, not here (ADR-0016) — it is the
+# one path every outlet shares, so deb/rpm and `ccds setup` get it too.
+setup_flags=()
+(( DRY_RUN )) && setup_flags+=(--dry-run)
+(( SKIP_PLUGINS )) && setup_flags+=(--skip-plugins)
+# ${a[@]+"${a[@]}"} — an empty array under `set -u` is an unbound-variable
+# error before bash 4.4, and README claims bash 4+.
+bash "$PREFIX/scripts/ccds-user-setup.sh" "$PREFIX" ${setup_flags[@]+"${setup_flags[@]}"}
 
 if (( NO_PATH == 0 )); then
     add_to_path_rc "$PREFIX/bin"
-fi
-
-# ---------------------------------------------------------------------------
-# Enforcement plugins (ADR-0012): plugins are the ONLY hook-shipping mechanism,
-# so every outlet installs them by default. Best-effort — a failure here warns
-# with the exact manual commands and never fails the main install.
-# ---------------------------------------------------------------------------
-PLUGINS_STATUS="skipped (--skip-plugins)"
-if (( SKIP_PLUGINS == 0 )); then
-    log_step "Installing enforcement plugins (ccds-guard, ccds-loops)"
-    if ! command -v claude >/dev/null 2>&1; then
-        PLUGINS_STATUS="skipped (claude CLI not on PATH)"
-        log_warn "claude CLI not found -- skipping plugin install."
-        log_warn "After installing Claude Code, run:"
-        log_warn "  claude plugin marketplace add ${OWNER}/${REPO}"
-        log_warn "  claude plugin install ccds-guard@ccds --scope user"
-        log_warn "  claude plugin install ccds-loops@ccds --scope user"
-    else
-        # Marketplace add is idempotent-ish: tolerate "already exists", but
-        # then refresh — a stale pre-guard registration would not know the
-        # ccds-guard plugin exists (round-2 review finding).
-        if ! claude plugin marketplace add "${OWNER}/${REPO}" </dev/null >/dev/null 2>&1; then
-            log_info "marketplace 'ccds' already registered; refreshing catalog"
-            claude plugin marketplace update ccds </dev/null >/dev/null 2>&1 \
-                || log_warn "could not refresh marketplace 'ccds'; plugin installs may see a stale catalog"
-        fi
-        PLUGINS_STATUS="installed (ccds-guard, ccds-loops)"
-        for plugin in ccds-guard ccds-loops; do
-            if claude plugin install "${plugin}@ccds" --scope user </dev/null >/dev/null 2>&1; then
-                log_ok "${plugin} plugin installed (user scope)"
-            else
-                PLUGINS_STATUS="partial -- see warnings"
-                log_warn "Could not install ${plugin} automatically. Run:"
-                log_warn "  claude plugin install ${plugin}@ccds --scope user"
-            fi
-        done
-    fi
 fi
 
 printf '\n'
@@ -607,7 +575,7 @@ printf 'Version : %s\n' "$INSTALLED_VERSION"
 printf 'Agents  : 19 always-on → ~/.claude/agents (14 domain + 5 core)\n'
 printf 'Skills  : %s/skills (domain skills, JIT per project; cross-cutting → ~/.claude/skills)\n' "$PREFIX"
 printf 'CLAUDE  : %s/.claude/CLAUDE.md (ccds pointer block injected)\n' "$HOME"
-printf 'Plugins : %s\n' "$PLUGINS_STATUS"
+printf 'Plugins : ccds-guard + ccds-loops — see the setup step above for status\n'
 if (( NO_PATH == 0 )); then
     printf 'PATH    : %s (added to shell rc files)\n' "$PREFIX/bin"
     printf '\n'
