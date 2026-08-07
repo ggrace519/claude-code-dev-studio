@@ -5,6 +5,29 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **`ccds doctor` now checks the two things that failed silently this week.**
+  Both v0.15.0 and v0.16.0 shipped bugs whose whole character was that nothing
+  told you they were happening; these are the backstops.
+  - **`claude-cli`** — WARNs when Claude Code is older than v2.1.169, the
+    release that added `--safe-mode`. Below that floor, ccds-guard's
+    unattended adjudicator cannot isolate its judge, so every unattended
+    ask-gate hit denies instead of being judged (ADR-0015). WARN, not FAIL:
+    the environment is constrained, the install is not defective. Also WARNs
+    when the CLI is absent or its `--version` is unrecognizable.
+  - **`plugins-installed`** — **FAILs** when `ccds-guard` or `ccds-loops` is
+    missing *or installed-but-disabled*. Hooks ship only via plugins, so
+    either state means the install has no security layer — the exact condition
+    ADR-0016 fixed, now detectable instead of invisible. Plugins from any
+    marketplace count, and the remedy line names the command to fix it. With
+    no `claude` CLI on PATH the state is unknowable, so it WARNs rather than
+    failing.
+
+---
+
 ## v0.16.1 — 2026-08-07 — The guard stops walling off your own config
 
 A same-day follow-up to v0.15.0: the new unattended hard deny on

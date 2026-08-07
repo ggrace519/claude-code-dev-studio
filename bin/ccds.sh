@@ -86,7 +86,9 @@ COMMANDS
   doctor               Run proactive environment health checks: layout shape,
                        version drift vs the latest release, install
                        completeness (agents, skills, CLAUDE.md block, catalog),
-                       BOM/CRLF corruption, PATH and dual-install conflicts.
+                       BOM/CRLF corruption, PATH and dual-install conflicts,
+                       Claude Code version floor, and whether the ccds-guard /
+                       ccds-loops enforcement plugins are installed + enabled.
                        Exit 0 = healthy (WARNs allowed), 1 = failures found.
 
   lint                 Lint the playbook library's semantic invariants
@@ -254,6 +256,100 @@ doc_line() {  # doc_line STATUS NAME DETAIL [REMEDY]
     if [[ "$status" != "OK" && -n "$remedy" ]]; then
         printf '      remedy: %s\n' "$remedy"
     fi
+}
+
+# Minimum Claude Code for ccds-guard's unattended adjudicator: v2.1.169 added
+# --safe-mode, without which the judge is not isolated (ADR-0015).
+MIN_CLAUDE_VERSION="2.1.169"
+CLAUDE_CMD="${CCDS_CLAUDE_CMD:-claude}"
+ENFORCEMENT_PLUGINS=(ccds-guard ccds-loops)
+
+# Numeric compare of dotted versions without sort -V (absent on some minimal
+# images). Echoes "older", "same" or "newer" for $1 relative to $2.
+version_cmp() {
+    local a b i
+    IFS=. read -r -a a <<< "${1%%[^0-9.]*}"
+    IFS=. read -r -a b <<< "${2%%[^0-9.]*}"
+    for i in 0 1 2; do
+        local x="${a[i]:-0}" y="${b[i]:-0}"
+        (( x > y )) && { echo newer; return; }
+        (( x < y )) && { echo older; return; }
+    done
+    echo same
+}
+
+doc_check_claude_cli() {
+    # An older CLI does not break ccds: the guard's deny and ask tiers work
+    # unchanged. It silently costs the unattended adjudicator, which is why
+    # this is WARN rather than FAIL — the environment is constrained, the
+    # install is not defective.
+    if ! command -v "$CLAUDE_CMD" >/dev/null 2>&1; then
+        doc_line WARN claude-cli \
+            "claude CLI not on PATH; ccds's agents/skills still load, but the guard plugin and 'ccds setup' plugin install cannot run" \
+            "install Claude Code, then run 'ccds setup'"
+        return
+    fi
+    local raw ver
+    # `|| true` on both: under `set -euo pipefail` a non-matching grep (exit 1)
+    # in a command substitution kills the whole doctor run mid-checks, so an
+    # unrecognized --version string would abort instead of warning.
+    raw="$("$CLAUDE_CMD" --version 2>/dev/null | head -n1 || true)"
+    ver="$(printf '%s' "$raw" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)"
+    if [[ -z "$ver" ]]; then
+        doc_line WARN claude-cli \
+            "could not parse a version from '$CLAUDE_CMD --version' (got: ${raw:-empty})" \
+            "check that '$CLAUDE_CMD --version' prints a x.y.z version"
+        return
+    fi
+    if [[ "$(version_cmp "$ver" "$MIN_CLAUDE_VERSION")" == "older" ]]; then
+        doc_line WARN claude-cli \
+            "Claude Code $ver is older than $MIN_CLAUDE_VERSION; ccds-guard's unattended adjudicator needs --safe-mode to isolate its judge, so every unattended ask-gate hit denies instead of being judged (ADR-0015)" \
+            "upgrade Claude Code to $MIN_CLAUDE_VERSION or newer"
+        return
+    fi
+    doc_line OK claude-cli "Claude Code $ver (>= $MIN_CLAUDE_VERSION)"
+}
+
+doc_check_plugins() {
+    # FAIL, not WARN: hooks ship ONLY via plugins (ADR-0012), so a missing or
+    # disabled ccds-guard means this install has no security layer at all --
+    # an incomplete install, the same class as a missing core agent. Shipping
+    # exactly that silently is what ADR-0016 exists to prevent.
+    if ! command -v "$CLAUDE_CMD" >/dev/null 2>&1; then
+        doc_line WARN plugins-installed \
+            "cannot check: claude CLI not on PATH" \
+            "install Claude Code, then run 'ccds setup'"
+        return
+    fi
+    local json missing=() disabled=() p
+    if ! json="$("$CLAUDE_CMD" plugin list --json 2>/dev/null)"; then
+        doc_line WARN plugins-installed \
+            "could not read 'claude plugin list --json'" \
+            "run 'claude plugin list' and check the CLI is healthy"
+        return
+    fi
+    for p in "${ENFORCEMENT_PLUGINS[@]}"; do
+        # Match the plugin id from any marketplace: "<name>@<marketplace>".
+        if ! printf '%s' "$json" | grep -q "\"id\"[[:space:]]*:[[:space:]]*\"${p}@"; then
+            missing+=("$p")
+        elif printf '%s' "$json" \
+            | tr '{' '\n' | grep "\"${p}@" | grep -q '"enabled"[[:space:]]*:[[:space:]]*false'; then
+            disabled+=("$p")
+        fi
+    done
+    if (( ${#missing[@]} > 0 )); then
+        doc_line FAIL plugins-installed \
+            "not installed: ${missing[*]} -- hooks ship only via plugins, so this install is missing that protection" \
+            "run 'ccds setup' (or: claude plugin install ${missing[0]}@ccds --scope user)"
+        return
+    fi
+    if (( ${#disabled[@]} > 0 )); then
+        doc_line FAIL plugins-installed \
+            "installed but DISABLED: ${disabled[*]} -- a disabled guard protects nothing" \
+            "claude plugin enable ${disabled[0]}"
+        return
+    fi
+    doc_line OK plugins-installed "${ENFORCEMENT_PLUGINS[*]} installed and enabled"
 }
 
 doc_check_layout() {
@@ -452,6 +548,8 @@ cmd_doctor() {
         "claude-md-block:doc_check_claude_block"
         "catalog:doc_check_catalog"
         "path-and-duals:doc_check_path_duals"
+        "claude-cli:doc_check_claude_cli"
+        "plugins-installed:doc_check_plugins"
     )
 
     echo "ccds doctor -- environment checks (version $(installed_version), $LAYOUT_KIND layout)"
