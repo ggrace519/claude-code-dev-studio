@@ -7,6 +7,20 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ## [Unreleased]
 
+### Infrastructure
+
+- **`install-playbook.sh` has test coverage for the first time.** It is the
+  primary install path and had none — every change to it, including removing
+  its plugin block in ADR-0016, was verified only by hand. Nine tests now
+  cover the full local-ZIP install (tree, per-user payload, PATH block,
+  plugin calls), `--skip-plugins` forwarding, `--dry-run` changing nothing,
+  `--no-path`, the reinstall snapshot, `--rollback`, `--uninstall` leaving the
+  rest of the rc file alone, a wrong-shaped archive aborting without
+  destroying a good install, and a SHA256 sidecar mismatch aborting. They run
+  hermetically — `--local-zip` skips the GitHub lookup, `HOME` and `--prefix`
+  are sandboxed, and the `claude` CLI is stubbed. Each test was verified to
+  fail when the behavior it covers is deliberately broken.
+
 ### Added
 
 - **`ccds doctor` now checks the two things that failed silently this week.**

@@ -1283,7 +1283,9 @@ class TestLoopSkillEditedHook(unittest.TestCase):
 PACKAGING = os.path.join(REPO_ROOT, "packaging")
 POSTINST = os.path.join(PACKAGING, "postinst")
 USER_SETUP = os.path.join(SCRIPTS, "ccds-user-setup.sh")
+INSTALLER = os.path.join(REPO_ROOT, "install-playbook.sh")
 BASH = shutil.which("bash")
+UNZIP = shutil.which("unzip")
 
 # Cross-cutting skills the per-user setup installs to ~/.claude/skills/.
 # Mirrors GLOBAL_SKILLS in scripts/ccds-user-setup.sh.
@@ -1653,6 +1655,205 @@ class TestDebPostinst(unittest.TestCase):
         # The bug under test: nothing must be silently half-installed, but also
         # the install must not error out — ~/.claude stays untouched here.
         self.assertFalse(os.path.isdir(os.path.join(self.home, ".claude", "agents")))
+
+
+@unittest.skipUnless(BASH and UNZIP and sys.platform != "win32",
+                     "install-playbook.sh is a bash script needing unzip")
+class TestInstallPlaybook(unittest.TestCase):
+    """First coverage for install-playbook.sh — the primary install path,
+    which had none. Every change to it (including removing its plugin block
+    in ADR-0016) was previously verified only by hand.
+
+    Hermetic: `--local-zip` skips the GitHub lookup entirely, `--prefix` and
+    `HOME` are sandboxed, and CCDS_CLAUDE_CMD pins the `claude` the per-user
+    setup shells out to — so no network, no real ~/.claude, no real shell rc,
+    and no real marketplace."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Build one release ZIP for the whole class — it is the expensive
+        part, and every test installs the same payload."""
+        cls.tmp = tempfile.mkdtemp(prefix="ccds-installer-zip-")
+        stage = os.path.join(cls.tmp, "stage")
+        os.makedirs(os.path.join(stage, "agents"))
+        os.makedirs(os.path.join(stage, "scripts"))
+        os.makedirs(os.path.join(stage, "bin"))
+        for md in os.listdir(os.path.join(REPO_ROOT, ".claude", "agents")):
+            if md.endswith(".md"):
+                shutil.copy(os.path.join(REPO_ROOT, ".claude", "agents", md),
+                            os.path.join(stage, "agents", md))
+        shutil.copytree(os.path.join(REPO_ROOT, "skills"),
+                        os.path.join(stage, "skills"))
+        shutil.copytree(os.path.join(REPO_ROOT, "templates"),
+                        os.path.join(stage, "templates"))
+        for src, dst in (("bin/ccds.sh", "bin/ccds.sh"),
+                         ("bin/ccds.ps1", "bin/ccds.ps1"),
+                         ("catalog.json", "catalog.json"),
+                         ("README.md", "README.md"),
+                         ("Sync-AgentPacks.sh", "scripts/Sync-AgentPacks.sh"),
+                         ("verify-agents.sh", "scripts/verify-agents.sh"),
+                         ("scripts/stage-gates.py", "scripts/stage-gates.py"),
+                         ("scripts/jit-claude.md", "scripts/jit-claude.md"),
+                         ("scripts/ccds-user-setup.sh",
+                          "scripts/ccds-user-setup.sh")):
+            shutil.copy(os.path.join(REPO_ROOT, src),
+                        os.path.join(stage, dst))
+        write(os.path.join(stage, "version.txt"), "v9.9.9-test\n")
+        cls.zip = shutil.make_archive(os.path.join(cls.tmp, "ccds-test"),
+                                      "zip", stage)
+        cls.stage = stage
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="ccds-installer-")
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.home = os.path.join(self.root, "home")
+        os.makedirs(self.home)
+        # A .bashrc must exist for the PATH block to target it.
+        write(os.path.join(self.home, ".bashrc"), "# existing content\n")
+        self.prefix = os.path.join(self.root, "playbook")
+        self.log = os.path.join(self.root, "claude-calls.log")
+        self.claude = os.path.join(self.root, "claude-stub")
+        write(self.claude, '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s"\n'
+                           'exit 0\n' % self.log)
+        os.chmod(self.claude, 0o755)
+
+    def install(self, *extra, zip_path=None):
+        return subprocess.run(
+            [BASH, INSTALLER, "--local-zip", zip_path or self.zip,
+             "--prefix", self.prefix, *extra],
+            capture_output=True, text=True,
+            env={**os.environ, "HOME": self.home,
+                 "CCDS_CLAUDE_CMD": self.claude,
+                 "CCDS_MARKETPLACE_SOURCE": "test-owner/test-repo"})
+
+    def claude_calls(self):
+        if not os.path.isfile(self.log):
+            return []
+        return [l for l in read(self.log).splitlines() if l.strip()]
+
+    def bashrc(self):
+        return read(os.path.join(self.home, ".bashrc"))
+
+    def test_local_zip_install_populates_prefix_home_path_and_plugins(self):
+        r = self.install()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        # The install tree.
+        for sentinel in ("bin/ccds.sh", "catalog.json", "agents", "skills",
+                         "templates", "scripts/ccds-user-setup.sh"):
+            self.assertTrue(os.path.exists(os.path.join(self.prefix, sentinel)),
+                            "missing from install tree: " + sentinel)
+        self.assertFalse(os.path.exists(self.prefix + ".new"),
+                         "staging dir must be promoted, not left behind")
+        # The per-user payload.
+        agents = os.path.join(self.home, ".claude", "agents")
+        self.assertEqual(
+            len([f for f in os.listdir(agents) if f.endswith(".md")]), 19)
+        for name in GLOBAL_SKILLS:
+            self.assertTrue(os.path.isfile(os.path.join(
+                self.home, ".claude", "skills", name, "SKILL.md")), name)
+        claude_md = read(os.path.join(self.home, ".claude", "CLAUDE.md"))
+        self.assertEqual(claude_md.count("# >>> ccds >>>"), 1)
+        # PATH block and plugins.
+        self.assertIn("# >>> ccds PATH >>>", self.bashrc())
+        self.assertIn("# existing content", self.bashrc(),
+                      "must not clobber the user's rc file")
+        self.assertEqual(self.claude_calls(), [
+            "plugin marketplace add test-owner/test-repo",
+            "plugin install ccds-guard@ccds --scope user",
+            "plugin install ccds-loops@ccds --scope user",
+        ])
+
+    def test_skip_plugins_reaches_the_shared_setup(self):
+        """ADR-0016 moved the plugin step out of the installer into per-user
+        setup; the installer now only forwards the flag. This is the test that
+        the forwarding actually works end to end."""
+        r = self.install("--skip-plugins")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.claude_calls(), [])
+        self.assertTrue(os.path.isdir(os.path.join(self.home, ".claude", "agents")))
+
+    def test_dry_run_changes_nothing(self):
+        r = self.install("--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(self.prefix))
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".claude")))
+        self.assertEqual(self.claude_calls(), [])
+        self.assertNotIn("ccds PATH", self.bashrc())
+
+    def test_no_path_skips_the_rc_block(self):
+        r = self.install("--no-path")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("ccds PATH", self.bashrc())
+        self.assertTrue(os.path.isfile(os.path.join(self.prefix, "bin", "ccds.sh")))
+
+    def test_reinstall_snapshots_the_previous_tree(self):
+        self.assertEqual(self.install().returncode, 0)
+        write(os.path.join(self.prefix, "marker.txt"), "first install\n")
+        r = self.install("--force")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        prev = self.prefix + ".previous"
+        self.assertTrue(os.path.isdir(prev), "no rollback snapshot taken")
+        self.assertTrue(os.path.isfile(os.path.join(prev, "marker.txt")))
+        self.assertFalse(os.path.isfile(os.path.join(self.prefix, "marker.txt")),
+                         "the promoted tree is the new one, not the old")
+        # And the rc block is not duplicated by a second install.
+        self.assertEqual(self.bashrc().count("# >>> ccds PATH >>>"), 1)
+
+    def test_rollback_restores_the_snapshot(self):
+        self.assertEqual(self.install().returncode, 0)
+        write(os.path.join(self.prefix, "marker.txt"), "first install\n")
+        self.assertEqual(self.install("--force").returncode, 0)
+        r = subprocess.run([BASH, INSTALLER, "--rollback",
+                            "--prefix", self.prefix],
+                           capture_output=True, text=True,
+                           env={**os.environ, "HOME": self.home})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(os.path.isfile(os.path.join(self.prefix, "marker.txt")),
+                        "rollback did not restore the previous tree")
+
+    def test_uninstall_removes_prefix_and_path_block(self):
+        self.assertEqual(self.install().returncode, 0)
+        r = subprocess.run([BASH, INSTALLER, "--uninstall",
+                            "--prefix", self.prefix],
+                           capture_output=True, text=True,
+                           env={**os.environ, "HOME": self.home})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(self.prefix))
+        self.assertNotIn("# >>> ccds PATH >>>", self.bashrc())
+        self.assertIn("# existing content", self.bashrc(),
+                      "uninstall must leave the rest of the rc file alone")
+
+    def test_bad_archive_layout_aborts_without_touching_an_install(self):
+        """The sentinel check exists so a wrong-shaped archive cannot replace
+        a good install with rubble."""
+        self.assertEqual(self.install().returncode, 0)
+        junk_dir = os.path.join(self.root, "junk")
+        os.makedirs(junk_dir)
+        write(os.path.join(junk_dir, "nothing.txt"), "not a playbook\n")
+        junk_zip = shutil.make_archive(os.path.join(self.root, "junk"),
+                                       "zip", junk_dir)
+        r = self.install("--force", zip_path=junk_zip)
+        self.assertNotEqual(r.returncode, 0, "a junk archive must not succeed")
+        self.assertIn("archive layout is unexpected", r.stdout + r.stderr)
+        # The good install is still there and still usable.
+        self.assertTrue(os.path.isfile(os.path.join(self.prefix, "bin", "ccds.sh")))
+        self.assertFalse(os.path.exists(self.prefix + ".new"),
+                         "failed staging dir must be cleaned up")
+
+    def test_sha256_sidecar_mismatch_aborts(self):
+        """--local-zip verifies a sidecar when one is present; a tampered ZIP
+        must not install."""
+        zip_copy = os.path.join(self.root, "ccds-tampered.zip")
+        shutil.copy(self.zip, zip_copy)
+        write(zip_copy + ".sha256", "%s  %s\n" % ("0" * 64,
+                                                  os.path.basename(zip_copy)))
+        r = self.install(zip_path=zip_copy)
+        self.assertNotEqual(r.returncode, 0, "checksum mismatch must abort")
+        self.assertFalse(os.path.exists(self.prefix))
 
 
 @unittest.skipUnless(BASH and sys.platform != "win32",
