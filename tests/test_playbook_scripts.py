@@ -1490,6 +1490,8 @@ class TestDebPostinst(unittest.TestCase):
         os.makedirs(self.home)
         self.stubbin = os.path.join(self.root, "stubbin")
         os.makedirs(self.stubbin)
+        self.claude_log = os.path.join(self.root, "claude-argv.log")
+        self._stub_claude()
 
     def _stub(self, name, body):
         path = os.path.join(self.stubbin, name)
@@ -1497,8 +1499,28 @@ class TestDebPostinst(unittest.TestCase):
             f.write("#!/bin/bash\n" + body + "\n")
         os.chmod(path, 0o755)
 
+    def _stub_claude(self, exit_code=0):
+        """Record every `claude` invocation instead of running the real CLI.
+
+        Load-bearing safety, not convenience: per-user setup shells out to
+        `claude plugin marketplace add/update` and `claude plugin install`.
+        `_run` keeps the real PATH appended (postinst needs getent/chmod/su),
+        so without this stub a test run would reach the developer's actual
+        `claude` and mutate their real marketplace registration."""
+        self._stub("claude", 'printf "%%s\\n" "$*" >> "%s"\nexit %d'
+                             % (self.claude_log, exit_code))
+
+    def claude_calls(self):
+        if not os.path.isfile(self.claude_log):
+            return []
+        return [l for l in read(self.claude_log).splitlines() if l.strip()]
+
     def _run(self, env_overrides):
-        env = {"HOME": self.home, "PATH": self.stubbin + os.pathsep + os.environ["PATH"]}
+        env = {"HOME": self.home, "PATH": self.stubbin + os.pathsep + os.environ["PATH"],
+               # Belt and braces with the PATH stub: the seam pins the command
+               # by absolute path, so no code path can reach a real `claude`.
+               "CCDS_CLAUDE_CMD": os.path.join(self.stubbin, "claude"),
+               "CCDS_MARKETPLACE_SOURCE": "test-owner/test-repo"}
         env.update(env_overrides)
         return subprocess.run([BASH, self.postinst],
                               capture_output=True, text=True, env=env)
