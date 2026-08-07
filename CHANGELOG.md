@@ -5,7 +5,17 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
-## [Unreleased]
+## v0.18.0 — 2026-08-07 — Windows was never actually tested. Now it is.
+
+ccds ships a bash half and a PowerShell half, and CI only ever ran the test
+suite on Linux. Running it on Windows for the first time found **three
+Windows-only bugs in already-released code** — including a `ccds sync` that
+rewrote your `CLAUDE.md` and left a fresh backup file behind on every single
+run. If you use ccds on Windows, this is the release to take.
+
+Also fixes the release payload: the `.deb`/`.rpm` shipped a PowerShell
+dispatcher that could never run, and shipped no bash completion — which
+turned out to mean bash users never had completion on any outlet.
 
 ### Fixed
 
