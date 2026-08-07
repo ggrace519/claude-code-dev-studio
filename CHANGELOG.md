@@ -5,7 +5,13 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
-## [Unreleased]
+## v0.15.0 — 2026-08-07 — Unattended loops stop stalling on the guard's ask-gates
+
+**Heads-up: this release raises the minimum Claude Code version to v2.1.169**
+(the release that added `--safe-mode`, which the new adjudicator needs to
+isolate its judge). On an older CLI nothing breaks, but every unattended
+package-install ask denies instead of being judged — and the reason now shows
+up in the deny message.
 
 ### Added
 
@@ -44,6 +50,16 @@ New sessions should read this file first to get up to speed before doing anythin
   timeouts are now clamped and any unexpected exception denies; and the
   flagged text is now delimited by per-call random nonce markers, since a
   Markdown fence is something the model being judged can simply close.
+
+### Changed
+
+- **Minimum Claude Code version is now v2.1.169** (was v2.1.113). The
+  adjudicator's isolation depends on `--safe-mode`, which that release
+  introduced; the other two flags it needs (`--strict-mcp-config`, `--tools`)
+  predate it. Verified against v2.1.224. Older CLIs keep working — the guard's
+  deny and ask tiers are unaffected — but unattended ask-gates deny rather
+  than adjudicate. `ccds doctor` does not yet check this; the deny message
+  carries the CLI's own error so the cause is visible.
 
 ---
 

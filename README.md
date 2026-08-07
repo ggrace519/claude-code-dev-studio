@@ -99,7 +99,8 @@ establish that you asked for them. If you replace the command, keep all three
 isolation flags: `--tools ""` disables only the built-in tools,
 `--strict-mcp-config` withholds your MCP servers, and `--safe-mode` stops the
 judge loading your CLAUDE.md, plugins, and hooks — all of it context the code
-under judgment can write for itself.
+under judgment can write for itself. `--safe-mode` is why this needs Claude
+Code **v2.1.169+** (see [Requirements](#requirements)).
 
 Update later with `/plugin marketplace update ccds`. The marketplace tree
 (`.claude-plugin/marketplace.json` + `plugins/`) is generated from the library
@@ -239,7 +240,14 @@ Optional, opt-in tab-completion for the Claude Code CLI itself — independent o
 
 ## Requirements
 
-- Claude Code CLI (v2.1.113+ recommended — flat agent discovery)
+- **Claude Code CLI v2.1.169 or newer.** That is the release that added
+  `--safe-mode`, the last of the three flags the `ccds-guard` unattended
+  adjudicator needs to isolate its judge (ADR-0015); on an older CLI the flag
+  is rejected and every unattended package-install ask becomes a deny instead
+  of a judgment — safe, but it stalls the throughput the feature exists to
+  provide. The reason appears in the deny message, so you can spot it. Keeping
+  current is the recommendation; v0.15.0 was verified against **v2.1.224**.
+  (v2.1.113+ was the previous floor, for flat agent discovery — still true.)
 - PowerShell 5.1 or 7+ on Windows
 - bash 4+, `curl`, `unzip`, `sha256sum` / `shasum` on Linux/macOS
 

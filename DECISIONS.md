@@ -1363,6 +1363,18 @@ prompt:
 
 - Loop sessions no longer stall on ask-gates; each adjudication is visible
   in the transcript (stderr).
+- **This ADR sets the project's minimum Claude Code version: v2.1.169**, the
+  release that added `--safe-mode` (verified against that release's published
+  changelog; `--strict-mcp-config` and `--tools` predate it). On an older CLI
+  the flag is rejected, the child exits non-zero, and every unattended
+  package-install ask becomes a deny instead of a judgment — safe, but it
+  forfeits the throughput this ADR exists to preserve. Deliberately not
+  papered over with a retry that drops `--safe-mode`: silently downgrading a
+  security boundary to keep a loop moving is the wrong default. The child's
+  stderr now surfaces in the deny message, so the cause is visible rather than
+  mysterious. Recorded in README Requirements and CLAUDE.md; a `ccds doctor`
+  check for the CLI version is the natural follow-up (deferred — it is code in
+  both dispatchers, not documentation).
 - Unattended sessions can no longer edit `.claude/settings.json`, hooks,
   plugins, or `.pre-commit-config.yaml` at all — they get a teaching deny and
   route around it. That work moves to an attended session. Accepted cost:

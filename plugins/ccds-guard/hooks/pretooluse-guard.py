@@ -120,6 +120,11 @@ MAX_GLOB_EXPANSIONS = 16
 # override even bypassPermissions — and stall an unattended session).
 UNATTENDED_MODES = ("acceptEdits", "auto", "dontAsk", "bypassPermissions")
 
+# Requires Claude Code >= v2.1.169 (the release that added --safe-mode). On an
+# older CLI the flag is rejected, the child exits non-zero, and every ask-tier
+# hit denies instead of being judged — safe, but it forfeits the throughput
+# this path exists for. The child's stderr is echoed into the deny message so
+# that shows up as a cause, not a mystery.
 # Every flag here is load-bearing isolation, verified live 2026-08-07:
 #   --safe-mode          disables CLAUDE.md, skills, plugins, hooks, MCP,
 #                        custom agents/commands — auth and model selection
