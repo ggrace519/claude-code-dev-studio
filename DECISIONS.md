@@ -1516,11 +1516,15 @@ Root cause is placement, not logic: the step lived in the outermost layer
   with no installer run wires nothing, because the ZIP ships no `plugins/`
   tree and no `.claude-plugin/marketplace.json`. The README documents the
   installer and the marketplace as the supported paths.
-- `install-playbook.sh` and `Install-Playbook.ps1` have **no test coverage at
+- `install-playbook.sh` and `Install-Playbook.ps1` had **no test coverage at
   all** (confirmed while tracing this). Deleting the bash installer's block
   was verified by hand — `bash -n`, `--help`, and a real `--dry-run` run —
-  not by the suite. Test coverage for the installers is the standing gap this
-  ADR did not close.
+  not by the suite. **Since closed for the bash installer:** `TestInstallPlaybook`
+  covers install, `--skip-plugins` forwarding, dry-run, `--no-path`, snapshot,
+  rollback, uninstall, a wrong-shaped archive, and a checksum mismatch, run
+  hermetically via `--local-zip` + sandboxed `HOME` + a stubbed `claude`.
+  `Install-Playbook.ps1` remains uncovered — it is a standalone PowerShell
+  script and needs a `pwsh` runner the CI Linux job does not have.
 - **Follow-up delivered:** `ccds doctor`'s `plugins-installed` check FAILs when
   either plugin is missing *or installed-but-disabled* — the backstop that
   would have caught this entire class of bug. A disabled guard protects
