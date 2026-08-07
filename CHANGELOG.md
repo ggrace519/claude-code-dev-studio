@@ -5,7 +5,12 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
-## [Unreleased]
+## v0.16.1 — 2026-08-07 — The guard stops walling off your own config
+
+A same-day follow-up to v0.15.0: the new unattended hard deny on
+safety-config writes was applied too broadly on the Bash path, so an
+unattended session could not so much as list its own plugin directory.
+Update if you run unattended loops.
 
 ### Fixed
 
