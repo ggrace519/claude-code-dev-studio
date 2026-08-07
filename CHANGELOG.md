@@ -5,6 +5,48 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **ccds-guard: unattended sessions never stall on ask-gates (ADR-0015).**
+  What was wrong: a hook `ask` forces a permission prompt even in
+  bypassPermissions mode, so in unattended loop sessions every ask-gate hit
+  (named package install, secret-shaped path in a Bash command, config-tamper
+  write) hung the session waiting for a human who wasn't there. Now, in any
+  auto-accept permission mode (or with `CCDS_GUARD_UNATTENDED=1`), a
+  fresh-context LLM adjudicator decides instead: an explicit ALLOW lets the
+  call proceed (logged to the transcript), and anything else — DENY verdict,
+  garbage output, timeout, missing CLI — becomes a teaching deny the model
+  can route around, so the loop keeps moving. Adjudicator command and timeout
+  are tunable (`CCDS_GUARD_ADJUDICATOR_CMD`, `CCDS_GUARD_ADJUDICATOR_TIMEOUT`;
+  default headless
+  `claude -p --model haiku --safe-mode --strict-mcp-config --tools ""` — no
+  built-in tools, no MCP servers, no CLAUDE.md/plugins/hooks — run from a
+  private empty directory so it judges the flagged input on its face).
+  Attended sessions are byte-identical. Two categories never reach the judge:
+  hard denies, and **writes to session-safety configuration**
+  (`.claude/settings.json`, hooks, plugins, pre-commit config), which deny
+  outright when unattended — nothing in a flagged input can establish that you
+  asked for a change to the thing that protects you, so an unattended loop now
+  leaves that work for an attended session. Live-verified: real package ALLOW
+  ~9s, typo-squat / settings-tamper / injection-in-command all DENY.
+
+  Hardened before release after a three-model review round, each fix with a
+  regression test: the verdict parser accepted any output *starting* with
+  "ALLOW", so a judge's refusal prose ("Allow me to explain: … I do NOT
+  approve it") let the call through — it now requires the whole of stdout to
+  be one exact `ALLOW: <reason>` line; the isolation flags above were each
+  found to leak something real without them (MCP servers stayed live under
+  `--tools ""` alone; the child *ran the operator's configured hooks* without
+  `--safe-mode`); an unbounded `CCDS_GUARD_ADJUDICATOR_TIMEOUT` crashed the
+  hook into a fail-open (Claude Code treats a hook error as non-blocking) —
+  timeouts are now clamped and any unexpected exception denies; and the
+  flagged text is now delimited by per-call random nonce markers, since a
+  Markdown fence is something the model being judged can simply close.
+
+---
+
 ## v0.14.0 — 2026-08-05 — Gate 5: AI-review principles complete the pipeline
 
 The final layer of the five-gate quality/security pipeline: the review skills

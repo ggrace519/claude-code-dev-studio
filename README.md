@@ -83,6 +83,24 @@ tune rules in the plugin's `hooks/guard-rules.txt`. The hooks need `python3`
 on PATH (macOS/Linux/WSL have it; on native Windows install Python 3 or the
 guard is inert).
 
+**Unattended sessions (ADR-0015):** hook asks force a prompt even in
+bypassPermissions mode, which would stall an unattended loop session forever.
+So in any auto-accept permission mode — or with `CCDS_GUARD_UNATTENDED=1` —
+the guard's ask-gates are decided by a fresh-context LLM adjudicator instead
+of a prompt: ALLOW proceeds (logged), everything else (including adjudicator
+failure or timeout) becomes a teaching deny the session can route around.
+Override the judge with `CCDS_GUARD_ADJUDICATOR_CMD` (default: headless
+`claude -p --model haiku --safe-mode --strict-mcp-config --tools ""`) and
+`CCDS_GUARD_ADJUDICATOR_TIMEOUT` (seconds, default 45). Two categories never
+reach the judge: hard denies, and **writes to session-safety configuration**
+(`.claude/settings.json`, hooks, plugins, pre-commit config) — those deny
+outright in an unattended session, since nothing in the flagged input can
+establish that you asked for them. If you replace the command, keep all three
+isolation flags: `--tools ""` disables only the built-in tools,
+`--strict-mcp-config` withholds your MCP servers, and `--safe-mode` stops the
+judge loading your CLAUDE.md, plugins, and hooks — all of it context the code
+under judgment can write for itself.
+
 Update later with `/plugin marketplace update ccds`. The marketplace tree
 (`.claude-plugin/marketplace.json` + `plugins/`) is generated from the library
 source by `scripts/build-marketplace.py` and gated for freshness in CI.

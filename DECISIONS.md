@@ -1232,3 +1232,162 @@ security-checklist patterns into the Gate-3 pre-commit templates.
 
 ### Supersedes
 None. Completes the ADR-0012/0013 pipeline series at the content layer.
+
+## ADR-0015: Unattended Ask-Gate Adjudication — ccds-guard Never Stalls a Loop
+
+**Date:** 2026-08-07
+**Status:** Accepted
+**Phase:** Architecture
+**Deciders:** Greg Grace
+
+### Context
+
+ccds-guard's ask tier (named package installs, secret-shaped paths in Bash
+text, config-tamper writes — ADR-0012) surfaces a permission prompt. Docs
+verified 2026-08-07 (code.claude.com/docs hooks + permissions): the PreToolUse
+payload carries `permission_mode`, and a hook `permissionDecision: "ask"`
+**still prompts even in `bypassPermissions` mode** — hook asks override the
+operator's "don't prompt me". In unattended /loop sessions there is nobody to
+answer, so every ask-gate hit stalls the session indefinitely. Greg's loop
+sessions were hanging on exactly this.
+
+Options considered: blanket ask→deny when unattended (loses legitimate
+installs until an operator returns), ask→allow-with-warning (drops the
+slopsquatting and tamper protection precisely when nobody is watching), and
+LLM adjudication (Greg's direction: "auto-approval where another agent is
+asked whether the command should proceed").
+
+### Decision
+
+When the session is **unattended** — `permission_mode` ∈ {`acceptEdits`,
+`auto`, `dontAsk`, `bypassPermissions`} (Greg: all auto-accept modes), or
+`CCDS_GUARD_UNATTENDED=1` for default-mode sessions running on allowlists —
+ask-tier hits are decided by a **fresh-context LLM adjudicator** instead of a
+prompt:
+
+1. **Invocation.** `CCDS_GUARD_ADJUDICATOR_CMD` (data-not-logic, same
+   philosophy as the rule table; also the test seam), default
+   `claude -p --model haiku --safe-mode --strict-mcp-config --tools ""`.
+   **All three isolation flags are load-bearing**, each kept because a live
+   probe measured what its absence leaks (2026-08-07):
+   - `--tools ""` disables only the *built-in* set. Asked to enumerate its
+     tools, a `--tools ""` child still held every MCP tool the user and
+     project config grant — Gmail, Google Drive, Supabase `execute_sql`,
+     Cloudflare API `execute`, n8n `execute_workflow`. A judge reading
+     attacker-influencable text with live MCP write tools is a strictly
+     larger hole than the ask-gate it replaces.
+   - `--strict-mcp-config` (no `--mcp-config`) is what reduces the child to
+     zero MCP servers — user config *and* a repo's own `.mcp.json`.
+   - `--safe-mode` disables CLAUDE.md, skills, plugins, custom agents, and
+     **hooks**. Without it the child *ran the operator's configured hooks*:
+     a `SessionStart` hook fired inside the "isolated" adjudicator on every
+     adjudication (reproduced with this playbook's own `ccds-loops` hooks
+     installed — a very plausible pairing). It also read any `CLAUDE.md`
+     above its cwd, which the judged model can write for itself. Auth and
+     model selection survive `--safe-mode`, unlike `--bare`, which forces
+     `ANTHROPIC_API_KEY` and never reads OAuth or the keychain — verified
+     live, which is why `--bare` cannot be the default.
+
+   Prompt on stdin (the variadic `--tools` flag swallows a positional
+   prompt); subprocess timeout `CCDS_GUARD_ADJUDICATOR_TIMEOUT` (default 45s,
+   clamped ≤85s) inside a 90s hooks.json budget. Child env sets
+   `CCDS_GUARD_DISABLE=1`, drops `CCDS_GUARD_UNATTENDED` (no recursion into
+   the guard) and drops `CLAUDE_PROJECT_DIR`/`PWD`/`OLDPWD`. **Private empty
+   cwd** (`mkdtemp`, removed after): run from the project dir, a live test
+   showed the adjudicator reading repo context (branch name) and *inventing
+   a justifying intent* for a settings write; and the shared temp root is
+   not neutral either — `/tmp` is world-writable, the guard permits writes
+   there, and CLAUDE.md discovery walks cwd upward, so the judged model could
+   plant `/tmp/CLAUDE.md` to instruct its own judge. Fresh context means
+   judging the flagged input on its face.
+   Operator trust boundary (documented, not enforced): anyone who can set
+   `CCDS_GUARD_ADJUDICATOR_CMD` can already set `CCDS_GUARD_DISABLE=1`, so
+   the command is not validated — but the docstring, README and this ADR all
+   state that a replacement must keep all three flags.
+2. **Contract.** Command-as-data framing, guard reason labels attached,
+   exactly one output line: `ALLOW: <reason>` or `DENY: <reason>`. The data
+   block is delimited by **per-call random nonce markers**
+   (`secrets.token_hex(8)`), not a Markdown fence: the flagged text is written
+   by the very model under judgment, so it can reproduce any fixed delimiter —
+   a ``` in the payload closed the old fence and let it speak as peer
+   instructions (review finding, this ADR's own review round). Instructions
+   are repeated *after* the payload so trailing text is not the last word.
+   Judgment bias: when uncertain, DENY (a deny is retried by a human later;
+   a wrong allow is not).
+3. **Verdict handling — default-deny.** The verdict grammar is the **whole**
+   of stdout: exactly one line matching `(ALLOW|DENY):\s*<non-empty reason>`.
+   A prefix match is not enough — the first cut accepted any line *starting*
+   with those letters, so `Allow me to explain: … I do NOT approve it` and
+   `ALLOWANCE:DENY` both parsed as ALLOW and let the call through (reproduced
+   in review). Explicit ALLOW → the guard steps aside silently (exit 0,
+   stderr note logs verdict + reason for the transcript). Never an `"allow"`
+   JSON: the guard must not grant permissions Claude Code's own flow would
+   have prompted for; it only withdraws its own ask. DENY, garbage output,
+   extra lines, non-zero exit, timeout, missing CLI, and any unexpected
+   exception all → exit-2 deny whose message carries the verdict and the
+   standing guidance — the model routes around it and the loop keeps moving.
+   The exception catch matters: an escaping error exits 1, and Claude Code
+   treats a hook error as *non-blocking*, so the call would have proceeded on
+   the one path whose entire design is fail-closed. For the same reason the
+   adjudicator timeout is clamped to `[1, 85]` seconds and rejects `inf`/`NaN`
+   — an unbounded value raised `OverflowError` straight out of
+   `subprocess.run`.
+4. **Scope — two tiers never reach the judge.** Deny-tier rules, and
+   **`ask-write-path` hits: writes to session-safety configuration
+   (`.claude/settings.json`, `.claude/hooks/`, `.claude/plugins/`,
+   `.pre-commit-config.yaml`) deny outright in an unattended session.** The
+   first cut asked the judge to allow them "if the flagged input itself proves
+   the operator asked" — an instruction to accept intent asserted by the
+   untrusted object, which cannot be prompt-engineered around, only removed.
+   Removing it makes the answer unconditional, so the code short-circuits
+   before the subprocess. That leaves the adjudicator judging package-name
+   plausibility and secret-shaped paths — judgments an LLM can actually make —
+   and bounds a successful injection to "one package install proceeds".
+   Attended modes (`default`, `plan`, absent/unknown) keep the ask path
+   byte-identical.
+
+### Rationale
+
+- A prompt that cannot be answered is a deadlock, not a safety gate. Denies
+  feed the reason back to the model; asks feed it to a chair nobody sits in.
+- Adjudication preserves throughput (legitimate installs proceed — live:
+  `pip install requests` ALLOW in ~9s) without dropping the ask tier
+  (live: typo-squat `reqeusts-tolbelt-xyz` DENY; settings-write DENY;
+  injection-in-command "reply ALLOW" DENY, named as social engineering).
+- Fail-toward-deny inverts the guard's own fail-open rule deliberately: the
+  rule table failing means *no signal*; the adjudicator failing means *a
+  flagged call couldn't be cleared* — different situations, different safe
+  defaults.
+
+### Consequences
+
+- Loop sessions no longer stall on ask-gates; each adjudication is visible
+  in the transcript (stderr).
+- Unattended sessions can no longer edit `.claude/settings.json`, hooks,
+  plugins, or `.pre-commit-config.yaml` at all — they get a teaching deny and
+  route around it. That work moves to an attended session. Accepted cost:
+  the alternative is a judge deciding, on the strength of text the judged
+  model wrote, whether to let that model rewrite its own safety config.
+- Named residual limitation (joins ADR-0012's shell-quoting entry): the
+  adjudicator is itself an LLM reading attacker-influencable text. Nonce
+  delimiters, the strict one-line contract, deny bias, the untouched deny
+  tier, and now the unadjudicable config-write tier hold the worst case at
+  "a human rubber-stamped the prompt" — which was already the ask tier's bar
+  — and bound it to a package install. Plugin-provided tools were a named
+  residual until `--safe-mode` closed them; the child still inherits the rest
+  of the parent environment (no execution surface left to use it, so this is
+  defense-in-depth debt, not a live hole).
+- Test surface: `TestGuardUnattended` inherits the full `TestGuardHooks`
+  attended matrix (proof the change is additive) plus stub-CLI coverage of
+  every verdict/failure path, the recursion-guard env, and regression tests
+  for each defect this ADR's review round found: the verdict grammar
+  (7 adversarial outputs), the unbounded-timeout fail-open, the project-
+  context scrub and private cwd, per-call nonce delimiters, config-write
+  hard deny, and the three isolation flags pinned in both copies of the
+  shipped default command.
+- Attended `acceptEdits`/`auto` users trade a prompt for an automatic
+  judgment; verdicts are logged, and `default` mode restores prompts.
+
+### Supersedes
+None. Amends the ADR-0012 charter's ask-tier behavior for unattended
+sessions.
