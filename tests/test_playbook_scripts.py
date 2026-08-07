@@ -13,6 +13,7 @@ Run: python3 -m unittest discover -s tests -v
 import ast
 import getpass
 import json
+import shlex
 import os
 import re
 import shutil
@@ -1389,11 +1390,28 @@ class TestCcdsDoctor(unittest.TestCase):
         return [ln.strip() for ln in block.splitlines()
                 if ln.strip() and not ln.strip().startswith("#")]
 
-    def doctor(self):
+    def stub_claude(self, version="2.1.224 (Claude Code)", plugins=None):
+        """Pin the `claude` the doctor sees. Without this the checks would ask
+        the developer's real CLI, so `test_healthy_home_passes` would depend on
+        whether that machine happens to have the ccds plugins installed."""
+        if plugins is None:
+            plugins = [{"id": "ccds-guard@ccds", "enabled": True},
+                       {"id": "ccds-loops@ccds", "enabled": True}]
+        path = os.path.join(self.root, "claude-stub")
+        write(path, "#!/usr/bin/env bash\ncase \"$1\" in\n"
+                    "  --version) printf '%%s\\n' %s ;;\n"
+                    "  plugin)    printf '%%s\\n' %s ;;\n"
+                    "esac\n" % (shlex.quote(version),
+                                shlex.quote(json.dumps(plugins))))
+        os.chmod(path, 0o755)
+        return path
+
+    def doctor(self, claude=None):
         env = {**os.environ,
                "HOME": self.home,
                # unreachable (discard-port) URL: forces the offline WARN path
-               "CCDS_DOCTOR_RELEASE_URL": "http://127.0.0.1:9/releases/latest"}
+               "CCDS_DOCTOR_RELEASE_URL": "http://127.0.0.1:9/releases/latest",
+               "CCDS_CLAUDE_CMD": claude if claude else self.stub_claude()}
         return subprocess.run(
             [BASH, os.path.join(self.inst, "bin", "ccds.sh"), "doctor"],
             capture_output=True, text=True, env=env)
@@ -1403,6 +1421,67 @@ class TestCcdsDoctor(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("RESULT: PASS", r.stdout)
         self.assertIn("FAIL  : 0", r.stdout)
+
+    def test_claude_cli_below_the_version_floor_warns(self):
+        """ADR-0015 set the floor at 2.1.169 (--safe-mode). Older is a WARN,
+        not a FAIL: nothing breaks, the unattended adjudicator just degrades
+        to denying every ask-gate hit — the silent failure this check exists
+        to make loud."""
+        for version, expect_ok in (("2.1.224 (Claude Code)", True),
+                                   ("2.1.169 (Claude Code)", True),
+                                   ("2.1.168 (Claude Code)", False),
+                                   ("1.9.999 (Claude Code)", False)):
+            with self.subTest(version):
+                r = self.doctor(claude=self.stub_claude(version=version))
+                self.assertEqual(r.returncode, 0, "version drift never FAILs")
+                if expect_ok:
+                    self.assertIn("OK  claude-cli", r.stdout)
+                else:
+                    self.assertIn("WARN  claude-cli", r.stdout)
+                    self.assertIn("2.1.169", r.stdout)
+
+    def test_unparsable_claude_version_warns(self):
+        r = self.doctor(claude=self.stub_claude(version="not a version"))
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("WARN  claude-cli", r.stdout)
+        self.assertIn("could not parse", r.stdout)
+
+    def test_missing_enforcement_plugin_fails(self):
+        """FAIL, not WARN: hooks ship only via plugins, so a missing
+        ccds-guard means no security layer at all. Shipping exactly that
+        silently is the bug ADR-0016 fixed — this is the backstop."""
+        r = self.doctor(claude=self.stub_claude(
+            plugins=[{"id": "ccds-loops@ccds", "enabled": True}]))
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("FAIL  plugins-installed", r.stdout)
+        self.assertIn("ccds-guard", r.stdout)
+        self.assertIn("remedy: run 'ccds setup'", r.stdout)
+
+    def test_disabled_enforcement_plugin_fails(self):
+        r = self.doctor(claude=self.stub_claude(
+            plugins=[{"id": "ccds-guard@ccds", "enabled": False},
+                     {"id": "ccds-loops@ccds", "enabled": True}]))
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("FAIL  plugins-installed", r.stdout)
+        self.assertIn("DISABLED", r.stdout)
+        self.assertIn("claude plugin enable ccds-guard", r.stdout)
+
+    def test_plugins_from_any_marketplace_count(self):
+        # A local or renamed marketplace is still a real install.
+        r = self.doctor(claude=self.stub_claude(
+            plugins=[{"id": "ccds-guard@local-mp", "enabled": True},
+                     {"id": "ccds-loops@local-mp", "enabled": True}]))
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("OK  plugins-installed", r.stdout)
+
+    def test_absent_claude_cli_warns_but_does_not_fail(self):
+        """No CLI means the checks are unknowable, not failed — doctor must
+        stay usable on a box where Claude Code is not installed yet."""
+        r = self.doctor(claude=os.path.join(self.root, "no-such-claude"))
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("WARN  claude-cli", r.stdout)
+        self.assertIn("WARN  plugins-installed", r.stdout)
+        self.assertIn("RESULT: PASS", r.stdout)
 
     def test_missing_core_agent_fails(self):
         os.remove(os.path.join(self.home, ".claude", "agents", "plan-architect.md"))

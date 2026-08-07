@@ -1395,9 +1395,9 @@ prompt:
   papered over with a retry that drops `--safe-mode`: silently downgrading a
   security boundary to keep a loop moving is the wrong default. The child's
   stderr now surfaces in the deny message, so the cause is visible rather than
-  mysterious. Recorded in README Requirements and CLAUDE.md; a `ccds doctor`
-  check for the CLI version is the natural follow-up (deferred — it is code in
-  both dispatchers, not documentation).
+  mysterious. Recorded in README Requirements and CLAUDE.md. **Follow-up
+  delivered:** `ccds doctor`'s `claude-cli` check WARNs below the floor, so the
+  degraded state is visible instead of silent.
 - Unattended sessions can no longer edit `.claude/settings.json`, hooks,
   plugins, or `.pre-commit-config.yaml` at all — they get a teaching deny and
   route around it. That work moves to an attended session. Accepted cost:
@@ -1521,10 +1521,10 @@ Root cause is placement, not logic: the step lived in the outermost layer
   was verified by hand — `bash -n`, `--help`, and a real `--dry-run` run —
   not by the suite. Test coverage for the installers is the standing gap this
   ADR did not close.
-- Deferred follow-up, joining ADR-0015's `ccds doctor` CLI-version check: a
-  **doctor check that the two plugins are actually installed**. It is the
-  backstop that would have caught this entire class of bug, and it is a new
-  check in both dispatchers — its own PR.
+- **Follow-up delivered:** `ccds doctor`'s `plugins-installed` check FAILs when
+  either plugin is missing *or installed-but-disabled* — the backstop that
+  would have caught this entire class of bug. A disabled guard protects
+  nothing, so it is treated exactly like a missing one.
 
 ### Supersedes
 None. Completes ADR-0012's distribution decision, which was only

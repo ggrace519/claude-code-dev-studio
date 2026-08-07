@@ -114,7 +114,9 @@ COMMANDS
   doctor               Run proactive environment health checks: layout shape,
                        version drift vs the latest release, install
                        completeness (agents, skills, CLAUDE.md block, catalog),
-                       BOM/CRLF corruption, PATH and dual-install conflicts.
+                       BOM/CRLF corruption, PATH and dual-install conflicts,
+                       Claude Code version floor, and whether the ccds-guard /
+                       ccds-loops enforcement plugins are installed + enabled.
                        Exit 0 = healthy (WARNs allowed), 1 = failures found.
 
   setup                Install the always-on agents + cross-cutting skills into
@@ -513,7 +515,7 @@ function Invoke-SetupCommand {
 
 # ---------------------------------------------------------------------------
 # Command: doctor -- proactive environment health checks.
-# PowerShell twin of bin/ccds.sh cmd_doctor: same 9 checks, same output
+# PowerShell twin of bin/ccds.sh cmd_doctor: same 11 checks, same output
 # contract (one 'OK|WARN|FAIL  name: detail' line per check + indented remedy
 # on WARN/FAIL, summary block, exit 0 = no FAIL / 1 = FAIL found).
 #
@@ -776,6 +778,89 @@ function Test-DoctorPathDuals {
     }
 }
 
+# Twins of bin/ccds.sh doc_check_claude_cli / doc_check_plugins.
+# Minimum Claude Code for ccds-guard's unattended adjudicator: v2.1.169 added
+# --safe-mode, without which the judge is not isolated (ADR-0015).
+$Script:MinClaudeVersion = [version]'2.1.169'
+
+function Get-ClaudeCommand {
+    if ($env:CCDS_CLAUDE_CMD) { return $env:CCDS_CLAUDE_CMD }
+    return 'claude'
+}
+
+function Test-DoctorClaudeCli {
+    # WARN, not FAIL: an older CLI does not break ccds -- the guard's deny and
+    # ask tiers work unchanged. It silently costs the unattended adjudicator.
+    $claudeCmd = Get-ClaudeCommand
+    if (-not (Get-Command $claudeCmd -ErrorAction SilentlyContinue)) {
+        Write-DoctorLine 'WARN' 'claude-cli' `
+            "claude CLI not on PATH; ccds's agents/skills still load, but the guard plugin and 'ccds setup' plugin install cannot run" `
+            "install Claude Code, then run 'ccds setup'"
+        return
+    }
+    $raw = ''
+    try { $raw = (& $claudeCmd --version 2>$null | Select-Object -First 1) } catch { }
+    $m = [regex]::Match([string]$raw, '\d+\.\d+\.\d+')
+    if (-not $m.Success) {
+        Write-DoctorLine 'WARN' 'claude-cli' `
+            "could not parse a version from '$claudeCmd --version' (got: $(if ($raw) { $raw } else { 'empty' }))" `
+            "check that '$claudeCmd --version' prints a x.y.z version"
+        return
+    }
+    $ver = [version]$m.Value
+    if ($ver -lt $Script:MinClaudeVersion) {
+        Write-DoctorLine 'WARN' 'claude-cli' `
+            "Claude Code $ver is older than $($Script:MinClaudeVersion); ccds-guard's unattended adjudicator needs --safe-mode to isolate its judge, so every unattended ask-gate hit denies instead of being judged (ADR-0015)" `
+            "upgrade Claude Code to $($Script:MinClaudeVersion) or newer"
+        return
+    }
+    Write-DoctorLine 'OK' 'claude-cli' "Claude Code $ver (>= $($Script:MinClaudeVersion))"
+}
+
+function Test-DoctorPlugins {
+    # FAIL, not WARN: hooks ship ONLY via plugins (ADR-0012), so a missing or
+    # disabled ccds-guard means this install has no security layer at all --
+    # an incomplete install, same class as a missing core agent.
+    $claudeCmd = Get-ClaudeCommand
+    if (-not (Get-Command $claudeCmd -ErrorAction SilentlyContinue)) {
+        Write-DoctorLine 'WARN' 'plugins-installed' `
+            'cannot check: claude CLI not on PATH' `
+            "install Claude Code, then run 'ccds setup'"
+        return
+    }
+    $plugins = $null
+    try {
+        $raw = & $claudeCmd plugin list --json 2>$null
+        $plugins = @($raw | ConvertFrom-Json)
+    } catch { }
+    if ($null -eq $plugins) {
+        Write-DoctorLine 'WARN' 'plugins-installed' `
+            "could not read 'claude plugin list --json'" `
+            "run 'claude plugin list' and check the CLI is healthy"
+        return
+    }
+    $missing = @(); $disabled = @()
+    foreach ($name in @('ccds-guard', 'ccds-loops')) {
+        # Match the plugin id from any marketplace: "<name>@<marketplace>".
+        $hit = @($plugins | Where-Object { $_.id -like "$name@*" })
+        if ($hit.Count -eq 0) { $missing += $name }
+        elseif (@($hit | Where-Object { $_.enabled }).Count -eq 0) { $disabled += $name }
+    }
+    if ($missing.Count -gt 0) {
+        Write-DoctorLine 'FAIL' 'plugins-installed' `
+            "not installed: $($missing -join ' ') -- hooks ship only via plugins, so this install is missing that protection" `
+            "run 'ccds setup' (or: claude plugin install $($missing[0])@ccds --scope user)"
+        return
+    }
+    if ($disabled.Count -gt 0) {
+        Write-DoctorLine 'FAIL' 'plugins-installed' `
+            "installed but DISABLED: $($disabled -join ' ') -- a disabled guard protects nothing" `
+            "claude plugin enable $($disabled[0])"
+        return
+    }
+    Write-DoctorLine 'OK' 'plugins-installed' 'ccds-guard ccds-loops installed and enabled'
+}
+
 function Invoke-DoctorCommand {
     # Registry: check-name -> check function. Adding a check = one function
     # plus one row here (keep in lockstep with bin/ccds.sh cmd_doctor).
@@ -789,6 +874,8 @@ function Invoke-DoctorCommand {
         @{ Name = 'claude-md-block' ; Fn = ${function:Test-DoctorClaudeBlock} }
         @{ Name = 'catalog'         ; Fn = ${function:Test-DoctorCatalog} }
         @{ Name = 'path-and-duals'  ; Fn = ${function:Test-DoctorPathDuals} }
+        @{ Name = 'claude-cli'      ; Fn = ${function:Test-DoctorClaudeCli} }
+        @{ Name = 'plugins-installed'; Fn = ${function:Test-DoctorPlugins} }
     )
 
     Write-Host "ccds doctor -- environment checks (version $(Get-InstalledVersion), $layoutKind layout)"
