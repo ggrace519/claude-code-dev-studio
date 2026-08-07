@@ -309,7 +309,12 @@ def _ask(reasons, payload, tool, detail, tamper=False):
     establish that a settings/hooks/plugins/pre-commit change was wanted, and
     the only evidence a judge could weigh is text the judged model wrote
     itself. Package-install asks keep their adjudication (registry
-    plausibility is a judgment an LLM can actually make)."""
+    plausibility is a judgment an LLM can actually make).
+
+    Callers set `tamper` only when the WRITE is unambiguous — the file-tool
+    path, where the tool is Write/Edit/NotebookEdit. The Bash path does not:
+    matching a safety path in a command line proves the path was named, not
+    that it is being written."""
     if not _unattended(payload):
         sys.stdout.write(json.dumps({
             "hookSpecificOutput": {
@@ -533,7 +538,18 @@ def _guard_bash(cmd, payload, rules):
             "this command touches session-safety configuration (settings, "
             "hooks, or guard rules) - confirm you asked for this change")
     if reasons:
-        return _ask(reasons, payload, "Bash", cmd.strip(), tamper=tamper_hit)
+        # NOT tamper=tamper_hit. In a Bash command the guard only knows that a
+        # safety path was NAMED, never that it is being written — `ls`,
+        # `cat`, `grep` and `git log` match the same patterns as
+        # `echo {} > .claude/settings.json`. Hard-denying that whole set made
+        # read-only inspection impossible in an unattended session (found
+        # live within minutes of v0.15.0 shipping: `ls ~/.claude/plugins/...`
+        # denied). The hard deny stays where the write is unambiguous — the
+        # file-tool path below, where the TOOL proves the write. Here the
+        # adjudicator decides, and its prompt already says safety-config
+        # writes are always DENY unattended, so an actual write still denies
+        # while a read proceeds.
+        return _ask(reasons, payload, "Bash", cmd.strip())
     return 0
 
 
