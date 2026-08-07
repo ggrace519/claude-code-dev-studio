@@ -90,9 +90,11 @@ the guard's ask-gates are decided by a fresh-context LLM adjudicator instead
 of a prompt: ALLOW proceeds (logged), everything else (including adjudicator
 failure or timeout) becomes a teaching deny the session can route around.
 Override the judge with `CCDS_GUARD_ADJUDICATOR_CMD` (default: headless
-`claude -p --model haiku` with tools disabled) and
+`claude -p --model haiku --strict-mcp-config --tools ""`) and
 `CCDS_GUARD_ADJUDICATOR_TIMEOUT` (seconds, default 45). Hard denies are never
-adjudicated.
+adjudicated. If you replace the command, keep the adjudicator tool-less —
+`--tools ""` disables only the built-in tools, and `--strict-mcp-config` is
+what withholds your MCP servers from a judge that reads untrusted text.
 
 Update later with `/plugin marketplace update ccds`. The marketplace tree
 (`.claude-plugin/marketplace.json` + `plugins/`) is generated from the library

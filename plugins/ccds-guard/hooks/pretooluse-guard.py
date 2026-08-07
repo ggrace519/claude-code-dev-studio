@@ -35,7 +35,8 @@ session with nobody watching, every ask-gate hit stalls the loop forever.
 When the payload's permission_mode is an auto-accept mode (acceptEdits,
 auto, dontAsk, bypassPermissions) or CCDS_GUARD_UNATTENDED=1, ask-tier hits
 are routed to a fresh-context LLM adjudicator (CCDS_GUARD_ADJUDICATOR_CMD,
-default headless `claude -p` with tools disabled) instead of prompting:
+default headless `claude -p` with built-in tools AND MCP servers disabled)
+instead of prompting:
   ALLOW verdict -> the guard steps aside silently (exit 0 — never an
                    "allow" JSON: the guard must not grant permissions Claude
                    Code's own flow would have prompted for), stderr notes
@@ -45,8 +46,12 @@ default headless `claude -p` with tools disabled) instead of prompting:
                    the ask tier already flagged risk, and a deny feeds the
                    reason back so the loop adapts instead of hanging.
 Deny-tier rules are never adjudicated. The adjudicator child env carries
-CCDS_GUARD_DISABLE=1 so it can never recurse into this guard. Residual
-risk (named in ADR-0015): the adjudicator is itself an LLM reading the
+CCDS_GUARD_DISABLE=1 so it can never recurse into this guard. A custom
+CCDS_GUARD_ADJUDICATOR_CMD must keep the adjudicator tool-less: `--tools ""`
+alone disables only the BUILT-IN set, leaving every configured MCP server
+(user and project `.mcp.json`) callable by an LLM reading attacker-supplied
+text — `--strict-mcp-config` with no `--mcp-config` is what drops those.
+Residual risk (named in ADR-0015): the adjudicator is itself an LLM reading the
 command text; the command-as-data framing, one-line output contract, and
 default-deny keep the worst case at "a human rubber-stamped the prompt",
 which was already the ask tier's bar.
@@ -106,7 +111,13 @@ MAX_GLOB_EXPANSIONS = 16
 # override even bypassPermissions — and stall an unattended session).
 UNATTENDED_MODES = ("acceptEdits", "auto", "dontAsk", "bypassPermissions")
 
-DEFAULT_ADJUDICATOR_CMD = 'claude -p --model haiku --tools ""'
+# `--tools ""` disables the built-in tools; `--strict-mcp-config` (with no
+# --mcp-config) is what drops MCP servers — without it a tool-less-looking
+# adjudicator still holds every MCP tool the user/project config grants
+# (verified 2026-08-07: Gmail, Drive, Supabase execute_sql, n8n, … were all
+# live). `--bare` would isolate more but forces ANTHROPIC_API_KEY auth
+# (never OAuth/keychain), so it is not a safe default.
+DEFAULT_ADJUDICATOR_CMD = 'claude -p --model haiku --strict-mcp-config --tools ""'
 DEFAULT_ADJUDICATOR_TIMEOUT = 45  # seconds; hooks.json allows more
 
 ADJUDICATOR_PROMPT = """\

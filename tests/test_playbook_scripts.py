@@ -2482,6 +2482,21 @@ class TestGuardUnattended(TestGuardHooks):
                          "recursion-guard env missing: %s" % r.stderr)
         self.assertIn("env ok", r.stderr)
 
+    def test_default_adjudicator_command_is_tool_less(self):
+        """The shipped default must isolate the adjudicator from BOTH tool
+        sources. Live finding 2026-08-07: `--tools ""` disables only the
+        built-in set — every configured MCP server (Gmail, Drive, Supabase
+        execute_sql, …) stayed callable by an LLM reading attacker-supplied
+        command text. `--strict-mcp-config` with no --mcp-config drops those."""
+        for path in (GUARD, os.path.join(REPO_ROOT, "plugins", "ccds-guard",
+                                         "hooks", "pretooluse-guard.py")):
+            with self.subTest(os.path.relpath(path, REPO_ROOT)):
+                line = [l for l in read(path).splitlines()
+                        if l.startswith("DEFAULT_ADJUDICATOR_CMD")]
+                self.assertEqual(len(line), 1, "one default command")
+                self.assertIn('--tools ""', line[0], "built-in tools off")
+                self.assertIn("--strict-mcp-config", line[0], "MCP tools off")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1267,7 +1267,18 @@ prompt:
 
 1. **Invocation.** `CCDS_GUARD_ADJUDICATOR_CMD` (data-not-logic, same
    philosophy as the rule table; also the test seam), default
-   `claude -p --model haiku --tools ""`. Prompt on stdin (the variadic
+   `claude -p --model haiku --strict-mcp-config --tools ""`. **Both
+   isolation flags are load-bearing** (verified live 2026-08-07 by asking a
+   `--tools ""` child to enumerate its tools): `--tools ""` disables only the
+   *built-in* set, and the child still held every MCP tool the user and
+   project config grant — Gmail, Google Drive, Supabase `execute_sql`,
+   Cloudflare API `execute`, n8n `execute_workflow`. An adjudicator reading
+   attacker-influencable command text with live MCP write tools is a strictly
+   larger hole than the ask-gate it replaces; `--strict-mcp-config` with no
+   `--mcp-config` reduces the child to zero MCP servers. (`--bare` isolates
+   further but forces `ANTHROPIC_API_KEY` auth and never reads OAuth or the
+   keychain, so it cannot be the default. Plugin-provided tools, if any, still
+   load — a named residual.) Prompt on stdin (the variadic
    `--tools` flag swallows a positional prompt); subprocess timeout
    `CCDS_GUARD_ADJUDICATOR_TIMEOUT` (default 45s) inside a 90s hooks.json
    budget. Child env sets `CCDS_GUARD_DISABLE=1` and drops
@@ -1316,7 +1327,8 @@ prompt:
   was already the ask tier's bar.
 - Test surface: `TestGuardUnattended` inherits the full `TestGuardHooks`
   attended matrix (proof the change is additive) plus stub-CLI coverage of
-  every verdict/failure path and the recursion-guard env.
+  every verdict/failure path, the recursion-guard env, and a regression test
+  pinning both isolation flags in the shipped default command (both copies).
 - Attended `acceptEdits`/`auto` users trade a prompt for an automatic
   judgment; verdicts are logged, and `default` mode restores prompts.
 
