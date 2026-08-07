@@ -5,7 +5,13 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
-## [Unreleased]
+## v0.16.0 — 2026-08-07 — The security layer actually reaches every install
+
+If you installed ccds any way other than the two script installers — the
+`.deb`/`.rpm`, `ccds setup`, or letting `ccds sync` set itself up — you have
+been running with **no security guard and no loop enforcement**, and nothing
+said so. This release fixes that for every outlet. After updating, run
+`ccds setup` once (or reinstall the package) to pick up the plugins.
 
 ### Fixed
 
