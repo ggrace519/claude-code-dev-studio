@@ -34,9 +34,15 @@ if (( SKIP_RPM == 0 )); then
     }
 fi
 
+# Every path the stage block below reads. Keep the two in lockstep: a file
+# copied but not listed here fails with a raw `cp` error instead of this
+# script's own clear message (stage-gates.py and templates were both in that
+# state).
 REQUIRED_SOURCES=( ".claude/agents" "skills" "catalog.json" "scripts/jit-claude.md"
     "scripts/ccds-user-setup.sh" "Sync-AgentPacks.sh" "verify-agents.sh"
-    "bin/ccds.sh" "bin/ccds.ps1" "README.md" "packaging/postinst" "packaging/prerm" )
+    "scripts/stage-gates.py" "templates" "scripts/ccds-completion.bash"
+    "claude_auto_completion/Linux/claude-completion.bash"
+    "bin/ccds.sh" "README.md" "packaging/postinst" "packaging/prerm" )
 missing=()
 for src in "${REQUIRED_SOURCES[@]}"; do [[ -e "$REPO_ROOT/$src" ]] || missing+=("$src"); done
 (( ${#missing[@]} == 0 )) || { echo "ERROR: Missing: ${missing[*]}" >&2; exit 1; }
@@ -63,15 +69,30 @@ cp "$REPO_ROOT/scripts/ccds-user-setup.sh" "$PKG_ROOT/scripts/"
 cp "$REPO_ROOT/Sync-AgentPacks.sh"         "$PKG_ROOT/scripts/Sync-AgentPacks.sh"
 cp "$REPO_ROOT/verify-agents.sh"           "$PKG_ROOT/scripts/verify-agents.sh"
 cp "$REPO_ROOT/scripts/stage-gates.py"     "$PKG_ROOT/scripts/stage-gates.py"
+cp "$REPO_ROOT/scripts/ccds-completion.bash" "$PKG_ROOT/scripts/ccds-completion.bash"
+cp "$REPO_ROOT/claude_auto_completion/Linux/claude-completion.bash" "$PKG_ROOT/scripts/claude-completion.bash"
 cp -r "$REPO_ROOT/templates"               "$PKG_ROOT/templates"
 chmod 755 "$PKG_ROOT/scripts/"*.sh
+# No bin/ccds.ps1: a Linux package ships Linux tools. It used to be staged
+# without scripts/Sync-AgentPacks.ps1, which bin/ccds.ps1 requires to resolve
+# its layout — so the packages shipped a dispatcher that could only ever print
+# "Cannot locate Sync-AgentPacks.ps1". Windows users take the ZIP or the
+# PowerShell installer. See the release-parity lint check.
 cp "$REPO_ROOT/bin/ccds.sh"  "$PKG_ROOT/bin/"
-cp "$REPO_ROOT/bin/ccds.ps1" "$PKG_ROOT/bin/"
 chmod 755 "$PKG_ROOT/bin/ccds.sh"
 cp "$REPO_ROOT/catalog.json" "$PKG_ROOT/"
 cp "$REPO_ROOT/README.md"    "$PKG_ROOT/"
 printf '%s\n' "$VERSION" > "$PKG_ROOT/version.txt"
 ln -sf "../share/ccds/bin/ccds.sh" "$BIN_ROOT/ccds"
+
+# Shell completion, the distro-native way: a file in the system completions
+# directory loads for every user with no rc-file edits, which is what a
+# package may do and an installer script may not. Only ccds' own completion
+# goes here — claude-completion.bash completes a THIRD-PARTY binary, so it
+# ships under scripts/ for a user to source deliberately.
+COMPLETION_ROOT="$STAGE_DIR/usr/share/bash-completion/completions"
+mkdir -p "$COMPLETION_ROOT"
+cp "$REPO_ROOT/scripts/ccds-completion.bash" "$COMPLETION_ROOT/ccds"
 
 # Normalize line endings: strip \r so scripts edited on Windows work on Linux.
 echo "==> Normalizing line endings (LF)"

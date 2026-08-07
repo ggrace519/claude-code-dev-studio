@@ -5,6 +5,44 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **bash users now get shell completion — they never had it (ADR-0017).** The
+  PowerShell installer has loaded `ccds` and `claude` completions into the PS
+  profile since it shipped; `install-playbook.sh` and the `.deb`/`.rpm` had no
+  completion handling at all, and the packages did not even ship the file. Now
+  the script installer adds a marked `# >>> ccds-completion >>>` block to your
+  shell rc (removed again by `--uninstall`), and the packages install
+  `ccds-completion.bash` to `/usr/share/bash-completion/completions/ccds` — the
+  distro-native path, so it loads for every user with no dotfile edits.
+- **The `.deb`/`.rpm` no longer ship a `bin/ccds.ps1` that cannot run.** It was
+  staged without `scripts/Sync-AgentPacks.ps1`, which it requires to resolve
+  its layout, so invoking it could only ever print "Cannot locate
+  Sync-AgentPacks.ps1". Linux packages ship Linux tools; Windows users take the
+  ZIP or the PowerShell installer.
+- `build-release.sh`'s preflight now covers `scripts/stage-gates.py` and
+  `templates`, which it copies. A missing one used to fail with a raw `cp`
+  error instead of the script's own clear message.
+
+### Changed
+
+- **`--no-path` now means "leave my shell rc files alone"** — it skips the
+  completion block as well as the PATH block. Both write to the same files, so
+  one flag governs both rather than adding a near-identical second flag.
+
+### Infrastructure
+
+- **New `release-parity` lint check (#12).** The two release builders staged
+  the payload from independent hand-maintained lists with no cross-check, and
+  had drifted six files apart. The contract is now stated and enforced —
+  ZIP payload == package payload plus a declared Windows-only set — failing in
+  all three drift directions with the offending file named. Same shape as the
+  `cli-parity` check that keeps the two dispatchers honest.
+
+---
+
 ## v0.17.0 — 2026-08-07 — Making the silent failures loud
 
 Three bugs shipped this week and every one had the same character: a safety

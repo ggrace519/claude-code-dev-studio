@@ -1533,3 +1533,102 @@ Root cause is placement, not logic: the step lived in the outermost layer
 ### Supersedes
 None. Completes ADR-0012's distribution decision, which was only
 half-implemented.
+
+---
+
+## ADR-0017: Per-Outlet Payloads Are a Linted Contract, and bash Gets Its Completion
+
+**Date:** 2026-08-07
+**Status:** Accepted
+**Phase:** Architecture
+**Deciders:** Greg Grace
+
+### Context
+
+`build-release.sh` (deb/rpm) and `build-release.ps1` (ZIP) stage the release
+payload from **independent, hand-maintained lists with no cross-check**. They
+had drifted six files apart:
+
+```
+in ZIP, not in deb:
+  scripts/Sync-AgentPacks.ps1      scripts/ccds-completion.ps1
+  scripts/Verify-Agents.ps1        scripts/claude-completion.ps1
+  scripts/ccds-completion.bash     scripts/claude-completion.bash
+```
+
+Two defects fell out of it:
+
+1. The packages staged `bin/ccds.ps1` **without** `scripts/Sync-AgentPacks.ps1`.
+   `bin/ccds.ps1:63-79` resolves its layout by locating that file and otherwise
+   exits with "Cannot locate Sync-AgentPacks.ps1" — the packages shipped a
+   dispatcher that could never run.
+2. The packages shipped **no bash completion**. Worse, tracing that showed the
+   bash side never had completion *at all*: `Install-Playbook.ps1:466-516` has
+   loaded both completions into the PowerShell profile since it shipped, while
+   `install-playbook.sh` and `packaging/postinst` had no completion handling.
+   Windows users had completion; bash users never did, on any outlet.
+
+Latent alongside: `build-release.sh`'s `REQUIRED_SOURCES` preflight omitted
+`scripts/stage-gates.py` and `templates`, both of which the stage block copies.
+
+### Decision
+
+1. **Linux packages ship Linux tools.** `bin/ccds.ps1` is dropped from the
+   deb/rpm rather than completed by adding the PowerShell helpers. Windows
+   users take the ZIP or the PowerShell installer.
+2. **The payload contract is `ZIP == deb ∪ WINDOWS_ONLY`,** enforced by a new
+   `release-parity` check in `scripts/lint-playbook.py` (check 12), modeled on
+   the existing `cli-parity` check. It parses the destination paths out of both
+   builders and fails in all three drift directions, with `WINDOWS_ONLY_PAYLOAD`
+   as the single declared exception list. Adding a cross-platform file to one
+   builder now fails; adding a Windows-only file must be declared.
+3. **Completion is activated per outlet, in the way each outlet should.**
+   - Script installer: a marked `# >>> ccds-completion >>>` block appended to
+     the same shell rc files the PATH block targets, sourcing both completion
+     scripts from the install prefix. Removed by `--uninstall`.
+   - deb/rpm: `ccds-completion.bash` is staged to
+     `usr/share/bash-completion/completions/ccds`, the distro-native path that
+     loads for every user with **no rc-file edits**. A package may not edit a
+     user's dotfiles; an explicitly-invoked installer script may.
+4. **`claude-completion.bash` completes a third-party binary,** so the packages
+   ship it under `/usr/share/ccds/scripts/` for a user to source deliberately
+   rather than installing it system-wide. The script installer, being an
+   explicit per-user action, wires both.
+5. **`--no-path` governs all shell-rc mutation,** not just PATH. Completion
+   writes to the same files, and that flag is how an operator says "leave my
+   startup files alone" — widening it beats adding a second near-identical
+   flag. Documented in help, README and the changelog.
+
+The PATH and completion blocks now share one `write_rc_block` /
+`remove_rc_block` implementation, so idempotency is fixed in one place. A
+refresh strips and re-appends rather than editing in place, which keeps a
+multi-line body simple; the block therefore moves to the end of the rc file.
+
+### Rationale
+
+- Two hand-maintained lists with no cross-check is the same class of defect as
+  the two dispatchers before `cli-parity`, and the same remedy applies. The
+  lint states the intended relationship instead of hoping reviewers diff two
+  files in different languages.
+- Shipping `ccds-completion.bash` without activating it would have made the
+  payloads consistent and left the feature just as broken — the drift fix and
+  the activation are one change, not two.
+
+### Consequences
+
+- deb/rpm users lose a `bin/ccds.ps1` that never worked, and gain working
+  `ccds` tab-completion with no action required.
+- Script-installer users gain completion on install; `--no-path` opts out of
+  both rc blocks; `--uninstall` removes both.
+- Test surface: `TestReleaseParity` (7 cases, synthesized builders — the real
+  scripts are never mutated) plus two `TestInstallPlaybook` cases. The
+  completion test **sources the rc file in a real shell and asserts
+  `complete -p ccds` resolves**, rather than asserting the text was written —
+  which is what caught that the test ZIP fixture lacked the completion files,
+  a gap a text assertion would have passed straight through.
+- Every check above was mutation-verified: three drift directions for the lint,
+  three broken behaviors for the completion, each caught by the intended test.
+
+### Supersedes
+None. Extends ADR-0012's every-outlet principle from hooks to the release
+payload itself.
