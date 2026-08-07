@@ -33,6 +33,11 @@ This linter checks that what the files SAY is true:
                        a command added to one dispatcher must ship in the
                        other, in the same PR. Skipped when a tree ships
                        neither dispatcher (test fixtures).
+ 12. release-parity   build-release.sh (.deb/.rpm) and build-release.ps1 (ZIP)
+                       stage the same payload, minus a declared Windows-only
+                       set — the two lists are hand-maintained and had already
+                       drifted six files apart. Skipped when a tree ships
+                       neither builder (test fixtures).
  11. marketplace-fresh plugins/ + marketplace.json are byte-identical to what
                        build-marketplace.py regenerates — catches skill edits
                        that forget the regen locally, instead of in CI.
@@ -361,6 +366,71 @@ def check_descriptions_and_models():
              f"always-on agent descriptions ≈ {est_tokens} tokens (budget {AGENT_DESC_TOKEN_BUDGET}); trim descriptions")
 
 
+# --- 12: release-parity ---------------------------------------------------------
+# The two release builders stage the payload from independent, hand-maintained
+# lists with no cross-check, and they had already drifted six files apart: the
+# packages shipped bin/ccds.ps1 WITHOUT scripts/Sync-AgentPacks.ps1 (a
+# dispatcher that could only print "Cannot locate Sync-AgentPacks.ps1") and no
+# bash completion at all, while the ZIP shipped both.
+#
+# The contract: the ZIP payload is the deb payload plus a declared set of
+# Windows-only files. Adding a cross-platform file to one builder then fails
+# here; adding a Windows-only one requires declaring it below.
+WINDOWS_ONLY_PAYLOAD = {
+    "bin/ccds.ps1",
+    "scripts/Sync-AgentPacks.ps1",
+    "scripts/Verify-Agents.ps1",
+    "scripts/ccds-completion.ps1",
+    "scripts/claude-completion.ps1",
+}
+# `cp [-r] "$REPO_ROOT/<src>" "$PKG_ROOT/<dst>"` — a trailing slash on the
+# destination means "keep the source basename", as cp itself does.
+DEB_COPY_RE = re.compile(
+    r'cp (?:-r )?"\$REPO_ROOT/([^"]+)"\s+"\$PKG_ROOT/([^"]*)"')
+PS_COPY_RE = re.compile(r"Src = '([^']+)'\s*;\s*Dst = '([^']+)'")
+
+
+def _deb_payload(src):
+    out = set()
+    for m in DEB_COPY_RE.finditer(src):
+        source, dest = m.group(1), m.group(2)
+        if dest == "" or dest.endswith("/"):
+            dest += source.rstrip("/").split("/")[-1]
+        out.add(dest.replace("\\", "/").lstrip("./"))
+    return out
+
+
+def _zip_payload(src):
+    return {m.group(2).replace("\\", "/") for m in PS_COPY_RE.finditer(src)}
+
+
+def check_release_parity():
+    sh_path = os.path.join(REPO_ROOT, "build-release.sh")
+    ps_path = os.path.join(REPO_ROOT, "build-release.ps1")
+    if not os.path.isfile(sh_path) or not os.path.isfile(ps_path):
+        return  # fixture trees ship no builders
+    deb = _deb_payload(read(sh_path))
+    zipped = _zip_payload(read(ps_path))
+    if not deb or not zipped:
+        err("release-parity",
+            "could not parse a payload from build-release.sh (cp \"$REPO_ROOT/…\" "
+            "\"$PKG_ROOT/…\") or build-release.ps1 ($copyMap Src/Dst rows)")
+        return
+    for path in sorted(zipped - deb - WINDOWS_ONLY_PAYLOAD):
+        err("release-parity",
+            f"'{path}' is staged into the ZIP but not the .deb/.rpm — add it to "
+            f"build-release.sh, or declare it in WINDOWS_ONLY_PAYLOAD if it is "
+            f"Windows-only")
+    for path in sorted(deb - zipped):
+        err("release-parity",
+            f"'{path}' is staged into the .deb/.rpm but not the ZIP — add it to "
+            f"build-release.ps1's $copyMap")
+    for path in sorted(WINDOWS_ONLY_PAYLOAD & deb):
+        err("release-parity",
+            f"'{path}' is declared Windows-only but the .deb/.rpm stages it — "
+            f"remove it from build-release.sh or from WINDOWS_ONLY_PAYLOAD")
+
+
 def main():
     for d in (AGENTS_DIR, SKILLS_DIR):
         if not os.path.isdir(d):
@@ -373,6 +443,7 @@ def main():
     check_skill_voice()
     check_process_skills()
     check_cli_parity()
+    check_release_parity()
     check_marketplace_fresh()
     check_descriptions_and_models()
 

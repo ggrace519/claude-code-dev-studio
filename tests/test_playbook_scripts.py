@@ -312,6 +312,84 @@ class TestCliParity(FixtureCase):
 
 @unittest.skipUnless(os.path.isfile(BUILD_MARKETPLACE),
                      "build-marketplace.py not on this branch yet")
+class TestReleaseParity(FixtureCase):
+    """Check 12: build-release.sh (.deb/.rpm) and build-release.ps1 (ZIP) must
+    stage the same payload, minus a declared Windows-only set.
+
+    The two lists are hand-maintained with no cross-check and had already
+    drifted six files apart — the packages shipped bin/ccds.ps1 without the
+    Sync-AgentPacks.ps1 it needs, and no bash completion at all.
+
+    Fixtures synthesize minimal builders carrying only the structures the
+    parser anchors to, so the real scripts are never mutated.
+    """
+
+    def write_builders(self, deb_paths, zip_paths):
+        copies = "\n".join('cp "$REPO_ROOT/%s" "$PKG_ROOT/%s"' % (p, p)
+                           for p in deb_paths)
+        write(os.path.join(self.root, "build-release.sh"),
+              "#!/usr/bin/env bash\nPKG_ROOT=x\n" + copies + "\n")
+        rows = "\n".join("    @{ Src = '%s' ; Dst = '%s' }"
+                         % (p.replace("/", "\\"), p.replace("/", "\\"))
+                         for p in zip_paths)
+        write(os.path.join(self.root, "build-release.ps1"),
+              "$copyMap = @(\n" + rows + "\n)\n")
+
+    def test_no_builders_is_exempt(self):
+        r = self.lint()
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertNotIn("release-parity", r.stdout)
+
+    def test_matching_payloads_pass(self):
+        shared = ["bin/ccds.sh", "catalog.json", "scripts/ccds-completion.bash"]
+        self.write_builders(shared, shared)
+        r = self.lint()
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertNotIn("release-parity", r.stdout)
+
+    def test_windows_only_files_may_be_zip_only(self):
+        self.write_builders(["bin/ccds.sh"],
+                            ["bin/ccds.sh", "bin/ccds.ps1",
+                             "scripts/Sync-AgentPacks.ps1"])
+        r = self.lint()
+        self.assertEqual(r.returncode, 0, r.stdout)
+
+    def test_shared_file_missing_from_the_package_fails(self):
+        self.write_builders(["bin/ccds.sh"],
+                            ["bin/ccds.sh", "scripts/ccds-completion.bash"])
+        r = self.lint()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("release-parity", r.stdout)
+        self.assertIn("scripts/ccds-completion.bash", r.stdout)
+
+    def test_file_missing_from_the_zip_fails(self):
+        self.write_builders(["bin/ccds.sh", "scripts/stage-gates.py"],
+                            ["bin/ccds.sh"])
+        r = self.lint()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("scripts/stage-gates.py", r.stdout)
+        self.assertIn("build-release.ps1", r.stdout)
+
+    def test_windows_only_file_in_the_package_fails(self):
+        """The original defect: the .deb staged bin/ccds.ps1, which cannot
+        work there because Sync-AgentPacks.ps1 is Windows-only."""
+        self.write_builders(["bin/ccds.sh", "bin/ccds.ps1"],
+                            ["bin/ccds.sh", "bin/ccds.ps1"])
+        r = self.lint()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("declared Windows-only", r.stdout)
+
+    def test_trailing_slash_destination_keeps_the_basename(self):
+        # `cp "$REPO_ROOT/bin/ccds.sh" "$PKG_ROOT/bin/"` stages bin/ccds.sh,
+        # exactly as cp itself behaves.
+        write(os.path.join(self.root, "build-release.sh"),
+              '#!/usr/bin/env bash\ncp "$REPO_ROOT/bin/ccds.sh" "$PKG_ROOT/bin/"\n')
+        write(os.path.join(self.root, "build-release.ps1"),
+              "$copyMap = @(\n    @{ Src = 'bin\\ccds.sh' ; Dst = 'bin\\ccds.sh' }\n)\n")
+        r = self.lint()
+        self.assertEqual(r.returncode, 0, r.stdout)
+
+
 class TestBuildMarketplace(unittest.TestCase):
     """Runs the marketplace generator against the real repo tree (read-only
     inputs; output goes to the checked-in plugins/ dir, which the test
@@ -1695,7 +1773,13 @@ class TestInstallPlaybook(unittest.TestCase):
                          ("scripts/stage-gates.py", "scripts/stage-gates.py"),
                          ("scripts/jit-claude.md", "scripts/jit-claude.md"),
                          ("scripts/ccds-user-setup.sh",
-                          "scripts/ccds-user-setup.sh")):
+                          "scripts/ccds-user-setup.sh"),
+                         # Completion payload — the real ZIP ships these, and
+                         # the installer's rc block sources them.
+                         ("scripts/ccds-completion.bash",
+                          "scripts/ccds-completion.bash"),
+                         ("claude_auto_completion/Linux/claude-completion.bash",
+                          "scripts/claude-completion.bash")):
             shutil.copy(os.path.join(REPO_ROOT, src),
                         os.path.join(stage, dst))
         write(os.path.join(stage, "version.txt"), "v9.9.9-test\n")
@@ -1788,7 +1872,43 @@ class TestInstallPlaybook(unittest.TestCase):
         r = self.install("--no-path")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertNotIn("ccds PATH", self.bashrc())
+        # --no-path means "leave my shell rc alone" — completion writes to the
+        # same files, so it honors the same flag.
+        self.assertNotIn("ccds-completion", self.bashrc())
         self.assertTrue(os.path.isfile(os.path.join(self.prefix, "bin", "ccds.sh")))
+
+    def test_completion_block_is_installed_and_actually_loads(self):
+        """The bash side shipped ccds-completion.bash and never sourced it, so
+        Windows users had completion and bash users never did. Asserting the
+        text landed is not enough — source the rc file in a real shell and
+        check the completion function exists."""
+        r = self.install()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        rc = self.bashrc()
+        self.assertIn("# >>> ccds-completion >>>", rc)
+        self.assertIn(os.path.join(self.prefix, "scripts", "ccds-completion.bash"), rc)
+        probe = subprocess.run(
+            [BASH, "-c",
+             'set +u; . "%s"; complete -p ccds >/dev/null 2>&1 && echo LOADED'
+             % os.path.join(self.home, ".bashrc")],
+            capture_output=True, text=True,
+            env={**os.environ, "HOME": self.home})
+        self.assertIn("LOADED", probe.stdout,
+                      "completion block present but does not register: %s%s"
+                      % (probe.stdout, probe.stderr))
+
+    def test_completion_block_is_idempotent_and_removed_on_uninstall(self):
+        self.assertEqual(self.install().returncode, 0)
+        self.assertEqual(self.install("--force").returncode, 0)
+        self.assertEqual(self.bashrc().count("# >>> ccds-completion >>>"), 1,
+                         "reinstall must refresh the block, not stack copies")
+        r = subprocess.run([BASH, INSTALLER, "--uninstall",
+                            "--prefix", self.prefix],
+                           capture_output=True, text=True,
+                           env={**os.environ, "HOME": self.home})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("ccds-completion", self.bashrc())
+        self.assertIn("# existing content", self.bashrc())
 
     def test_reinstall_snapshots_the_previous_tree(self):
         self.assertEqual(self.install().returncode, 0)

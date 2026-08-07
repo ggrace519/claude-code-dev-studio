@@ -31,7 +31,8 @@
 #   --prefix <path>           Install root (default: $HOME/.claude/playbook)
 #   --local-zip <file>        Install from a locally built ZIP instead of downloading
 #   --token <pat>             GitHub PAT for private-repo downloads (or $GITHUB_TOKEN)
-#   --no-path                 Skip shell-rc PATH update
+#   --no-path                 Leave shell rc files alone (skips both the PATH
+#                             block and the completion block)
 #   --skip-plugins            Skip installing the ccds-guard/ccds-loops plugins
 #   --include-prerelease      When resolving 'latest', include prereleases
 #   --dry-run                 Show actions without changing the filesystem
@@ -258,6 +259,8 @@ verify_sha256() {
 # ---------------------------------------------------------------------------
 PATH_MARKER_BEGIN="# >>> ccds PATH >>>"
 PATH_MARKER_END="# <<< ccds PATH <<<"
+COMPLETION_MARKER_BEGIN="# >>> ccds-completion >>>"
+COMPLETION_MARKER_END="# <<< ccds-completion <<<"
 
 rc_targets() {
     # Emit one rc file per line. Only existing OR sensible-to-create files.
@@ -277,38 +280,66 @@ rc_targets() {
     done
 }
 
-add_to_path_rc() {
-    local bin_dir="$1"
-    local block
-    block=$'\n'"$PATH_MARKER_BEGIN"$'\n'"export PATH=\"$bin_dir:\$PATH\""$'\n'"$PATH_MARKER_END"$'\n'
+# Marker-block primitives, shared by the PATH block and the completion block.
+# One implementation so a fix to the idempotency logic lands for both; a
+# refresh strips the old block and re-appends, which keeps a multi-line body
+# simple (and moves the block to the end of the file, where PATH edits belong).
+RC_BLOCKS_UPDATED=0
 
-    local rc updated=0
+write_rc_block() {  # write_rc_block LABEL BEGIN END BODY
+    local label="$1" begin="$2" end="$3" body="$4"
+    local block rc tmp
+    block=$'\n'"$begin"$'\n'"$body"$'\n'"$end"$'\n'
+    RC_BLOCKS_UPDATED=0
     while IFS= read -r rc; do
         [[ -z "$rc" ]] && continue
-        if [[ ! -e "$rc" ]]; then
-            touch "$rc"
-        fi
-        if grep -qF "$PATH_MARKER_BEGIN" "$rc"; then
-            # Replace existing block in place via temp file (portable sed).
-            local tmp
+        [[ -e "$rc" ]] || touch "$rc"
+        if grep -qF "$begin" "$rc"; then
             tmp="$(mktemp)"
-            awk -v b="$PATH_MARKER_BEGIN" -v e="$PATH_MARKER_END" -v bin="$bin_dir" '
+            awk -v b="$begin" -v e="$end" '
                 BEGIN { in_block=0 }
-                $0 == b { in_block=1; print; print "export PATH=\"" bin ":$PATH\""; next }
-                $0 == e { in_block=0; print; next }
+                $0 == b { in_block=1; next }
+                $0 == e { in_block=0; next }
                 in_block == 1 { next }
                 { print }
             ' "$rc" > "$tmp"
             mv "$tmp" "$rc"
-            log_info "Refreshed ccds PATH block in $rc"
+            printf '%s' "$block" >> "$rc"
+            log_info "Refreshed ccds $label block in $rc"
         else
             printf '%s' "$block" >> "$rc"
-            log_ok "Added ccds PATH block to $rc"
+            log_ok "Added ccds $label block to $rc"
         fi
-        updated=1
+        RC_BLOCKS_UPDATED=1
     done < <(rc_targets)
+}
 
-    if (( updated == 0 )); then
+remove_rc_block() {  # remove_rc_block LABEL BEGIN END
+    local label="$1" begin="$2" end="$3"
+    local rc tmp
+    while IFS= read -r rc; do
+        [[ -z "$rc" || ! -f "$rc" ]] && continue
+        if grep -qF "$begin" "$rc"; then
+            tmp="$(mktemp)"
+            awk -v b="$begin" -v e="$end" '
+                BEGIN { in_block=0 }
+                $0 == b { in_block=1; next }
+                $0 == e { in_block=0; next }
+                in_block == 1 { next }
+                { print }
+            ' "$rc" > "$tmp"
+            mv "$tmp" "$rc"
+            log_ok "Removed ccds $label block from $rc"
+        fi
+    done < <(rc_targets)
+}
+
+add_to_path_rc() {
+    local bin_dir="$1"
+    write_rc_block "PATH" "$PATH_MARKER_BEGIN" "$PATH_MARKER_END" \
+        "export PATH=\"$bin_dir:\$PATH\""
+
+    if (( RC_BLOCKS_UPDATED == 0 )); then
         log_warn "No shell rc files found. Add '$bin_dir' to PATH manually."
     fi
 
@@ -320,23 +351,27 @@ add_to_path_rc() {
 }
 
 remove_path_rc() {
-    local rc
-    while IFS= read -r rc; do
-        [[ -z "$rc" || ! -f "$rc" ]] && continue
-        if grep -qF "$PATH_MARKER_BEGIN" "$rc"; then
-            local tmp
-            tmp="$(mktemp)"
-            awk -v b="$PATH_MARKER_BEGIN" -v e="$PATH_MARKER_END" '
-                BEGIN { in_block=0 }
-                $0 == b { in_block=1; next }
-                $0 == e { in_block=0; next }
-                in_block == 1 { next }
-                { print }
-            ' "$rc" > "$tmp"
-            mv "$tmp" "$rc"
-            log_ok "Removed ccds PATH block from $rc"
-        fi
-    done < <(rc_targets)
+    remove_rc_block "PATH" "$PATH_MARKER_BEGIN" "$PATH_MARKER_END"
+}
+
+# Shell completion. The PowerShell installer has loaded both completions into
+# the PS profile since it shipped; the bash side never did, so bash users had
+# the file (in the ZIP) and no way it was ever loaded. Guarded by the same
+# --no-path flag: both write to the user's shell startup files, and that flag
+# is how the operator says "leave those alone".
+add_completion_rc() {
+    local prefix="$1"
+    local body
+    body="[ -f \"$prefix/scripts/ccds-completion.bash\" ] && . \"$prefix/scripts/ccds-completion.bash\""
+    body+=$'\n'"[ -f \"$prefix/scripts/claude-completion.bash\" ] && . \"$prefix/scripts/claude-completion.bash\""
+    write_rc_block "completion" "$COMPLETION_MARKER_BEGIN" "$COMPLETION_MARKER_END" "$body"
+    if (( RC_BLOCKS_UPDATED == 0 )); then
+        log_warn "No shell rc files found; source $prefix/scripts/ccds-completion.bash manually."
+    fi
+}
+
+remove_completion_rc() {
+    remove_rc_block "completion" "$COMPLETION_MARKER_BEGIN" "$COMPLETION_MARKER_END"
 }
 
 # ---------------------------------------------------------------------------
@@ -458,7 +493,7 @@ do_uninstall() {
 
     if (( DRY_RUN )); then
         [[ -d "$PREFIX" ]] && log_info "DRY RUN -- would remove $PREFIX"
-        (( NO_PATH == 0 )) && log_info "DRY RUN -- would remove ccds PATH block from shell rc files"
+        (( NO_PATH == 0 )) && log_info "DRY RUN -- would remove ccds PATH and completion blocks from shell rc files"
         log_info "DRY RUN -- would remove ccds block from $HOME/.claude/CLAUDE.md"
         log_info "DRY RUN -- note: agents in $HOME/.claude/agents and skills in $HOME/.claude/skills are NOT removed"
         return
@@ -474,6 +509,7 @@ do_uninstall() {
 
     if (( NO_PATH == 0 )); then
         remove_path_rc
+        remove_completion_rc
     fi
 
     # Remove the JIT block from ~/.claude/CLAUDE.md
@@ -566,6 +602,8 @@ bash "$PREFIX/scripts/ccds-user-setup.sh" "$PREFIX" ${setup_flags[@]+"${setup_fl
 
 if (( NO_PATH == 0 )); then
     add_to_path_rc "$PREFIX/bin"
+    log_step "Installing shell completion"
+    add_completion_rc "$PREFIX"
 fi
 
 printf '\n'

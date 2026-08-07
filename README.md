@@ -130,7 +130,7 @@ Default prefix: `%USERPROFILE%\.claude\playbook`. Override with `-Prefix`, pin a
 curl -fsSL https://raw.githubusercontent.com/ggrace519/claude-code-dev-studio/main/install-playbook.sh | bash
 ```
 
-Default prefix: `$HOME/.claude/playbook`. Override with `--prefix`, pin a version with `--version v0.5.0`, include prereleases with `--include-prerelease`, skip PATH with `--no-path`.
+Default prefix: `$HOME/.claude/playbook`. Override with `--prefix`, pin a version with `--version v0.5.0`, include prereleases with `--include-prerelease`. `--no-path` leaves your shell rc files untouched — it skips both the PATH block and the `ccds` tab-completion block (ADR-0017); `--uninstall` removes both.
 
 Both installers accept `--dry-run` / `-DryRun`, `--local-zip <path>` / `-LocalZip <path>` (install from a locally built ZIP), and `--token` / `-Token` (GitHub token for rate-limited or private-repo environments).
 
@@ -143,7 +143,7 @@ sudo apt install ./ccds_<version>_all.deb     # Debian/Ubuntu
 sudo dnf install ./ccds-<version>-1.noarch.rpm # RHEL/Fedora
 ```
 
-The package installs the shared library to `/usr/share/ccds` and the `ccds` launcher to `/usr/bin/ccds`. Because the agents/skills/`CLAUDE.md` block and the plugins are **per-user** (they live under `~/.claude/`), per-user setup — including the enforcement-plugin install above — runs for the installing user automatically when the package can identify them (`sudo`, polkit/GUI installers, or a login terminal). Other users on the box run `ccds setup` once.
+The package installs the shared library to `/usr/share/ccds`, the `ccds` launcher to `/usr/bin/ccds`, and `ccds` tab-completion to `/usr/share/bash-completion/completions/ccds` — the distro-native path, so it loads for every user without touching anyone's dotfiles. Linux packages carry Linux tools only: the PowerShell dispatcher and helpers ship in the release ZIP and via `Install-Playbook.ps1` (ADR-0017). Because the agents/skills/`CLAUDE.md` block and the plugins are **per-user** (they live under `~/.claude/`), per-user setup — including the enforcement-plugin install above — runs for the installing user automatically when the package can identify them (`sudo`, polkit/GUI installers, or a login terminal). Other users on the box run `ccds setup` once.
 
 If you install from a bare root shell or a headless/CI/Docker context, the package cannot tell which user to set up — run setup yourself once per user:
 
