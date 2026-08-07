@@ -5,6 +5,29 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **ccds-guard no longer blocks read-only inspection of your own config
+  (ADR-0015, amended).** What was wrong: v0.15.0 made writes to session-safety
+  configuration a hard deny in unattended sessions — correct for the file
+  tools, where the tool proves a write, but it was also applied to Bash
+  commands that merely *named* such a path. In a command line the guard cannot
+  tell `ls ~/.claude/plugins/…`, `cat .claude/settings.json` or `git log` from
+  `echo {} > .claude/settings.json`; they match the same patterns. So an
+  unattended session could no longer look at its own configuration at all.
+  Caught live within minutes of v0.15.0 shipping, when the guard blocked a
+  plain `ls` of the plugin cache.
+
+  Bash hits now go to the adjudicator again, whose prompt already treats
+  safety-config writes as an unconditional DENY — verified after the fix that
+  every write form still denies (`>`, `cp`, `sed -i`) while reads proceed. The
+  deterministic hard deny is unchanged for Write/Edit/NotebookEdit, where the
+  write is unambiguous.
+
+---
+
 ## v0.16.0 — 2026-08-07 — The security layer actually reaches every install
 
 If you installed ccds any way other than the two script installers — the

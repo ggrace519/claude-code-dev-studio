@@ -2615,19 +2615,30 @@ class TestGuardUnattended(TestGuardHooks):
                 ("Edit settings.json", self.EDIT_SETTINGS),
                 ("Write a hook", {"tool_name": "Write", "tool_input": {
                     "file_path": "/proj/.claude/hooks/x.py"}}),
-                ("Bash touches settings", {"tool_name": "Bash", "tool_input": {
-                    "command": "echo {} > .claude/settings.json"}}),
-                # One command can raise both an install ask and a tamper hit;
-                # the tamper hit must still win over adjudication.
-                ("Bash install + settings", {
-                    "tool_name": "Bash", "tool_input": {
-                        "command": "pip install foo && "
-                                   "echo {} > .claude/settings.json"}})):
+                ("NotebookEdit a plugin file", {
+                    "tool_name": "NotebookEdit", "tool_input": {
+                        "notebook_path": "/proj/.claude/plugins/x.ipynb"}})):
             with self.subTest(label):
                 r = self.unattended(payload, spawn_proof)
                 self.assert_deny(r, "never auto-approved")
                 self.assertFalse(os.path.exists(marker),
                                  "the flagged text must never reach a judge")
+
+    def test_bash_naming_a_safety_path_is_judged_not_hard_denied(self):
+        """The hard deny is scoped to tools that PROVE a write. A Bash command
+        only proves the path was named — `ls`, `cat`, `grep` and `git log`
+        match the same patterns as `echo {} > .claude/settings.json`. Hard
+        denying that whole set made read-only inspection impossible in an
+        unattended session (found live minutes after v0.15.0 shipped). The
+        judge decides here; its prompt still says config writes always DENY."""
+        read_only = {"tool_name": "Bash", "tool_input": {
+            "command": "ls -1 ~/.claude/plugins/cache/ccds"}}
+        r = self.unattended(read_only, "print('ALLOW: read-only inspection')")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("adjudicated ALLOW", r.stderr)
+        # And a judge that declines still blocks it.
+        self.assert_deny(self.unattended(read_only, "print('DENY: no')"),
+                         "unattended adjudication")
         # Attended, the same writes still merely ask.
         self.assert_ask(self.unattended(self.EDIT_SETTINGS,
                                         "print('ALLOW: x')", mode="default"),

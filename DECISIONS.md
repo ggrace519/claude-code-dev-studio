@@ -1333,7 +1333,9 @@ prompt:
    — an unbounded value raised `OverflowError` straight out of
    `subprocess.run`.
 4. **Scope — two tiers never reach the judge.** Deny-tier rules, and
-   **`ask-write-path` hits: writes to session-safety configuration
+   **`ask-write-path` hits *from the file tools* (Write/Edit/NotebookEdit),
+   where the tool itself proves a write: writes to session-safety
+   configuration
    (`.claude/settings.json`, `.claude/hooks/`, `.claude/plugins/`,
    `.pre-commit-config.yaml`) deny outright in an unattended session.** The
    first cut asked the judge to allow them "if the flagged input itself proves
@@ -1345,6 +1347,27 @@ prompt:
    and bounds a successful injection to "one package install proceeds".
    Attended modes (`default`, `plan`, absent/unknown) keep the ask path
    byte-identical.
+
+   **Amended 2026-08-07, hours after v0.15.0 shipped** — the first cut also
+   hard-denied `ask-write-path` hits found in **Bash** command text, which was
+   wrong: there the guard only knows a safety path was *named*, never that it
+   is being written. `ls ~/.claude/plugins/…`, `cat .claude/settings.json`,
+   `git log` and `grep` match the same patterns as
+   `echo {} > .claude/settings.json`. The result was that read-only inspection
+   of one's own config became impossible in an unattended session — caught
+   live within minutes of the release, when the guard blocked a plain `ls` of
+   the plugin cache. Bash hits now go to the adjudicator, whose prompt already
+   says safety-config writes are always DENY unattended: verified after the
+   fix, all three write forms (`>`, `cp`, `sed -i`) still deny while reads
+   proceed. Rejected alternative: shell write-shape detection (redirections,
+   `cp`/`mv`/`tee`/`sed -i`). ADR-0012's threat model explicitly declines the
+   shell-quoting arms race, and a heuristic that is wrong in the other
+   direction would silently pass real writes.
+
+   Residual, measured not assumed: the judge is deny-biased, so some
+   legitimate reads under `.claude/plugins/…/hooks/` still get denied. That is
+   a judgment which can go either way rather than an unconditional wall, and
+   it is the same bar the ask tier always had.
 
 ### Rationale
 
