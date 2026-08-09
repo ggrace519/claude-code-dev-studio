@@ -1650,8 +1650,22 @@ Both builders are now run for real in the suite and their output asserted:
 - `TestReleaseZipPs1` (6 cases, Windows) runs `build-release.ps1` unmodified —
   it has no external dependency, so the artifact under test is the shipped one.
 
-Two things this found:
+Three things this found:
 
+0. **`build-release.ps1` could produce a structurally broken ZIP silently.**
+   Entry names are derived by trimming the stage path off each staged file's
+   resolved `.FullName`, but the prefix was `-OutputDir` as typed. A relative
+   directory, a trailing separator, or an 8.3 short path all differ in length
+   from the resolved form, and every entry name in the archive came out wrong
+   — `-OutputDir dist` yielded `studio/dist/stage/ccds-v0.18.0/catalog.json`.
+   Production was safe only because the default `-OutputDir` is
+   `Join-Path $PSScriptRoot 'dist'`, already resolved. Found by CI, not
+   locally: a GitHub Windows runner's `TEMP` is `C:\Users\RUNNER~1`, three
+   characters shorter than `runneradmin`, so every entry kept an `est/`
+   prefix. The path is resolved once now, and — the part that matters — a
+   prefix mismatch **throws** rather than producing a name, because silent
+   prefix arithmetic is how a broken archive gets built, checksummed, and
+   published without anyone noticing.
 1. **`fpm_build` died silently when fpm's output format didn't match.** Under
    `set -o pipefail`, `grep -oP ':path=>…'` matching nothing failed the whole
    pipeline, killing the build before `ensure_path`'s glob fallback — the case

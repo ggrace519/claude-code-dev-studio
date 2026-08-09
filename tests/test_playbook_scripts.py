@@ -2582,6 +2582,35 @@ class TestReleaseZipPs1(unittest.TestCase):
                          "build-release.ps1; the installer suites are "
                          "certifying a layout no release produces")
 
+    def test_an_unresolved_output_dir_does_not_corrupt_entry_names(self):
+        """Entry names are derived by trimming the stage path off each file's
+        resolved .FullName, so the prefix has to be resolved too. A relative
+        -OutputDir used to yield entries like
+        'studio/dist/stage/ccds-v0.0.0/catalog.json' — a structurally broken
+        archive, built and checksummed without a single warning.
+
+        The same divergence bit on CI, where a GitHub Windows runner's TEMP is
+        the 8.3 short path C:\\Users\\RUNNER~1: three characters shorter than
+        the resolved form, so every entry kept an 'est/' prefix. A relative
+        path reproduces it deterministically anywhere.
+        """
+        work = tempfile.mkdtemp(prefix="ccds-relzip-cwd-")
+        self.addCleanup(shutil.rmtree, work, ignore_errors=True)
+        r = subprocess.run(
+            [PWSH, "-NoProfile", "-ExecutionPolicy", "Bypass",
+             "-File", BUILD_RELEASE_PS1,
+             "-Version", "v0.0.0-rel", "-OutputDir", "out-rel"],
+            capture_output=True, text=True, cwd=work)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        built = os.path.join(work, "out-rel", "ccds-v0.0.0-rel.zip")
+        self.assertTrue(os.path.isfile(built), r.stdout + r.stderr)
+        names = raw_zip_entry_names(built)
+        self.assertIn("catalog.json", names,
+                      "entry names carry a path prefix: %s" % sorted(names)[:3])
+        self.assertEqual(set(names), set(self.names),
+                         "a relative -OutputDir produced a different archive "
+                         "layout than an absolute one")
+
 
 @unittest.skipUnless(BASH and sys.platform != "win32",
                      "ccds-user-setup.sh is a bash script (POSIX shells only)")

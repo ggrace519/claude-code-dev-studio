@@ -9,6 +9,17 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ### Fixed
 
+- **`build-release.ps1` could build a structurally broken release ZIP without
+  a single warning.** Entry names are produced by trimming the stage path off
+  each staged file's resolved path — but the prefix came from `-OutputDir`
+  exactly as the caller typed it. Any form that differs textually from the
+  resolved path (a relative directory, a trailing slash, or an 8.3 short path
+  like a Windows CI runner's `C:\Users\RUNNER~1`) silently corrupted **every**
+  name in the archive: `-OutputDir dist` produced entries such as
+  `studio/dist/stage/ccds-v0.18.0/catalog.json`. The ZIP was then checksummed
+  and, in a release, published. No shipped release was affected — the default
+  `-OutputDir` is already resolved, which is the only reason this never fired.
+  The path is now resolved once, and a mismatch throws instead of shipping.
 - **A release build could abort with no error message.** `build-release.sh`
   reads the built package's path out of fpm's output; if fpm ever prints it in
   a different shape, the non-matching `grep` failed the whole pipeline under

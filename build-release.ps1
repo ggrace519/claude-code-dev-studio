@@ -95,6 +95,15 @@ if (-not (Test-Path -LiteralPath $OutputDir)) {
     New-Item -ItemType Directory -Path $OutputDir | Out-Null
 }
 
+# Resolve the stage path ONCE and use the resolved form from here on. ZIP entry
+# names are produced by trimming this prefix off each staged file's .FullName
+# (already resolved), so the two must be the same textual form. -OutputDir may
+# arrive relative, with a trailing separator, or as an 8.3 short path (a GitHub
+# Windows runner's TEMP is C:\Users\RUNNER~1\...). Any such difference used to
+# corrupt EVERY entry name in the archive instead of failing: `-OutputDir dist`
+# produced entries like 'studio/dist/stage/ccds-v0.0.0/catalog.json'.
+$stageDir = (Get-Item -LiteralPath $stageDir).FullName.TrimEnd('\', '/')
+
 # ---------------------------------------------------------------------------
 # Copy map: source (repo-relative) -> destination (stage-relative)
 # ---------------------------------------------------------------------------
@@ -200,7 +209,12 @@ $zipStream = [System.IO.File]::Open($zipPath, [System.IO.FileMode]::Create, [Sys
 $archive   = New-Object System.IO.Compression.ZipArchive($zipStream, [System.IO.Compression.ZipArchiveMode]::Create)
 try {
     Get-ChildItem -LiteralPath $stageDir -Recurse -File | ForEach-Object {
-        # Strip the stageDir prefix and normalise separators to forward slashes
+        # Strip the stageDir prefix and normalise separators to forward slashes.
+        # The guard is the point: prefix arithmetic that silently misses is how
+        # a structurally broken archive ships without anyone noticing.
+        if (-not $_.FullName.StartsWith($stageDir, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Staged file is not under the stage root, so its archive entry name cannot be derived:`n  file: $($_.FullName)`n  root: $stageDir"
+        }
         $entryName = $_.FullName.Substring($stageDir.Length).TrimStart('\', '/').Replace('\', '/')
         [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
             $archive, $_.FullName, $entryName,
