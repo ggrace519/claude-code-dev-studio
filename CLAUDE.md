@@ -142,7 +142,10 @@ skills — no domain agent; skills-only, like `common-`).
   `skills/<name>/SKILL.md`. Claude Code does not recurse `.claude/agents/` (ADR-0001).
 - **CLI changes ship in both dispatchers (bash + PowerShell) in the same PR** — the
   cli-parity lint check enforces the command surface. `release-parity` does the same
-  for what the two release builders stage (ADR-0017).
+  for what the two release builders *declare* they stage (ADR-0017); the suite runs
+  both builders for real and asserts what they actually produce, so a copy that
+  silently stages nothing fails (`TestReleaseStagingSh` stubs `fpm`/`rpmbuild` onto
+  `PATH`; `TestReleaseZipPs1` runs `build-release.ps1` unmodified on Windows).
 - **The suite runs on both platforms** (ADR-0018): `python3 -m unittest discover -s
   tests` on Linux, and the same command under Windows Python in CI. Sessions here run
   in WSL on a Windows box, so both are reachable locally — `python.exe -m unittest

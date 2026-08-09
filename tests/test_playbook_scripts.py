@@ -12,6 +12,8 @@ Run: python3 -m unittest discover -s tests -v
 
 import ast
 import getpass
+import hashlib
+import importlib.util
 import json
 import shlex
 import os
@@ -21,12 +23,15 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS = os.path.join(REPO_ROOT, "scripts")
 BUILD_CATALOG = os.path.join(SCRIPTS, "build-catalog.py")
 LINT_PLAYBOOK = os.path.join(SCRIPTS, "lint-playbook.py")
 BUILD_MARKETPLACE = os.path.join(SCRIPTS, "build-marketplace.py")
+BUILD_RELEASE_SH = os.path.join(REPO_ROOT, "build-release.sh")
+BUILD_RELEASE_PS1 = os.path.join(REPO_ROOT, "build-release.ps1")
 
 AGENT_TMPL = """---
 name: saas-architect
@@ -2147,6 +2152,435 @@ class TestInstallPlaybookPs1(unittest.TestCase):
         self.assertIn("archive layout is unexpected", r.stdout + r.stderr)
         self.assertTrue(os.path.isfile(os.path.join(self.prefix, "bin", "ccds.ps1")),
                         "the good install must survive a failed one")
+
+
+def lint_module():
+    """scripts/lint-playbook.py loaded as a module (the filename is hyphenated,
+    so a plain import cannot reach it).
+
+    The release tests parse the builders with the linter's own regexes rather
+    than copies of them: "what this script says it stages" must mean exactly
+    one thing across the lint and these tests, or the two can agree with each
+    other while both being wrong about the script.
+    """
+    spec = importlib.util.spec_from_file_location("ccds_lint", LINT_PLAYBOOK)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def declared_copies():
+    """(deb_pairs, zip_pairs) of (repo source, staged destination).
+
+    The lint only needs destinations; these tests also need the source, to
+    compare the bytes that landed against the bytes that should have.
+    """
+    mod = lint_module()
+    deb = []
+    for m in mod.DEB_COPY_RE.finditer(read(BUILD_RELEASE_SH)):
+        src, dst = m.group(1), m.group(2)
+        if dst == "" or dst.endswith("/"):
+            dst += src.rstrip("/").split("/")[-1]
+        deb.append((src, dst.replace("\\", "/").lstrip("./")))
+    zipped = [(m.group(1).replace("\\", "/"), m.group(2).replace("\\", "/"))
+              for m in mod.PS_COPY_RE.finditer(read(BUILD_RELEASE_PS1))]
+    return deb, zipped
+
+
+def lf(data):
+    """CRLF-insensitive bytes. build-release.sh normalizes line endings in the
+    stage, and a Windows checkout may carry CRLF sources."""
+    return data.replace(b"\r\n", b"\n")
+
+
+def read_bytes(path):
+    with open(path, "rb") as f:
+        return f.read()
+
+
+def raw_zip_entry_names(path):
+    """Entry names exactly as the archive stores them.
+
+    zipfile.namelist() cannot answer this: ZipInfo.__init__ rewrites os.sep to
+    '/', so on Windows an archive full of backslash entry names reads back
+    clean and a separator assertion passes vacuously. Parse the central
+    directory instead.
+    """
+    data = read_bytes(path)
+    eocd = data.rfind(b"PK\x05\x06")
+    if eocd < 0:
+        raise AssertionError("no end-of-central-directory record in " + path)
+    total = int.from_bytes(data[eocd + 10:eocd + 12], "little")
+    off = int.from_bytes(data[eocd + 16:eocd + 20], "little")
+    names = []
+    for _ in range(total):
+        if data[off:off + 4] != b"PK\x01\x02":
+            raise AssertionError("central directory truncated in " + path)
+        n = int.from_bytes(data[off + 28:off + 30], "little")
+        extra = int.from_bytes(data[off + 30:off + 32], "little")
+        comment = int.from_bytes(data[off + 32:off + 34], "little")
+        names.append(data[off + 46:off + 46 + n].decode("utf-8"))
+        off += 46 + n + extra + comment
+    return names
+
+
+def rel_files(root):
+    """Every file under root, as '/'-joined paths relative to it."""
+    out = set()
+    for base, _dirs, names in os.walk(root):
+        for n in names:
+            out.add(os.path.relpath(os.path.join(base, n), root)
+                    .replace(os.sep, "/"))
+    return out
+
+
+REPO_AGENTS = os.path.join(REPO_ROOT, ".claude", "agents")
+REPO_SKILLS = os.path.join(REPO_ROOT, "skills")
+
+
+def repo_agent_names():
+    return {n for n in os.listdir(REPO_AGENTS) if n.endswith(".md")}
+
+
+def repo_skill_names():
+    return {n for n in os.listdir(REPO_SKILLS)
+            if os.path.isfile(os.path.join(REPO_SKILLS, n, "SKILL.md"))}
+
+
+def make_fpm_stub_bin(root, name="stubbin", emit_path=True, create_file=True):
+    """A PATH directory carrying fpm + rpmbuild stand-ins.
+
+    build-release.sh checks for fpm before it stages anything, so on a machine
+    without fpm (every dev box — fpm is CI-only) the staging block is
+    unreachable. Stubbing the two binaries runs the real script end to end,
+    including the fpm flag assembly and ensure_path, which a `--stage-only`
+    flag would skip — and adds no product surface to keep in bash/PS parity.
+
+    emit_path   -- print fpm's `:path=>"..."` token. False simulates a future
+                   fpm whose output format changed.
+    create_file -- actually create the package artifact.
+    """
+    bindir = os.path.join(root, name)
+    body = [
+        "#!/usr/bin/env bash",
+        'pkgdir=""; typ="deb"',
+        'while (( $# )); do case "$1" in',
+        '  --package) pkgdir="$2"; shift 2 ;;',
+        '  -t) typ="$2"; shift 2 ;;',
+        '  *) shift ;;',
+        "esac; done",
+        'out="$pkgdir/${CCDS_STUB_PKG_BASE:-ccds-stub}.$typ"',
+    ]
+    if create_file:
+        body.append("printf 'stub package\\n' > \"$out\"")
+    body.append('echo "fpm stub: built $typ"')
+    if emit_path:
+        body.append('echo "Created package {:path=>\\"$out\\"}"')
+    write(os.path.join(bindir, "fpm"), "\n".join(body) + "\n")
+    write(os.path.join(bindir, "rpmbuild"), "#!/usr/bin/env bash\nexit 0\n")
+    for f in ("fpm", "rpmbuild"):
+        os.chmod(os.path.join(bindir, f), 0o755)
+    return bindir
+
+
+STAGE_LINE_RE = re.compile(r"^==> Staging files to (.+)$", re.MULTILINE)
+
+
+def run_build_release_sh(bindir, outdir, version="v0.0.0-test",
+                         keep_stage=False, skip_rpm=False, env_extra=None,
+                         umask="077"):
+    """Run the real builder with fpm stubbed onto PATH.
+
+    The restrictive default umask is deliberate. `cp` carries the source mode
+    through, so under the usual 022 a 0755 source lands 0755 whether or not the
+    script chmods it — the mode assertion below could not fail, and on a drvfs
+    checkout (every source reports 0777) it especially could not. Under 077 the
+    `chmod 755` is the only thing that yields an executable package, which is
+    also the real case it guards: a build host with a tight umask shipping a
+    package nobody can run.
+    """
+    inner = [BASH, BUILD_RELEASE_SH, "--version", version,
+             "--output-dir", outdir]
+    if keep_stage:
+        inner.append("--keep-stage")
+    if skip_rpm:
+        inner.append("--skip-rpm")
+    args = [BASH, "-c", 'umask "$1"; shift; exec "$@"', "ccds-build",
+            umask] + inner
+    env = {**os.environ, "PATH": bindir + os.pathsep + os.environ["PATH"]}
+    env.update(env_extra or {})
+    return subprocess.run(args, capture_output=True, text=True, env=env,
+                          cwd=REPO_ROOT)
+
+
+@unittest.skipUnless(BASH and sys.platform != "win32",
+                     "build-release.sh is a bash script (POSIX shells only)")
+class TestReleaseStagingSh(unittest.TestCase):
+    """What build-release.sh ACTUALLY stages — not what its copy list says.
+
+    The release-parity lint (check 12) proves the two builders' declared lists
+    agree with each other. Nothing proved either list matches the tree that
+    lands on disk, and a copy that silently stages nothing passes that lint:
+    build-release.ps1 shipped exactly that bug once (`Join-Path $skillsSrc '*'`
+    under -LiteralPath copied no skills at all, and the list still looked
+    right). These tests assert against the artifact.
+
+    They also cover the payload no list mentions — the agents/skills trees, the
+    usr/bin/ccds symlink, the bash-completion drop-in, exec bits, version.txt.
+    """
+
+    # The two source files build-release.sh rewrites in place (`sed -i`, to
+    # strip CR before fpm picks them up). Snapshotted before any build runs.
+    SED_TARGETS = [os.path.join(REPO_ROOT, "packaging", "postinst"),
+                   os.path.join(REPO_ROOT, "packaging", "prerm")]
+
+    @classmethod
+    def setUpClass(cls):
+        # BEFORE the build, not inside a test method: the class-level build
+        # below would absorb any pending rewrite, leaving a later snapshot
+        # comparing post-normalization bytes with themselves.
+        cls.repo_before = {p: read_bytes(p) for p in cls.SED_TARGETS}
+        cls.tmp = tempfile.mkdtemp(prefix="ccds-relstage-")
+        cls.stage = None
+        bindir = make_fpm_stub_bin(cls.tmp)
+        cls.out = os.path.join(cls.tmp, "out")
+        r = run_build_release_sh(bindir, cls.out, keep_stage=True)
+        # Read the stage path BEFORE deciding whether the build succeeded:
+        # --keep-stage disarms the script's own cleanup trap, so a build that
+        # fails after staging leaks the tree unless we can name it.
+        m = STAGE_LINE_RE.search(r.stdout)
+        if m:
+            cls.pkg = m.group(1).strip()           # <stage>/usr/share/ccds
+            cls.stage = os.path.normpath(os.path.join(cls.pkg, "..", "..", ".."))
+        if r.returncode != 0 or not m:
+            cls.tearDownClass()
+            raise AssertionError(
+                ("build-release.sh failed:\n" if r.returncode
+                 else "could not find the stage path in:\n") + r.stdout + r.stderr)
+        cls.stdout = r.stdout
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+        if cls.stage:
+            shutil.rmtree(cls.stage, ignore_errors=True)
+
+    def test_helper_agrees_with_the_linters_own_parser(self):
+        """declared_copies() re-derives destinations; if it ever disagrees with
+        the lint, every assertion below is measuring the wrong thing."""
+        deb, zipped = declared_copies()
+        mod = lint_module()
+        self.assertEqual({d for _s, d in deb},
+                         mod._deb_payload(read(BUILD_RELEASE_SH)))
+        self.assertEqual({d for _s, d in zipped},
+                         mod._zip_payload(read(BUILD_RELEASE_PS1)))
+
+    def test_every_declared_path_lands_with_matching_content(self):
+        deb, _zipped = declared_copies()
+        self.assertTrue(deb, "parsed no copies out of build-release.sh")
+        for src, dst in sorted(deb):
+            staged = os.path.join(self.pkg, *dst.split("/"))
+            source = os.path.join(REPO_ROOT, *src.split("/"))
+            self.assertTrue(os.path.exists(staged),
+                            "build-release.sh declares '%s' but nothing landed "
+                            "at that path in the package" % dst)
+            if os.path.isdir(source):
+                self.assertEqual(rel_files(staged), rel_files(source),
+                                 "'%s' staged an incomplete directory" % dst)
+            else:
+                self.assertEqual(lf(read_bytes(staged)), lf(read_bytes(source)),
+                                 "'%s' staged content that is not %s" % (dst, src))
+
+    def test_the_agents_and_skills_trees_land_complete(self):
+        """Neither is in the copy list — both are loop-copied, so the lint is
+        blind to them, and they are most of what a release IS."""
+        self.assertEqual(
+            {n for n in os.listdir(os.path.join(self.pkg, "agents"))
+             if n.endswith(".md")},
+            repo_agent_names())
+        staged_skills = {
+            n for n in os.listdir(os.path.join(self.pkg, "skills"))
+            if os.path.isfile(os.path.join(self.pkg, "skills", n, "SKILL.md"))}
+        self.assertEqual(staged_skills, repo_skill_names())
+
+    def test_dispatcher_symlink_resolves_to_the_staged_script(self):
+        link = os.path.join(self.stage, "usr", "bin", "ccds")
+        self.assertTrue(os.path.islink(link), "usr/bin/ccds must be a symlink")
+        self.assertEqual(os.readlink(link), "../share/ccds/bin/ccds.sh")
+        # Resolve it the way the installed filesystem will.
+        self.assertTrue(os.path.isfile(os.path.realpath(link)),
+                        "usr/bin/ccds dangles: %s" % os.readlink(link))
+
+    def test_bash_completion_drop_in_is_staged_under_its_command_name(self):
+        """ADR-0017: the package activates completion the distro-native way —
+        the file must be named for the command, not for its source."""
+        drop_in = os.path.join(self.stage, "usr", "share",
+                               "bash-completion", "completions", "ccds")
+        self.assertTrue(os.path.isfile(drop_in), rel_files(self.stage))
+        self.assertEqual(
+            lf(read_bytes(drop_in)),
+            lf(read_bytes(os.path.join(SCRIPTS, "ccds-completion.bash"))))
+
+    def test_version_txt_reads_back_as_the_requested_tag(self):
+        with open(os.path.join(self.pkg, "version.txt")) as f:
+            self.assertEqual(f.read().strip(), "v0.0.0-test")
+
+    def test_staged_scripts_carry_exactly_mode_755(self):
+        """Exact, not `& 0o111`: `cp` preserves the source mode, and on a
+        checkout where that is already executable (or on a filesystem that
+        reports 0777, like NTFS under WSL) a permissive assertion passes even
+        with the chmod removed. 0o755 is what the chmod imposes and what a
+        package must ship."""
+        for rel in ["bin/ccds.sh", "scripts/Sync-AgentPacks.sh",
+                    "scripts/verify-agents.sh", "scripts/ccds-user-setup.sh"]:
+            mode = os.stat(os.path.join(self.pkg, *rel.split("/"))).st_mode
+            self.assertEqual(mode & 0o777, 0o755,
+                             "%s is %o in the package, want 755"
+                             % (rel, mode & 0o777))
+
+    def test_no_windows_only_file_reaches_a_linux_package(self):
+        """The ADR-0017 defect, asserted against the artifact rather than the
+        list: the .deb shipped bin/ccds.ps1 without the Sync-AgentPacks.ps1 it
+        needs, so the dispatcher could only ever error."""
+        produced = rel_files(self.pkg)
+        for rel in sorted(lint_module().WINDOWS_ONLY_PAYLOAD):
+            self.assertNotIn(rel, produced)
+        self.assertFalse([p for p in produced if p.endswith(".ps1")],
+                         "a Linux package staged PowerShell files")
+
+    def test_building_does_not_modify_the_repository(self):
+        """The script runs `sed -i` against packaging/postinst and prerm in the
+        source tree. It is meant to be a no-op on an LF checkout; if it ever
+        rewrites them, a release build silently dirties the working tree.
+
+        Compares against the setUpClass snapshot, which is the only honest
+        baseline — a snapshot taken here would already be post-build.
+        """
+        for p in self.SED_TARGETS:
+            self.assertEqual(read_bytes(p), self.repo_before[p],
+                             "%s was rewritten by a release build" % p)
+
+    def test_unreadable_fpm_output_falls_back_to_the_glob(self):
+        """`grep -oP ':path=>...'` matching nothing fails the pipeline under
+        `set -o pipefail`, which used to kill the build before ensure_path's
+        fallback — the very case that fallback exists for — with no diagnostic
+        of our own."""
+        bindir = make_fpm_stub_bin(self.tmp, name="stubbin-nopath",
+                                   emit_path=False)
+        out = os.path.join(self.tmp, "out-nopath")
+        # The stub names its artifact after the .deb the glob looks for; the
+        # .rpm half of the same run would need a differently-shaped name, and
+        # one recovery is enough to prove the mechanism.
+        r = run_build_release_sh(
+            bindir, out, skip_rpm=True,
+            env_extra={"CCDS_STUB_PKG_BASE": "ccds_0.0.0-test_all"})
+        self.assertEqual(r.returncode, 0,
+                         "the glob fallback should have recovered:\n"
+                         + r.stdout + r.stderr)
+        self.assertTrue(os.path.isfile(
+            os.path.join(out, "ccds_0.0.0-test_all.deb")))
+
+    def test_a_missing_package_after_fpm_reports_clearly(self):
+        bindir = make_fpm_stub_bin(self.tmp, name="stubbin-nofile",
+                                   emit_path=False, create_file=False)
+        out = os.path.join(self.tmp, "out-nofile")
+        r = run_build_release_sh(bindir, out)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("package not found after fpm run", r.stdout + r.stderr)
+
+
+@unittest.skipUnless(PWSH, "build-release.ps1 is a PowerShell script "
+                           "(Windows-targeted, like the ZIP it builds)")
+class TestReleaseZipPs1(unittest.TestCase):
+    """What build-release.ps1 ACTUALLY produces. Runs the real builder — it has
+    no external dependency, so the artifact under test is the shipped one.
+
+    Also pins build_test_release_zip() to it: that fixture is a third
+    hand-maintained copy of the payload, and both installer suites install from
+    it. If it drifts, those suites certify a layout no release ever has.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix="ccds-relzip-")
+        r = subprocess.run(
+            [PWSH, "-NoProfile", "-ExecutionPolicy", "Bypass",
+             "-File", BUILD_RELEASE_PS1,
+             "-Version", "v0.0.0-test", "-OutputDir", cls.tmp],
+            capture_output=True, text=True, cwd=REPO_ROOT)
+        if r.returncode != 0:
+            shutil.rmtree(cls.tmp, ignore_errors=True)
+            raise AssertionError("build-release.ps1 failed:\n"
+                                 + r.stdout + r.stderr)
+        cls.zip = os.path.join(cls.tmp, "ccds-v0.0.0-test.zip")
+        with zipfile.ZipFile(cls.zip) as z:
+            cls.names = z.namelist()
+            cls.blobs = {n: z.read(n) for n in cls.names}
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_every_declared_path_is_in_the_zip_with_matching_content(self):
+        _deb, zipped = declared_copies()
+        self.assertTrue(zipped, "parsed no copies out of build-release.ps1")
+        present = set(self.names)
+        for src, dst in sorted(zipped):
+            source = os.path.join(REPO_ROOT, *src.split("/"))
+            if os.path.isdir(source):
+                staged = {n[len(dst) + 1:] for n in present
+                          if n.startswith(dst + "/")}
+                self.assertEqual(staged, rel_files(source),
+                                 "'%s' staged an incomplete directory" % dst)
+            else:
+                self.assertIn(dst, present,
+                              "build-release.ps1 declares '%s' but the ZIP has "
+                              "no such entry" % dst)
+                self.assertEqual(lf(self.blobs[dst]), lf(read_bytes(source)),
+                                 "'%s' holds content that is not %s" % (dst, src))
+
+    def test_the_agents_and_skills_trees_are_complete(self):
+        self.assertEqual({n[len("agents/"):] for n in self.names
+                          if n.startswith("agents/")},
+                         repo_agent_names())
+        self.assertEqual({n.split("/")[1] for n in self.names
+                          if n.startswith("skills/") and n.endswith("/SKILL.md")},
+                         repo_skill_names())
+
+    def test_entry_names_use_posix_separators(self):
+        """build-release.ps1 builds the archive by hand specifically to avoid
+        Compress-Archive's backslashes, which make `unzip` warn on Linux. The
+        claim was never checked — and cannot be, through namelist(), which
+        normalizes the very thing under test."""
+        raw = raw_zip_entry_names(self.zip)
+        self.assertFalse([n for n in raw if "\\" in n],
+                         "archive stores Windows separators; `unzip` will warn")
+        self.assertEqual(set(raw), set(self.names),
+                         "raw central-directory names disagree with namelist() "
+                         "— raw_zip_entry_names() is misparsing")
+
+    def test_version_txt_reads_back_as_the_requested_tag(self):
+        self.assertEqual(self.blobs["version.txt"].decode("utf-8").strip(),
+                         "v0.0.0-test")
+
+    def test_sha256_sidecar_matches_the_archive(self):
+        sidecar = read(self.zip + ".sha256").strip()
+        digest, _, name = sidecar.partition("  ")
+        self.assertEqual(digest,
+                         hashlib.sha256(read_bytes(self.zip)).hexdigest())
+        self.assertEqual(name, "ccds-v0.0.0-test.zip",
+                         "the sidecar must name the file `sha256sum -c` will "
+                         "look for next to it")
+
+    def test_the_installer_test_fixture_matches_the_real_artifact(self):
+        tmp, fixture_zip, _stage = build_test_release_zip()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        with zipfile.ZipFile(fixture_zip) as z:
+            fixture = {n for n in z.namelist() if not n.endswith("/")}
+        self.assertEqual(fixture, set(self.names),
+                         "build_test_release_zip() has drifted from "
+                         "build-release.ps1; the installer suites are "
+                         "certifying a layout no release produces")
 
 
 @unittest.skipUnless(BASH and sys.platform != "win32",

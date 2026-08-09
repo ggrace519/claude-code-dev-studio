@@ -1629,6 +1629,53 @@ multi-line body simple; the block therefore moves to the end of the rc file.
 - Every check above was mutation-verified: three drift directions for the lint,
   three broken behaviors for the completion, each caught by the intended test.
 
+### Amendment (2026-08-09): the contract is asserted against the artifact, not
+just the lists
+
+`release-parity` proves the two builders' **declared lists** agree. It cannot
+see whether either builder produces what its list claims — a copy that stages
+nothing passes it, which is exactly the bug `build-release.ps1` shipped once
+(`Join-Path $skillsSrc '*'` under `-LiteralPath` copied no skills while the
+`$copyMap` still read correctly). Nor did anything cover the payload no list
+mentions: the agents and skills trees, the `usr/bin/ccds` symlink, the
+bash-completion drop-in, exec bits, `version.txt`.
+
+Both builders are now run for real in the suite and their output asserted:
+
+- `TestReleaseStagingSh` (11 cases, Linux) stubs `fpm`/`rpmbuild` onto `PATH`
+  rather than adding a `--stage-only` flag. fpm's preflight sits before the
+  stage block, so the script is otherwise unreachable on any dev box; stubbing
+  runs strictly more of it (flag assembly, `ensure_path`) and adds no product
+  surface needing bash/PS parity.
+- `TestReleaseZipPs1` (6 cases, Windows) runs `build-release.ps1` unmodified —
+  it has no external dependency, so the artifact under test is the shipped one.
+
+Two things this found:
+
+1. **`fpm_build` died silently when fpm's output format didn't match.** Under
+   `set -o pipefail`, `grep -oP ':path=>…'` matching nothing failed the whole
+   pipeline, killing the build before `ensure_path`'s glob fallback — the case
+   that fallback exists for — with no diagnostic of our own. Same shape as the
+   `ccds doctor` version-parse bug. Fixed with `|| true`; empty stdout is a
+   valid answer meaning "fpm succeeded, I could not read the path from it".
+2. **A separator assertion that could not fail.** `zipfile`'s `ZipInfo.__init__`
+   rewrites `os.sep` to `/` on read, so on Windows `namelist()` reports clean
+   names for an archive full of backslashes. The test now parses the central
+   directory directly. Mutation-checked: removing `.Replace('\', '/')` really
+   does produce `agents\ai-architect.md` entries, and is now caught.
+
+Both suites are mutation-verified case by case. One assertion needed the
+environment forced to have teeth: `cp` carries the source mode through, so
+under the usual umask 022 (and on a drvfs checkout, where every file reports
+0777) the package lands 0755 with or without the script's `chmod`. The staging
+build runs under `umask 077`, where the chmod is the only thing producing an
+executable package — and removing it drops the package to 0700, which fails.
+
+`build_test_release_zip()` — a third hand-maintained copy of the payload, and
+the fixture **both** installer suites install from — is now pinned to the real
+ZIP's entry set. It had not drifted; nothing would have noticed if it had, and
+those suites would have been certifying a layout no release produces.
+
 ### Supersedes
 None. Extends ADR-0012's every-outlet principle from hooks to the release
 payload itself.
