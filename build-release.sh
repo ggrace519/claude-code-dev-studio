@@ -128,11 +128,18 @@ FPM_FLAGS=(
 # Run fpm and return the path of the created package.
 # Display output goes to stderr so it shows in terminal even when called with $().
 # Only the package path is printed to stdout (captured by the caller).
+#
+# The trailing `|| true` is load-bearing: under `set -o pipefail` a grep that
+# matches nothing fails the whole pipeline, so an fpm whose output format no
+# longer carries `:path=>"..."` killed this function -- and with it the build --
+# before ensure_path's glob fallback (which exists for exactly that case) ever
+# ran, printing no diagnostic of our own. Empty stdout is a valid answer here:
+# "fpm succeeded, I could not read the path from it".
 fpm_build() {
     local out
     out=$(fpm "$@" 2>&1) || { printf '%s\n' "$out" | sed 's/^/    /' >&2; return 1; }
     printf '%s\n' "$out" | sed 's/^/    /' >&2
-    printf '%s\n' "$out" | grep -oP '(?<=:path=>")[^"]+' | tail -1
+    printf '%s\n' "$out" | grep -oP '(?<=:path=>")[^"]+' | tail -1 || true
 }
 
 # Ensure the package ended up at the expected path (rename if fpm added iteration suffix)

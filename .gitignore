@@ -31,3 +31,11 @@ __pycache__/
 
 # Project-staged domain skills (ccds sync / sync-agents output — per-clone state)
 .claude/skills/
+
+# ccds-loops runtime state, written into whatever repo the session runs in:
+# handoff.md by the PreCompact hook (a per-session snapshot, "overwritten on
+# every compaction" by its own header) and the evidence artifacts the Stop gate
+# reads. Both are session scratch, and neither should arrive as an untracked
+# file in `git status`.
+.claude/handoff.md
+.claude/evidence/

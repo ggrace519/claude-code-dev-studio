@@ -5,6 +5,49 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **`build-release.ps1` could build a structurally broken release ZIP without
+  a single warning.** Entry names are produced by trimming the stage path off
+  each staged file's resolved path — but the prefix came from `-OutputDir`
+  exactly as the caller typed it. Any form that differs textually from the
+  resolved path (a relative directory, a trailing slash, or an 8.3 short path
+  like a Windows CI runner's `C:\Users\RUNNER~1`) silently corrupted **every**
+  name in the archive: `-OutputDir dist` produced entries such as
+  `studio/dist/stage/ccds-v0.18.0/catalog.json`. The ZIP was then checksummed
+  and, in a release, published. No shipped release was affected — the default
+  `-OutputDir` is already resolved, which is the only reason this never fired.
+  The path is now resolved once, and a mismatch throws instead of shipping.
+- **A release build could abort with no error message.** `build-release.sh`
+  reads the built package's path out of fpm's output; if fpm ever prints it in
+  a different shape, the non-matching `grep` failed the whole pipeline under
+  `set -o pipefail` and killed the build — skipping the fallback that exists to
+  recover exactly that case, and printing nothing to explain itself. It now
+  falls back as designed, and says "package not found after fpm run" when there
+  is genuinely nothing to fall back to.
+
+### Infrastructure
+
+- **Both release builders are now run for real in the test suite, and what they
+  produce is asserted** (ADR-0017 amendment). The `release-parity` lint added
+  in v0.18.0 proves the two builders' copy *lists* agree; nothing proved either
+  list matches the tree that actually lands, and a copy that silently stages
+  nothing passed it — the bug `build-release.ps1` shipped once, when a wildcard
+  under `-LiteralPath` copied no skills at all while the list still read
+  correctly. 17 new cases cover the artifact instead: every declared path
+  present with matching bytes, the complete agents and skills trees, the
+  `usr/bin/ccds` symlink resolving, the bash-completion drop-in, mode 755 on
+  staged scripts, `version.txt`, the SHA256 sidecar, and — checked for the
+  first time — that ZIP entry names really use forward slashes.
+- **The installer suites' test ZIP is pinned to the real one.** Both installer
+  suites install from a hand-built fixture archive; if it drifted from
+  `build-release.ps1` they would have gone on passing while certifying a layout
+  no release produces. It had not drifted, and now it cannot.
+
+---
+
 ## v0.18.0 — 2026-08-07 — Windows was never actually tested. Now it is.
 
 ccds ships a bash half and a PowerShell half, and CI only ever ran the test
