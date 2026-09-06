@@ -1,7 +1,7 @@
 ---
 name: mobile-architect
 model: opus
-color: "#2563eb"
+color: blue
 description: Mobile domain specialist. Use proactively on iOS / Android work — framework choice, offline posture, background-execution strategy, release topology, and privacy posture. Owns mobile architecture and composes the mobile-* implementation skills.
 ---
 

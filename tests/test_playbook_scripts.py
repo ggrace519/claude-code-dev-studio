@@ -139,6 +139,19 @@ class TestLintPlaybook(FixtureCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("RESULT: PASS", r.stdout)
 
+    def test_hex_agent_color_fails(self):
+        """`color:` accepts eight names only; hex is silently ignored by Claude
+        Code, which is how all 19 agents rendered in the default color."""
+        body = read(self.agent_path())
+        body = body.replace("\nname: ", "\ncolor: \"#1a56db\"\nname: ", 1)
+        self.assertIn('color: "#1a56db"', body)
+        write(self.agent_path(), body)
+        self.regen_catalog()
+        r = self.lint()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("agent-colors", r.stdout)
+        self.assertIn("#1a56db", r.stdout)
+
     def test_ghost_skill_reference_fails(self):
         write(self.agent_path(), AGENT_TMPL.format(extra="Also pull `saas-ghost`."))
         r = self.lint()

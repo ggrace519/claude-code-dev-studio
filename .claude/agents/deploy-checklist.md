@@ -1,7 +1,7 @@
 ---
 name: deploy-checklist
 model: haiku
-color: "#ff5a1f"
+color: orange
 disallowedTools: Write, Edit, NotebookEdit
 description: Deployment readiness and pre-production checklist specialist. Use proactively before any production deployment, environment promotion, release cut, or go/no-go assessment.
 ---

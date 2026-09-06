@@ -1,7 +1,7 @@
 ---
 name: pr-code-reviewer
 model: sonnet
-color: "#7e3af2"
+color: purple
 disallowedTools: Write, Edit, NotebookEdit
 skills:
   - code-review-checklist
