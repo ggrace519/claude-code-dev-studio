@@ -24,6 +24,13 @@
 # NOT in this table (lives in pretooluse-guard.py as path logic, because a
 # regex cannot resolve paths): recursive force-delete outside the project.
 #
+# Operator additions live in ~/.claude/ccds-guard-rules.txt (same five
+# categories; loaded after this file, never replaced by a plugin update, and
+# tamper-watched like settings). Typical use: declare the credential files your
+# own skills are meant to read, so they stop being adjudicated on every call:
+#   allow-path: (^|/)\.claude/credentials/   # keys my skills read by design
+# Override the location with CCDS_GUARD_USER_RULES (a test seam).
+#
 # Charter: protective only. This guard exists so that projects built by people
 # who configure nothing still refuse to leak secrets, run curl|bash, or install
 # hallucinated packages. It is a teaching backstop layered on Claude Code's
@@ -35,6 +42,7 @@
 allow-path: \.env\.(example|sample|template|dist)$                              # env templates are meant to be edited
 allow-path: (^|/)tests?/fixtures?/                                              # test fixtures named like secrets
 allow-path: \.pub$                                                              # public keys are not secrets
+allow-path: ^(?=.*(?:^|/)(?:src|lib|app|apps|packages|pkg|internal|cmd|tests?|spec|__tests__|e2e|examples?)/)(?!.*(?:^|/)\.[^/]+/)(?:.*/)?(?!\.)(?![^/]*\.(?:key|pem|p12|pfx|jks|keystore|env|tfstate)\.)(?!id_(?:rsa|dsa|ecdsa|ed25519)\b)[^/]+\.(?:ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|kt|cs|rb|php|swift|scala|c|cc|cpp|h|hpp|proto|graphql|vue|svelte)$  # source code in a source tree is never a secret: packages/cli/src/credentials/credentials.service.ts is a module, not a key (#74). Requires a source-root segment (src/ lib/ app/ packages/ tests/ ...), so secrets/keys.py at a repo root still denies; never inside a dot-directory, never a dotfile (.env.ts), never a key/env stem with a code suffix (server.key.md)
 
 # --- Secret-bearing paths: never read or written by the model ---
 deny-path: (^|/)\.env(\.[A-Za-z0-9._-]+)?$                                      # .env and variants hold live credentials
@@ -57,6 +65,8 @@ ask-write-path: (^|/)\.claude/settings(\.local)?\.json$                         
 ask-write-path: (^|/)\.claude/hooks(/|$)                                        # Claude Code is changing hook scripts that enforce your safety gates
 ask-write-path: (^|/)\.claude/plugins/                                          # Claude Code is changing installed plugin files (including this guard's own rules) - confirm you asked for this
 ask-write-path: (^|/)\.pre-commit-config\.ya?ml$                                # Claude Code is changing the checks that run before every commit
+ask-write-path: (^|/)ccds-guard-rules\.txt[. ]*$                                   # Claude Code is changing the operator's own guard rules (the file that can exempt paths) - confirm you asked for this. Matched by filename so `cd ~/.claude && ... > ccds-guard-rules.txt` and Windows trailing-dot aliases are seen too
+ask-write-path: (^|/)ccds-guard\.disabled[. ]*$                                    # Claude Code is writing the guard opt-out marker that makes doctor treat a disabled guard as intended - confirm you asked for this
 
 # --- Dangerous commands: blocked outright ---
 deny-command: \bgit\b[^\n;|&]*\bpush\b[^\n;|&]*(\s--force(?!-with-lease|-if-includes)\b|\s-[a-z]*f[a-z]*\b)  # force-push rewrites shared history; use --force-with-lease if you truly need it
@@ -69,6 +79,9 @@ deny-command: \bwget\b[^\n;|&]*--no-check-certificate\b                         
 deny-command: \bsslverify\s*[= ]\s*false\b                                      # disabling git TLS verification lets anyone intercept the traffic
 deny-command: \bstrict-ssl\b[^\n;|&]*\bfalse\b                                  # disabling npm TLS verification lets anyone intercept the traffic
 deny-command: \b(PYTHONHTTPSVERIFY=0|NODE_TLS_REJECT_UNAUTHORIZED=0)\b          # disabling TLS verification lets anyone intercept the traffic
+
+# --- Guard self-removal: the model switching off its own gates asks first ---
+ask-command: \bclaude\s+plugin\s+(disable|uninstall|remove)\b[^\n;|&]*\bccds-(guard|loops)\b  # Claude Code is disabling or removing a ccds enforcement plugin (its own safety gates) - confirm you asked for this
 
 # --- Package installs: ask, because models hallucinate package names ---
 # Attackers register hallucinated names (slopsquatting). Flags may appear

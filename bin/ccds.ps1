@@ -999,9 +999,22 @@ function Test-DoctorPlugins {
         return
     }
     if ($disabled.Count -gt 0) {
+        # A deliberate opt-out is not a broken install: the operator records
+        # the reason in ~/.claude/ccds-guard.disabled and doctor downgrades the
+        # guard line to WARN (ADR-0021). Only ccds-guard can be opted out.
+        $marker = Join-Path $env:USERPROFILE '.claude\ccds-guard.disabled'
+        if ($disabled.Count -eq 1 -and $disabled[0] -eq 'ccds-guard' -and (Test-Path -LiteralPath $marker -PathType Leaf)) {
+            $why = ''
+            try { $why = @(Get-Content -LiteralPath $marker -TotalCount 1 -ErrorAction Stop)[0] } catch { }
+            if (-not $why) { $why = 'no reason recorded' }
+            Write-DoctorLine 'WARN' 'plugins-installed' `
+                "ccds-guard disabled on purpose (${marker}: $why); ccds-loops installed and enabled" `
+                "when the guard is revisited: claude plugin enable ccds-guard; Remove-Item '$marker'"
+            return
+        }
         Write-DoctorLine 'FAIL' 'plugins-installed' `
             "installed but DISABLED: $($disabled -join ' ') -- a disabled guard protects nothing" `
-            "claude plugin enable $($disabled[0])"
+            "claude plugin enable $($disabled[0]) (or, if deliberate: Set-Content '$marker' 'reason' so doctor reports it as a choice)"
         return
     }
     Write-DoctorLine 'OK' 'plugins-installed' 'ccds-guard ccds-loops installed and enabled'

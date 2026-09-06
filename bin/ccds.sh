@@ -386,9 +386,22 @@ doc_check_plugins() {
         return
     fi
     if (( ${#disabled[@]} > 0 )); then
+        # A deliberate opt-out is not a broken install: the operator records
+        # the reason in ~/.claude/ccds-guard.disabled and doctor downgrades the
+        # guard line to WARN (ADR-0021). Only ccds-guard can be opted out; a
+        # disabled ccds-loops is still an incomplete install.
+        local marker="$HOME/.claude/ccds-guard.disabled"
+        if [[ "${disabled[*]}" == "ccds-guard" && -f "$marker" ]]; then
+            local why
+            why="$(head -n 1 "$marker" 2>/dev/null | tr -d '\r' || true)"
+            doc_line WARN plugins-installed \
+                "ccds-guard disabled on purpose (${marker}: ${why:-no reason recorded}); ccds-loops installed and enabled" \
+                "when the guard is revisited: claude plugin enable ccds-guard && rm $marker"
+            return
+        fi
         doc_line FAIL plugins-installed \
             "installed but DISABLED: ${disabled[*]} -- a disabled guard protects nothing" \
-            "claude plugin enable ${disabled[0]}"
+            "claude plugin enable ${disabled[0]} (or, if deliberate: echo 'reason' > $HOME/.claude/ccds-guard.disabled so doctor reports it as a choice)"
         return
     fi
     doc_line OK plugins-installed "${ENFORCEMENT_PLUGINS[*]} installed and enabled"
