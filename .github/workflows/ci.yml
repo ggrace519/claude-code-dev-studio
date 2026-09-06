@@ -2,15 +2,30 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
     tags: ['v*']
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 permissions:
   contents: read
 
 jobs:
+  promotion-only:
+    name: main accepts only develop
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject non-promotion PRs into main (ADR-0019)
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if [ "$HEAD_REF" != "develop" ]; then
+            echo "::error::PRs into main must have develop as their head branch (ADR-0019). Retarget this PR at develop: gh pr edit --base develop"
+            exit 1
+          fi
+          echo "promotion PR develop -> main: ok"
+
   verify-agents-nix:
     name: Verify agents (Linux)
     runs-on: ubuntu-latest

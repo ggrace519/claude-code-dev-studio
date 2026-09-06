@@ -128,6 +128,15 @@ skills — no domain agent; skills-only, like `common-`).
 
 ## Conventions
 
+- **Branch model (ADR-0019):** `develop` is the integration branch — cut every
+  feature/fix/docs branch from it and open the PR against it with an explicit
+  `gh pr create --base develop`. `main` is the release branch **and stays the GitHub
+  default branch**: `/plugin marketplace add ggrace519/claude-code-dev-studio` clones
+  and updates from the repository's default branch, so whatever `main` holds is what
+  every marketplace user installs. Promotion is a `develop` → `main` PR, merged as a
+  merge commit or fast-forward (never squash), then tagged on `main`. CI runs on both
+  branches, and the `promotion-only` job rejects any PR into `main` whose head is not
+  `develop`.
 - **Decisions are logged.** Every significant architectural/security/process decision is
   an ADR in `DECISIONS.md`. The shared `playbook-conventions` skill carries the ADR
   template and the output/handoff format — agents pull it rather than restating it.

@@ -1796,3 +1796,77 @@ existing rather than trusting one developer's box:
 
 ### Supersedes
 None.
+
+---
+
+## ADR-0019: `develop` Integrates, `main` Releases and Stays the Default Branch
+
+**Date:** 2026-09-06
+**Status:** Accepted
+**Phase:** Deployment
+**Deciders:** Greg Grace
+
+### Context
+
+Until now the repo had one long-lived branch. Every feature PR targeted `main`,
+so `main` was simultaneously the integration branch and the branch that
+`/plugin marketplace add ggrace519/claude-code-dev-studio` installs from. Any
+merged-but-unreleased change was immediately live for every marketplace user.
+
+The standing convention across Greg's repos is a two-branch model: `develop`
+for integration, `main` for what is released, with `develop` set as the GitHub
+default branch so PRs, clones, and the UI target it. Applying that here hit a
+conflict specific to this repo: **the default branch is a distribution
+channel.** The Claude Code plugin-marketplaces documentation states that a
+marketplace source's `ref` "defaults to repository default branch", and that a
+marketplace added without a ref updates from the default branch. The local
+evidence agrees — the marketplace clone on this machine
+(`~/.claude/plugins/marketplaces/ccds`) is a shallow clone whose only fetch
+refspec is `+refs/heads/main:refs/remotes/origin/main`, i.e. whatever the
+default branch was at add time. Making `develop` the default would have put
+every new install, and existing installs on their next `marketplace update`,
+onto unreleased code.
+
+### Decision
+
+1. **`develop` is the integration branch.** Every feature/fix/docs branch is
+   cut from it and its PR targets it. Because `develop` is *not* the default
+   branch, the PR base must be passed explicitly: `gh pr create --base develop`.
+2. **`main` is the release branch and remains the GitHub default branch.**
+   Only promotion PRs (`develop` as head, `main` as base) land on it, merged as
+   a merge commit or fast-forward — never squash, which would diverge the two
+   branches and make every later promotion conflict. Releases are tagged on
+   `main`.
+3. **CI covers both.** `ci.yml` triggers on pushes and PRs to `main` *and*
+   `develop`. A `promotion-only` job fails any PR into `main` whose head branch
+   is not `develop`, so a mis-targeted feature PR is caught by a red check
+   rather than by someone noticing.
+4. **`develop` is never deleted** and must always be promotable — nothing
+   known-broken lands on it; unfinished work stays on a stacked branch.
+
+### Rationale
+
+Pinning the marketplace source to `@main` everywhere it is written down was
+considered and rejected: it fixes only the invocations this repo controls,
+while the unpinned form already exists in earlier changelog entries, in
+`known_marketplaces.json` on every existing install, and anywhere the
+one-liner has been copied. Keeping `main` as the default makes the unpinned
+form correct by construction. The cost — one `--base develop` flag on PR
+creation — is small and is backstopped by the CI guard.
+
+### Consequences
+
+- Changelog entries accumulate under `## [Unreleased]` on `develop`; the
+  promotion PR rolls them into the dated version heading that matches the tag.
+- The raw-URL installer one-liners (`.../main/install-playbook.sh`,
+  `.../main/Install-Playbook.ps1`) and the marketplace source stay exactly as
+  documented — they already name `main` and now mean "released".
+- Stacked PRs still get no CI (a known limitation noted in v0.17.0 notes);
+  the base branch for stacks is the parent branch, not `develop`.
+- Follow-on: if the marketplace source is ever made pinnable in the
+  installers (`owner/repo@main`), that is an optional hardening, not a
+  requirement of this model.
+
+### Supersedes
+
+None.
