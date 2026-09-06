@@ -1,7 +1,7 @@
 ---
 name: ai-architect
 model: opus
-color: "#6366f1"
+color: blue
 description: AI / LLM application domain specialist. Use proactively on AI / LLM work — model selection, serving topology, RAG-vs-finetune-vs-prompt, eval strategy, cost/latency budgets, and data policy. Owns AI architecture and composes the ai-* implementation skills.
 ---
 

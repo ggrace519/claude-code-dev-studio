@@ -157,10 +157,11 @@ skills — no domain agent; skills-only, like `common-`).
   `PATH`; `TestReleaseZipPs1` runs `build-release.ps1` unmodified on Windows).
 - **The suite runs on both platforms** (ADR-0018): `python3 -m unittest discover -s
   tests` on Linux, and the same command under Windows Python in CI. Sessions here run
-  in WSL on a Windows box, so both are reachable locally — `python.exe -m unittest
-  discover -s tests` runs the Windows half against the same checkout. Platform-specific
-  classes guard on `sys.platform`; never "cover" a platform by running one hand-picked
-  class on it.
+  on native Debian (since 2026-08-14; the WSL-on-Windows setup ADR-0018 describes is
+  gone), so the Windows half — `TestInstallPlaybookPs1`, `TestReleaseZipPs1`,
+  `TestCcdsDoctorPs1` — is verified by the `windows-latest` CI job, not locally.
+  Platform-specific classes guard on `sys.platform`; never "cover" a platform by
+  running one hand-picked class on it.
 
 ---
 

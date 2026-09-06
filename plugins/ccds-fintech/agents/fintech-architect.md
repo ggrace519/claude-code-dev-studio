@@ -1,7 +1,7 @@
 ---
 name: fintech-architect
 model: opus
-color: "#365314"
+color: green
 description: Fintech domain specialist. Use proactively on regulated-money work — ledger topology, custody, KYC/AML and licensing, money-movement primitives, reconciliation, audit retention, and risk. Owns fintech architecture and composes the fintech-* implementation skills.
 ---
 

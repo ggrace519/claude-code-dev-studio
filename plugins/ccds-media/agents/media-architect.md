@@ -1,7 +1,7 @@
 ---
 name: media-architect
 model: opus
-color: "#0369a1"
+color: cyan
 description: Media / streaming domain specialist. Use proactively on media / streaming work — ingest → process → store → deliver pipeline, codec/container strategy, VOD vs live topology, DRM posture, CDN strategy, and QoE. Owns media architecture and composes the media-* implementation skills.
 ---
 

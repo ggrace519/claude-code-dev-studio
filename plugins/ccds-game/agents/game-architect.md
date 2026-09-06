@@ -1,7 +1,7 @@
 ---
 name: game-architect
 model: opus
-color: "#ea580c"
+color: orange
 description: Game domain specialist. Use proactively on game work — engine selection, core game loop, state architecture, asset pipeline, save/load topology, and platform-target strategy. Owns game architecture and composes the game-* implementation skills.
 ---
 

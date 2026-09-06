@@ -1,7 +1,7 @@
 ---
 name: secure-auditor
 model: opus
-color: "#e3a008"
+color: yellow
 disallowedTools: Write, Edit, NotebookEdit
 skills:
   - security-checklist

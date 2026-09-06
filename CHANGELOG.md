@@ -7,6 +7,21 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ## [Unreleased]
 
+### Changed
+
+- **Agent `color:` values are now the eight names Claude Code accepts** (`red`,
+  `blue`, `green`, `yellow`, `purple`, `orange`, `pink`, `cyan`). All 19 agents
+  carried hex values, which the sub-agents reference does not list, so the field
+  was silently ignored and every ccds agent rendered in the default color. A new
+  `agent-colors` lint check keeps it that way.
+- **`plan-architect` and `saas-architect` no longer "ask about constraints
+  first".** A subagent cannot converse with the user; that step returned a
+  question as the whole result and wasted the dispatch. They now take constraints
+  from the task and the repo, state the assumptions they design under where those
+  are silent, and hand back only the questions whose answers would change the
+  design — the shape the Claude 5 prompting guidance recommends for autonomous
+  work.
+
 ### Added
 
 - **`ccds doctor` now catches the double-loaded roster, and setup no longer

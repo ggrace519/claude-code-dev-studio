@@ -1,7 +1,7 @@
 ---
 name: desktop-architect
 model: opus
-color: "#92400e"
+color: orange
 description: Desktop App domain specialist. Use proactively on desktop work — runtime choice, process/window model, IPC topology, OS integration, autoupdate, code signing, installers, and shell integration. Owns desktop architecture and composes the desktop-* implementation skills.
 ---
 
