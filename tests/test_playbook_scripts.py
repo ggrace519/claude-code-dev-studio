@@ -1497,11 +1497,14 @@ class TestCcdsDoctor(unittest.TestCase):
             plugins = [{"id": "ccds-guard@ccds", "enabled": True},
                        {"id": "ccds-loops@ccds", "enabled": True}]
         path = os.path.join(self.root, "claude-stub")
+        # indent=2: the real CLI pretty-prints one field per line. A flat
+        # single-line stub hid #70 (the disabled-plugin branch could never
+        # match on real output), so the stub must keep the real shape.
         write(path, "#!/usr/bin/env bash\ncase \"$1\" in\n"
                     "  --version) printf '%%s\\n' %s ;;\n"
                     "  plugin)    printf '%%s\\n' %s ;;\n"
                     "esac\n" % (shlex.quote(version),
-                                shlex.quote(json.dumps(plugins))))
+                                shlex.quote(json.dumps(plugins, indent=2))))
         os.chmod(path, 0o755)
         return path
 
@@ -1581,6 +1584,51 @@ class TestCcdsDoctor(unittest.TestCase):
         self.assertIn("WARN  claude-cli", r.stdout)
         self.assertIn("WARN  plugins-installed", r.stdout)
         self.assertIn("RESULT: PASS", r.stdout)
+
+    CONTENT_PLUGINS = [{"id": "ccds-guard@ccds", "enabled": True},
+                       {"id": "ccds-loops@ccds", "enabled": True},
+                       {"id": "ccds-core@ccds", "enabled": True},
+                       {"id": "ccds-saas@ccds", "enabled": True}]
+
+    def test_plugin_and_file_copies_overlap_fails(self):
+        """ADR-0020: the roster reaches Claude Code by plugins OR file copies.
+        Both at once = every agent loaded twice; doctor must name the copies
+        and hand over the removal command rather than say PASS (which is what
+        it did on the maintainer's own machine for weeks)."""
+        r = self.doctor(claude=self.stub_claude(plugins=self.CONTENT_PLUGINS))
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("FAIL  plugin-file-overlap: loaded twice: plugin(s) ccds-core ccds-saas",
+                      r.stdout)
+        self.assertIn("1 agent file(s) + %d cross-cutting skill(s)"
+                      % len(self._global_skills()), r.stdout)
+        self.assertIn("rm -f " + os.path.join(self.home, ".claude", "agents",
+                                              "plan-architect.md"), r.stdout)
+        self.assertIn("rm -rf " + os.path.join(self.home, ".claude", "skills",
+                                               self._global_skills()[0]), r.stdout)
+        # the enforcement pair must never be reported as a content plugin
+        self.assertNotIn("ccds-guard ccds", r.stdout.split("plugin-file-overlap")[1])
+
+    def test_plugin_only_install_passes(self):
+        """No file copies + content plugins enabled is the recommended shape:
+        agents/skills checks report the plugin as the source and pass."""
+        shutil.rmtree(os.path.join(self.home, ".claude", "agents"))
+        shutil.rmtree(os.path.join(self.home, ".claude", "skills"))
+        r = self.doctor(claude=self.stub_claude(plugins=self.CONTENT_PLUGINS))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("OK  agents-installed: supplied by the enabled ccds-core plugin", r.stdout)
+        self.assertIn("OK  skills-installed: supplied by the enabled ccds-core plugin", r.stdout)
+        self.assertIn("OK  plugin-file-overlap: plugins (ccds-core ccds-saas) supply", r.stdout)
+        self.assertIn("RESULT: PASS", r.stdout)
+
+    def test_file_only_install_is_not_an_overlap(self):
+        r = self.doctor()
+        self.assertIn("OK  plugin-file-overlap: no ccds content plugin enabled", r.stdout)
+
+    def test_missing_core_agent_without_core_plugin_names_both_remedies(self):
+        os.remove(os.path.join(self.home, ".claude", "agents", "plan-architect.md"))
+        r = self.doctor()
+        self.assertIn("FAIL  agents-installed", r.stdout)
+        self.assertIn("claude plugin install ccds-core@ccds", r.stdout)
 
     def test_missing_core_agent_fails(self):
         os.remove(os.path.join(self.home, ".claude", "agents", "plan-architect.md"))
@@ -1738,6 +1786,7 @@ class TestDebPostinst(unittest.TestCase):
         r = self._run({"SUDO_USER": getpass.getuser()})
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(self.claude_calls(), [
+            "plugin list --json",   # ADR-0020 route probe, read-only
             "plugin marketplace add test-owner/test-repo",
             "plugin install ccds-guard@ccds --scope user",
             "plugin install ccds-loops@ccds --scope user",
@@ -1877,6 +1926,7 @@ class TestInstallPlaybook(unittest.TestCase):
         self.assertIn("# existing content", self.bashrc(),
                       "must not clobber the user's rc file")
         self.assertEqual(self.claude_calls(), [
+            "plugin list --json",   # ADR-0020 route probe, read-only
             "plugin marketplace add test-owner/test-repo",
             "plugin install ccds-guard@ccds --scope user",
             "plugin install ccds-loops@ccds --scope user",
@@ -2096,6 +2146,26 @@ class TestInstallPlaybookPs1(unittest.TestCase):
                         "completion block did not go to CCDS_PS_PROFILE")
         self.assertIn("# >>> ccds-completion >>>", read(self.profile))
         self.assertNotIn("ggrace519", " ".join(self.claude_calls()))
+
+    def test_enabled_content_plugin_skips_the_file_copies(self):
+        """ADR-0020: with ccds-core enabled the plugin already supplies the
+        roster, so the installer must not write a second copy into ~/.claude.
+        The stub prints pretty-printed JSON, the real CLI's shape."""
+        plugins_json = os.path.join(self.root, "plugins.json")
+        write(plugins_json, json.dumps(
+            [{"id": "ccds-guard@ccds", "enabled": True},
+             {"id": "ccds-core@ccds", "enabled": True}], indent=2))
+        write(self.claude,
+              "@echo off\r\necho %%* >> \"%s\"\r\n"
+              "if \"%%1\"==\"plugin\" if \"%%2\"==\"list\" type \"%s\"\r\n"
+              "exit /b 0\r\n" % (self.log, plugins_json))
+        r = self.install()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Supplied by enabled plugin(s): ccds-core", r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".claude", "agents")))
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".claude", "skills")))
+        self.assertTrue(os.path.isfile(os.path.join(self.home, ".claude", "CLAUDE.md")))
+        self.assertIn("install ccds-guard@ccds", " ".join(self.claude_calls()))
 
     def test_skip_plugins_makes_no_claude_calls(self):
         r = self.install("-SkipPlugins")
@@ -2489,6 +2559,98 @@ class TestReleaseStagingSh(unittest.TestCase):
         self.assertIn("package not found after fpm run", r.stdout + r.stderr)
 
 
+@unittest.skipUnless(PWSH, "bin/ccds.ps1 doctor is the Windows twin; "
+                           "runs under Windows PowerShell only")
+class TestCcdsDoctorPs1(unittest.TestCase):
+    """`ccds.ps1 doctor` — the first behavioral coverage of the PowerShell
+    doctor. Mirrors TestCcdsDoctor: an installed-layout root, a synthetic
+    healthy USERPROFILE, and a recording `claude.cmd` whose `plugin list
+    --json` pretty-prints like the real CLI (the shape that hid #70)."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="ccds-doctor-ps-")
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.inst = os.path.join(self.root, "playbook")
+        os.makedirs(os.path.join(self.inst, "bin"))
+        os.makedirs(os.path.join(self.inst, "scripts"))
+        shutil.copy(os.path.join(REPO_ROOT, "bin", "ccds.ps1"),
+                    os.path.join(self.inst, "bin", "ccds.ps1"))
+        shutil.copy(os.path.join(REPO_ROOT, "Sync-AgentPacks.ps1"),
+                    os.path.join(self.inst, "scripts", "Sync-AgentPacks.ps1"))
+        shutil.copy(os.path.join(REPO_ROOT, "Verify-Agents.ps1"),
+                    os.path.join(self.inst, "scripts", "Verify-Agents.ps1"))
+        shutil.copy(os.path.join(SCRIPTS, "ccds-user-setup.sh"),
+                    os.path.join(self.inst, "scripts", "ccds-user-setup.sh"))
+        shutil.copy(os.path.join(REPO_ROOT, "catalog.json"),
+                    os.path.join(self.inst, "catalog.json"))
+        write(os.path.join(self.inst, "version.txt"), "0.0.1\n")
+        self.home = os.path.join(self.root, "home")
+        write(os.path.join(self.home, ".claude", "agents", "plan-architect.md"),
+              "---\nname: plan-architect\ndescription: test\n---\nbody\n")
+        for name in GLOBAL_SKILLS:
+            write(os.path.join(self.home, ".claude", "skills", name, "SKILL.md"),
+                  "---\nname: %s\ndescription: test\n---\nbody\n" % name)
+        write(os.path.join(self.home, ".claude", "CLAUDE.md"),
+              "# my own notes\n\n# >>> ccds >>>\nblock body\n# <<< ccds <<<\n")
+
+    def stub_claude(self, plugins=None):
+        if plugins is None:
+            plugins = [{"id": "ccds-guard@ccds", "enabled": True},
+                       {"id": "ccds-loops@ccds", "enabled": True}]
+        plugins_json = os.path.join(self.root, "plugins.json")
+        write(plugins_json, json.dumps(plugins, indent=2))
+        path = os.path.join(self.root, "claude.cmd")
+        write(path, "@echo off\r\n"
+                    "if \"%%1\"==\"--version\" echo 2.1.224 (Claude Code)\r\n"
+                    "if \"%%1\"==\"plugin\" type \"%s\"\r\n"
+                    "exit /b 0\r\n" % plugins_json)
+        return path
+
+    def doctor(self, plugins=None):
+        return subprocess.run(
+            [PWSH, "-NoProfile", "-ExecutionPolicy", "Bypass",
+             "-File", os.path.join(self.inst, "bin", "ccds.ps1"), "doctor"],
+            capture_output=True, text=True,
+            env={**os.environ, "USERPROFILE": self.home,
+                 "CCDS_DOCTOR_RELEASE_URL": "http://127.0.0.1:9/releases/latest",
+                 "CCDS_CLAUDE_CMD": self.stub_claude(plugins)})
+
+    CONTENT_PLUGINS = [{"id": "ccds-guard@ccds", "enabled": True},
+                       {"id": "ccds-loops@ccds", "enabled": True},
+                       {"id": "ccds-core@ccds", "enabled": True},
+                       {"id": "ccds-saas@ccds", "enabled": True}]
+
+    def test_healthy_file_install_passes(self):
+        r = self.doctor()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("FAIL  : 0", r.stdout)
+        self.assertIn("OK  plugin-file-overlap: no ccds content plugin enabled", r.stdout)
+
+    def test_disabled_plugin_in_pretty_printed_json_fails(self):
+        """#70 twin: the disabled branch must match on the real multi-line shape."""
+        r = self.doctor(plugins=[{"id": "ccds-guard@ccds", "enabled": False},
+                                 {"id": "ccds-loops@ccds", "enabled": True}])
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("FAIL  plugins-installed: installed but DISABLED: ccds-guard", r.stdout)
+
+    def test_plugin_and_file_copies_overlap_fails(self):
+        r = self.doctor(plugins=self.CONTENT_PLUGINS)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("FAIL  plugin-file-overlap: loaded twice: plugin(s) ccds-core ccds-saas", r.stdout)
+        self.assertIn("Remove-Item -Force '%s'" % os.path.join(
+            self.home, ".claude", "agents", "plan-architect.md"), r.stdout)
+        self.assertIn("Remove-Item -Recurse -Force", r.stdout)
+
+    def test_plugin_only_install_passes(self):
+        shutil.rmtree(os.path.join(self.home, ".claude", "agents"))
+        shutil.rmtree(os.path.join(self.home, ".claude", "skills"))
+        r = self.doctor(plugins=self.CONTENT_PLUGINS)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("OK  agents-installed: supplied by the enabled ccds-core plugin", r.stdout)
+        self.assertIn("OK  skills-installed: supplied by the enabled ccds-core plugin", r.stdout)
+        self.assertIn("OK  plugin-file-overlap: plugins (ccds-core ccds-saas) supply", r.stdout)
+
+
 @unittest.skipUnless(PWSH, "build-release.ps1 is a PowerShell script "
                            "(Windows-targeted, like the ZIP it builds)")
 class TestReleaseZipPs1(unittest.TestCase):
@@ -2669,11 +2831,55 @@ class TestUserSetupPlugins(unittest.TestCase):
         r = self.setup()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(self.calls(), [
+            "plugin list --json",   # ADR-0020 route detection, read-only
             "plugin marketplace add test-owner/test-repo",
             "plugin install ccds-guard@ccds --scope user",
             "plugin install ccds-loops@ccds --scope user",
         ])
         self.assertIn("Plugins     : installed", r.stdout)
+        # the stub prints no plugins -> file route -> copies happen
+        self.assertTrue(os.path.isfile(os.path.join(
+            self.home, ".claude", "agents", "plan-architect.md")))
+        self.assertIn("Agents      : %s/.claude/agents/" % self.home, r.stdout)
+
+    def _plugin_stub(self, ids):
+        """A claude whose `plugin list --json` pretty-prints these enabled ids
+        (the real CLI's shape) and accepts every other command."""
+        body = json.dumps([{"id": i, "enabled": True} for i in ids], indent=2)
+        return self.stub_claude(
+            'case "$*" in "plugin list --json") cat <<\'JSON\'\n%s\nJSON\n;; esac\nexit 0'
+            % body)
+
+    def test_enabled_content_plugin_skips_the_file_copies(self):
+        """ADR-0020: with ccds-core enabled the plugin already supplies the
+        roster, so setup must not write a second copy into ~/.claude."""
+        r = self.setup(claude=self._plugin_stub(
+            ["ccds-guard@ccds", "ccds-loops@ccds", "ccds-core@ccds"]))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Supplied by enabled plugin(s): ccds-core", r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".claude", "agents")))
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".claude", "skills")))
+        self.assertIn("Agents      : from plugins (ccds-core)", r.stdout)
+        # the enforcement plugins are still installed on this route
+        self.assertIn("plugin install ccds-guard@ccds --scope user", self.calls())
+        # the ccds block still lands
+        self.assertTrue(os.path.isfile(os.path.join(self.home, ".claude", "CLAUDE.md")))
+
+    def test_enforcement_plugins_alone_do_not_skip_the_copies(self):
+        r = self.setup(claude=self._plugin_stub(["ccds-guard@ccds", "ccds-loops@ccds"]))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(os.path.isfile(os.path.join(
+            self.home, ".claude", "agents", "plan-architect.md")))
+        self.assertNotIn("Supplied by enabled plugin", r.stdout)
+
+    def test_stale_file_copies_next_to_plugins_are_named_not_deleted(self):
+        stale = os.path.join(self.home, ".claude", "agents", "plan-architect.md")
+        write(stale, "old copy\n")
+        r = self.setup(claude=self._plugin_stub(["ccds-core@ccds"]))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("loaded in ADDITION to the plugins", r.stderr)
+        self.assertIn("rm -f " + stale, r.stderr)
+        self.assertTrue(os.path.isfile(stale), "setup must never delete user files")
 
     def test_skip_plugins_suppresses_every_call(self):
         r = self.setup("--skip-plugins")

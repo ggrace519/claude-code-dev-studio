@@ -7,7 +7,28 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ## [Unreleased]
 
+### Added
+
+- **`ccds doctor` now catches the double-loaded roster, and setup no longer
+  creates it** (ADR-0020). The 19 agents and cross-cutting skills reach Claude
+  Code either from the ccds plugins or from file copies in `~/.claude`; having
+  both means every agent is in the roster twice, with the stale file copy owning
+  the bare name. A new `plugin-file-overlap` check fails in that state and prints
+  the exact removal command (both dispatchers, first behavioral tests for the
+  PowerShell doctor). `ccds setup`, `ccds.ps1 setup` and `Install-Playbook.ps1`
+  skip the file copies when a content plugin is enabled and name any stale
+  copies instead of deleting them. `agents-installed` / `skills-installed`
+  report the plugin as the source when `ccds-core` is enabled.
+
 ### Fixed
+
+- **`ccds doctor` reported a DISABLED `ccds-guard` as enabled** (#70). The bash
+  check split `claude plugin list --json` into objects and looked for
+  `"enabled": false` on the same line as the plugin id — but the real CLI
+  pretty-prints one field per line, so the disabled branch could never match on
+  real output. The test stub emitted flat JSON, which is why the suite passed.
+  Newlines are now collapsed before splitting, the stub pretty-prints like the
+  CLI, and a regression test covers the disabled case on both platforms.
 
 - **`build-release.ps1` could build a structurally broken release ZIP without
   a single warning.** Entry names are produced by trimming the stage path off

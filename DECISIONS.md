@@ -1870,3 +1870,77 @@ creation — is small and is backstopped by the CI guard.
 ### Supersedes
 
 None.
+
+---
+
+## ADR-0020: The Always-On Roster Has One Source — Plugins or File Copies, Never Both
+
+**Date:** 2026-09-06
+**Status:** Accepted
+**Phase:** Deployment
+**Deciders:** Greg Grace
+
+### Context
+
+ccds ships the same 19 agents and 18 cross-cutting skills by two routes: the
+plugin marketplace (`ccds-core` + one plugin per archetype pack) and the file
+installers, which copy them into `~/.claude/agents/` and `~/.claude/skills/`.
+The README presented the ZIP route as "additionally" providing the CLI and
+library, and nothing stopped a user from having both. Claude Code loads both:
+every agent then appears twice in the roster (`plan-architect` and
+`ccds-core:plan-architect`), the router sees two identical descriptions, the
+file copy owns the bare name, and the ~850 tokens of agent descriptions plus
+the skill listing are paid twice. The file copies also go stale the moment the
+plugins update, because only the plugins auto-update.
+
+This was found on the maintainer's own machine, where a v0.11.0 file install
+had sat under current marketplace plugins for weeks — and `ccds doctor` said
+PASS, because it checked each route in isolation. The same investigation found
+#70: the bash doctor's disabled-plugin branch could never match the real
+`claude plugin list --json`, which pretty-prints one field per line, so a
+disabled `ccds-guard` was reported as enabled.
+
+### Decision
+
+1. **One source.** The always-on agents and cross-cutting skills come from the
+   ccds content plugins *or* from file copies, never both. The enforcement
+   plugins (`ccds-guard`, `ccds-loops`) are orthogonal: hooks ship only via
+   plugins (ADR-0012) and every route installs them.
+2. **Setup gates the copies.** `ccds-user-setup.sh`, `ccds.ps1 setup` and
+   `Install-Playbook.ps1` probe `claude plugin list --json` (read-only; skipped
+   under `--skip-plugins`, which means "never touch the CLI", and under
+   `--dry-run`). If any content plugin is enabled, steps 1/1b are skipped with
+   a one-line explanation, and stale copies are named with the exact removal
+   command. Setup never deletes a user's files.
+3. **Doctor sees both routes.** `agents-installed` and `skills-installed`
+   report the plugin as the source when `ccds-core` is enabled, and their FAIL
+   remedies name both fixes. A new `plugin-file-overlap` check FAILs when a
+   content plugin is enabled and ccds-owned copies (names from `catalog.json`)
+   are present, printing the removal command; it WARNs when the CLI cannot be
+   read. Both dispatchers, same 12-check contract.
+4. **Parsers collapse newlines first** (bash `tr -d '\n\r'`, PowerShell
+   `-join` before `ConvertFrom-Json`), and the test stubs pretty-print their
+   JSON so the suite exercises the real shape. Fixes #70.
+
+### Rationale
+
+Removing the file route entirely was considered: the CLI and per-project
+`ccds sync` still need the library on disk, and .deb/.rpm users have no
+marketplace step, so the file route stays. Making setup delete stale copies was
+rejected: the installers must never remove files they did not write in this
+run; naming the command is enough and reversible.
+
+### Consequences
+
+- A file-route user who later installs `ccds-core@ccds` gets a doctor FAIL
+  with the removal command, not a silent double roster.
+- The `~/.claude/CLAUDE.md` ccds block no longer claims the agents "live in
+  `~/.claude/agents/`"; it names both routes.
+- First behavioral coverage of `ccds.ps1 doctor` (Windows CI job).
+- Follow-on: `ccds doctor` could compare the file-install version against the
+  marketplace commit to flag a stale file route even when no plugin is
+  enabled; not done here.
+
+### Supersedes
+
+None.
