@@ -2,6 +2,8 @@
 # ccds-user-setup.sh
 # ------------------
 # Performs per-user Claude Code Dev Studio setup (ADR-0007):
+#   0. Detects enabled ccds content plugins; if any, steps 1-1b are skipped
+#      (the plugins already supply that roster -- ADR-0020)
 #   1. Copies all 19 always-on agents to ~/.claude/agents/
 #   2. Copies the cross-cutting (global) skills to ~/.claude/skills/
 #   3. Injects / updates the ccds pointer block in ~/.claude/CLAUDE.md
@@ -276,13 +278,76 @@ install_plugins() {
 }
 
 # ---------------------------------------------------------------------------
+# Step 0 — Which route supplies the always-on roster?  (ADR-0020)
+#
+# The 19 agents and the cross-cutting skills reach Claude Code by ONE of two
+# routes: the ccds content plugins (ccds-core + the archetype packs, installed
+# from the marketplace) or the file copies steps 1/1b write. Both at once puts
+# every agent in the roster twice -- the router sees two identical
+# descriptions, the stale file copy owns the bare name, and the descriptions
+# cost context twice. So when a content plugin is enabled, the copies are
+# skipped. Detection is a read-only `claude plugin list --json`; it is not run
+# under --skip-plugins (never touch the CLI) or --dry-run (no calls at all).
+# `ccds doctor` reports the overlap either way.
+# ---------------------------------------------------------------------------
+CONTENT_PLUGINS=""
+
+detect_content_plugins() {
+    (( SKIP_PLUGINS || DRY_RUN )) && return 0
+    command -v "$CLAUDE_CMD" >/dev/null 2>&1 || return 0
+    local json
+    json="$("$CLAUDE_CMD" plugin list --json </dev/null 2>/dev/null)" || return 0
+    # The CLI pretty-prints one field per line: collapse newlines FIRST, then
+    # split into one object per line, keep enabled ones, take the "<name>@" id
+    # prefix, and drop the hooks-only enforcement pair.
+    CONTENT_PLUGINS="$(printf '%s' "$json" | tr -d '\n\r' | tr '{' '\n' \
+        | grep '"enabled"[[:space:]]*:[[:space:]]*true' \
+        | grep -o '"id"[[:space:]]*:[[:space:]]*"ccds-[a-z]*@' \
+        | sed -e 's/.*"\(ccds-[a-z]*\)@/\1/' \
+        | grep -v -x -e ccds-guard -e ccds-loops \
+        | sort -u | tr '\n' ' ' | sed -e 's/ $//' || true)"
+}
+
+# Stale file copies next to enabled plugins: say so, with the exact removal
+# command, but never delete a user's files from setup.
+warn_stale_file_copies() {
+    local -a agent_files=() skill_dirs=()
+    local src name
+    for src in "$INSTALL_ROOT"/agents/*.md; do
+        [[ -f "$src" ]] || continue
+        name="$(basename "$src")"
+        [[ -f "$HOME/.claude/agents/$name" ]] && agent_files+=("$name")
+    done
+    for name in "${GLOBAL_SKILLS[@]}"; do
+        [[ -f "$HOME/.claude/skills/$name/SKILL.md" ]] && skill_dirs+=("$name")
+    done
+    (( ${#agent_files[@]} == 0 && ${#skill_dirs[@]} == 0 )) && return 0
+    log_warn "File copies from an earlier setup are still present and are loaded in ADDITION to the plugins:"
+    log_warn "  ${#agent_files[@]} agent file(s) in $HOME/.claude/agents, ${#skill_dirs[@]} cross-cutting skill(s) in $HOME/.claude/skills"
+    log_warn "Remove them (the plugins keep working):"
+    if (( ${#agent_files[@]} > 0 )); then
+        log_warn "  rm -f $(printf "$HOME/.claude/agents/%s " "${agent_files[@]}")"
+    fi
+    if (( ${#skill_dirs[@]} > 0 )); then
+        log_warn "  rm -rf $(printf "$HOME/.claude/skills/%s " "${skill_dirs[@]}")"
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # Run
 # ---------------------------------------------------------------------------
-log_step "Installing always-on agents to $HOME/.claude/agents"
-install_agents
+detect_content_plugins
+if [[ -n "$CONTENT_PLUGINS" ]]; then
+    log_step "Always-on agents and cross-cutting skills"
+    log_ok "Supplied by enabled plugin(s): $CONTENT_PLUGINS -- skipping the file copies so Claude Code does not load the roster twice"
+    warn_stale_file_copies
+else
+    log_step "Installing always-on agents to $HOME/.claude/agents"
+    install_agents
 
-log_step "Installing cross-cutting skills to $HOME/.claude/skills"
-install_global_skills
+    log_step "Installing cross-cutting skills to $HOME/.claude/skills"
+    install_global_skills
+fi
 
 log_step "Updating ccds block in $HOME/.claude/CLAUDE.md"
 set_claude_playbook_block
@@ -294,8 +359,13 @@ if (( DRY_RUN )); then
     printf '\n%sDRY RUN -- no changes made.%s\n' "$C_YELLOW" "$C_RESET"
 else
     printf '\n%sUser setup complete.%s\n' "$C_GREEN" "$C_RESET"
-    printf 'Agents      : %s/.claude/agents/ (19 always-on)\n' "$HOME"
-    printf 'Skills      : %s/.claude/skills/ (%d cross-cutting)\n' "$HOME" "${#GLOBAL_SKILLS[@]}"
+    if [[ -n "$CONTENT_PLUGINS" ]]; then
+        printf 'Agents      : from plugins (%s)\n' "$CONTENT_PLUGINS"
+        printf 'Skills      : from plugins (%s)\n' "$CONTENT_PLUGINS"
+    else
+        printf 'Agents      : %s/.claude/agents/ (19 always-on)\n' "$HOME"
+        printf 'Skills      : %s/.claude/skills/ (%d cross-cutting)\n' "$HOME" "${#GLOBAL_SKILLS[@]}"
+    fi
     printf 'ccds block  : %s/.claude/CLAUDE.md\n' "$HOME"
     printf 'Plugins     : %s\n' "$PLUGINS_STATUS"
 fi

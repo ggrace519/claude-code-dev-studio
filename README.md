@@ -108,7 +108,13 @@ source by `scripts/build-marketplace.py` and gated for freshness in CI.
 
 The ZIP installer below remains fully supported — it additionally provides the
 `ccds` CLI, the global `~/.claude/playbook/` library, and per-project skill
-staging via `ccds sync`.
+staging via `ccds sync`. The two routes are **alternatives for the always-on
+agents and cross-cutting skills, not layers** (ADR-0020): with `ccds-core` or a
+pack plugin enabled, Claude Code already loads that roster, so `ccds setup` and
+the installers skip the `~/.claude/agents` / `~/.claude/skills` copies, and
+`ccds doctor` fails with the exact removal command if both are ever present
+(every agent would be in the roster twice). Using both the CLI and the plugins
+is fine — the enforcement plugins are installed by every route.
 
 ## Install
 

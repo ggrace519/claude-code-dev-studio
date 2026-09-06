@@ -15,7 +15,7 @@ its `<pack>-*` skills in a single coherent context. See `DECISIONS.md` ADR-0007.
 
 | Layer | Location | Loaded | Notes |
 |---|---|---|---|
-| 19 agents | `~/.claude/agents/` | always (session start) | 14 domain + 5 core; ~850 tokens of descriptions |
+| 19 agents | plugins (`ccds-core` + packs) **or** `~/.claude/agents/` — never both (ADR-0020) | always (session start) | 14 domain + 5 core; ~850 tokens of descriptions |
 | Cross-cutting skills | `~/.claude/skills/` | descriptions always; body JIT | `playbook-conventions`, `api-design`, `ux-design`, `security-checklist`, `code-review-checklist`, `inventive-engineer`, `common-*`, `loop-*` |
 | Domain skills | `~/.claude/playbook/skills/` → `.claude/skills/` | per project (JIT) | `<pack>-*`; staged by `ccds sync` (via the `sync-agents` skill) |
 | Gate templates | `~/.claude/playbook/templates/` → project files | per project (with sync) | settings denies, CLAUDE.md standards, pre-commit, CI — stack-matched via `stack-matrix.json`, never-destroy (ADR-0013); skip with `--no-gates` |
