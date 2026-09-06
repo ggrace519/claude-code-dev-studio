@@ -30,6 +30,14 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ### Infrastructure
 
+- **The repo now has a `develop` integration branch; `main` is release-only and
+  stays the GitHub default** (ADR-0019). Feature PRs target `develop`
+  (`gh pr create --base develop`); `main` only receives `develop` → `main`
+  promotion PRs, merged without squashing and tagged. `main` has to remain the
+  default branch because `/plugin marketplace add` installs from the default
+  branch — flipping it would have shipped unreleased code to every marketplace
+  user. CI now runs on both branches, and a new `promotion-only` check fails
+  any PR into `main` that does not come from `develop`.
 - **Both release builders are now run for real in the test suite, and what they
   produce is asserted** (ADR-0017 amendment). The `release-parity` lint added
   in v0.18.0 proves the two builders' copy *lists* agree; nothing proved either

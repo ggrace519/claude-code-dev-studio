@@ -259,6 +259,7 @@ Optional, opt-in tab-completion for the Claude Code CLI itself — independent o
 - Agents live in a **flat** `.claude/agents/` directory; skills are `skills/<name>/SKILL.md` (one dir per skill). Claude Code does not recurse `.claude/agents/`. See ADR-0001 / ADR-0007.
 - Release ZIPs are named `ccds-<tag>.zip` with a matching `ccds-<tag>.zip.sha256` sidecar. Installers verify SHA256 before extracting.
 - The `~/.claude/CLAUDE.md` ccds block is delimited by `# >>> ccds >>>` / `# <<< ccds <<<` markers. The installer is idempotent — re-running updates the block in place. See ADR-0006 / ADR-0007.
+- Contributions branch from **`develop`** and PRs target it (`gh pr create --base develop`). `main` is release-only and stays the default branch because `/plugin marketplace add` installs from the default branch. See ADR-0019.
 
 ## License
 
