@@ -78,8 +78,16 @@ updates, and enable/disable — no installer, no PATH, no restart dance.
 The guard stops model mistakes and casual prompt injection — it is a teaching
 backstop on top of Claude Code's permission modes, not a sandbox. Never run
 with permissions bypassed (`--dangerously-skip-permissions`) outside an
-isolated container, guard or no guard. Kill switch: `CCDS_GUARD_DISABLE=1`;
-tune rules in the plugin's `hooks/guard-rules.txt`. The hooks need `python3`
+isolated container, guard or no guard. Kill switch: `CCDS_GUARD_DISABLE=1`.
+Tune it without editing the plugin: `~/.claude/ccds-guard-rules.txt` takes the
+same five rule categories and loads after the shipped table (ADR-0021) — the
+usual entry is `allow-path: (^|/)\.claude/credentials/` to declare the key
+files your own skills are meant to read, so they stop being adjudicated on
+every call; the file is tamper-watched like settings, and its `deny-path`
+lines beat any shipped exemption. Source code inside a source tree is exempt
+from the secret scan (`src/credentials/foo.ts` is a module, not a key). If you switch the guard off on purpose, record why in
+`~/.claude/ccds-guard.disabled` and `ccds doctor` reports it as a choice
+(WARN) rather than a broken install. The hooks need `python3`
 on PATH (macOS/Linux/WSL have it; on native Windows install Python 3 or the
 guard is inert).
 

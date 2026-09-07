@@ -24,6 +24,17 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ### Added
 
+- **The guard takes operator rules and a deliberate opt-out** (ADR-0021).
+  `~/.claude/ccds-guard-rules.txt` accepts the same five rule categories as the
+  shipped table, loads after it, survives plugin updates, and is tamper-watched
+  — its intended use is `allow-path: (^|/)\.claude/credentials/` to declare the
+  key files your own skills read, so they stop being adjudicated on every call.
+  `~/.claude/ccds-guard.disabled` (first line = reason) makes `ccds doctor`
+  report a switched-off guard as WARN "disabled on purpose" instead of FAIL.
+  Switching the guard off now asks first: writing that marker, and
+  `claude plugin disable|uninstall|remove` of an enforcement plugin, are
+  tamper-watched like settings writes.
+
 - **`ccds doctor` now catches the double-loaded roster, and setup no longer
   creates it** (ADR-0020). The 19 agents and cross-cutting skills reach Claude
   Code either from the ccds plugins or from file copies in `~/.claude`; having
@@ -36,6 +47,22 @@ New sessions should read this file first to get up to speed before doing anythin
   report the plugin as the source when `ccds-core` is enabled.
 
 ### Fixed
+
+- **The guard flagged source code as secrets** (#74). Evidence from a month of
+  unattended adjudications: 49 of 52 were the secrets-path rule, and half were
+  denied — nearly all reads of an open-source repo's `src/credentials/` module
+  (TypeScript, matched by the `credentials/` directory rule) or key files the
+  operator's own skills are designed to read. Source-code files inside a
+  source tree (`src/`, `lib/`, `packages/`, `tests/` …) are now exempt from
+  the secret scan, while data files in a `credentials/` or `secrets/`
+  directory, code outside a source tree, dotfiles, anything under a
+  dot-directory, and key stems with a code suffix (`server.key.md`) still
+  block. Reviewed by a three-model panel before merge; its findings are folded
+  in (operator deny rules beat shipped exemptions, empty rules are rejected,
+  the watches match by filename, a symlinked operator file is ignored). Found on the way: in a
+  Bash command an `allow-path` hit also skipped the tamper watch, so with the
+  new exemption `sed -i … .claude/hooks/x.py` would have passed silently; the
+  Bash path now exempts from the secret scan only, matching the file-tool path.
 
 - **`ccds doctor` reported a DISABLED `ccds-guard` as enabled** (#70). The bash
   check split `claude plugin list --json` into objects and looked for

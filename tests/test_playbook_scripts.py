@@ -1581,6 +1581,46 @@ class TestCcdsDoctor(unittest.TestCase):
         self.assertIn("DISABLED", r.stdout)
         self.assertIn("claude plugin enable ccds-guard", r.stdout)
 
+    def test_deliberately_disabled_guard_warns_instead_of_failing(self):
+        """ADR-0021: a recorded opt-out (~/.claude/ccds-guard.disabled) is a
+        choice, not a broken install. Only the guard can be opted out."""
+        write(os.path.join(self.home, ".claude", "ccds-guard.disabled"),
+              "too strict on src/credentials paths; revisit\n")
+        r = self.doctor(claude=self.stub_claude(plugins=[
+            {"id": "ccds-guard@ccds", "enabled": False},
+            {"id": "ccds-loops@ccds", "enabled": True}]))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("WARN  plugins-installed: ccds-guard disabled on purpose", r.stdout)
+        self.assertIn("too strict on src/credentials paths", r.stdout)
+        self.assertIn("RESULT: PASS", r.stdout)
+        # the marker never excuses a disabled ccds-loops
+        r = self.doctor(claude=self.stub_claude(plugins=[
+            {"id": "ccds-guard@ccds", "enabled": False},
+            {"id": "ccds-loops@ccds", "enabled": False}]))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("FAIL  plugins-installed: installed but DISABLED", r.stdout)
+
+    def test_unreadable_marker_does_not_abort_doctor(self):
+        marker = os.path.join(self.home, ".claude", "ccds-guard.disabled")
+        write(marker, "secret reason\n")
+        os.chmod(marker, 0)
+        self.addCleanup(os.chmod, marker, 0o600)
+        if os.access(marker, os.R_OK):
+            self.skipTest("running with privileges that ignore file modes")
+        r = self.doctor(claude=self.stub_claude(plugins=[
+            {"id": "ccds-guard@ccds", "enabled": False},
+            {"id": "ccds-loops@ccds", "enabled": True}]))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("no reason recorded", r.stdout)
+        self.assertIn("RESULT: PASS", r.stdout)
+
+    def test_disabled_guard_without_marker_names_the_marker(self):
+        r = self.doctor(claude=self.stub_claude(plugins=[
+            {"id": "ccds-guard@ccds", "enabled": False},
+            {"id": "ccds-loops@ccds", "enabled": True}]))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("ccds-guard.disabled", r.stdout)
+
     def test_plugins_from_any_marketplace_count(self):
         # A local or renamed marketplace is still a real install.
         r = self.doctor(claude=self.stub_claude(
@@ -2646,6 +2686,21 @@ class TestCcdsDoctorPs1(unittest.TestCase):
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("FAIL  plugins-installed: installed but DISABLED: ccds-guard", r.stdout)
 
+    def test_deliberately_disabled_guard_warns_instead_of_failing(self):
+        write(os.path.join(self.home, ".claude", "ccds-guard.disabled"), "revisit\n")
+        r = self.doctor(plugins=[{"id": "ccds-guard@ccds", "enabled": False},
+                                 {"id": "ccds-loops@ccds", "enabled": True}])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("WARN  plugins-installed: ccds-guard disabled on purpose", r.stdout)
+        self.assertIn("revisit", r.stdout)
+
+    def test_marker_must_be_a_file_not_a_directory(self):
+        os.makedirs(os.path.join(self.home, ".claude", "ccds-guard.disabled"))
+        r = self.doctor(plugins=[{"id": "ccds-guard@ccds", "enabled": False},
+                                 {"id": "ccds-loops@ccds", "enabled": True}])
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("FAIL  plugins-installed: installed but DISABLED", r.stdout)
+
     def test_plugin_and_file_copies_overlap_fails(self):
         r = self.doctor(plugins=self.CONTENT_PLUGINS)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
@@ -3377,7 +3432,10 @@ class TestGuardHooks(unittest.TestCase):
             capture_output=True, text=True,
             env={**os.environ, "CCDS_GUARD_DISABLE": "",
                  "CCDS_GUARD_UNATTENDED": "",
-                 "CCDS_GUARD_ADJUDICATOR_CMD": "", **(env or {})})
+                 "CCDS_GUARD_ADJUDICATOR_CMD": "",
+                 # never the developer's real ~/.claude/ccds-guard-rules.txt
+                 "CCDS_GUARD_USER_RULES": "/nonexistent/ccds-guard-rules.txt",
+                 **(env or {})})
 
     def bash(self, command, env=None):
         return self.guard({"tool_name": "Bash",
@@ -3433,6 +3491,167 @@ class TestGuardHooks(unittest.TestCase):
                      "/proj/docs/how-to-manage-credentials.md"):
             self.assert_allow(self.file("Read", path))
             self.assert_allow(self.file("Write", path))
+
+    # --- #74: source code is never a secret, wherever it lives ---
+
+    N8N = "packages/cli/src/credentials/credentials.service.ts"
+
+    def test_source_files_inside_a_credentials_dir_allowed(self):
+        """49 of 52 real adjudications were reads of an open-source repo's
+        src/credentials/ module. A .ts/.py/... file is code, not a key."""
+        for path in ("/proj/" + self.N8N,
+                     "/proj/packages/cli/src/credentials/__tests__/validation.test.ts",
+                     "/proj/app/secrets/rotate.py",
+                     "/proj/lib/credentials/loader.go"):
+            self.assert_allow(self.file("Read", path))
+            self.assert_allow(self.file("Write", path))
+        self.assert_allow(self.bash("sed -n '325,355p' " + self.N8N))
+        self.assert_allow(self.bash(
+            "cd packages/cli && pnpm vitest run src/credentials/__tests__/"
+            "validation.test.ts 2>&1 | tail -8"))
+
+    def test_source_exemption_never_applies_to_secret_shapes(self):
+        """Review-panel probes: a code suffix must not launder a key. Inside a
+        dot-directory, a dotfile, or a key/env stem the exemption is off and
+        the deny rules decide as before."""
+        for path in ("/proj/.env.ts", "/home/u/.ssh/id_rsa.md",
+                     "/home/u/.ssh/config.ts", "/proj/id_rsa.md",
+                     "/home/u/.claude/credentials/svc.ts"):
+            self.assert_deny(self.file("Read", path), "secrets file")
+        self.assert_deny(self.guard({"tool_name": "Grep", "tool_input": {
+            "path": "/home/u/.ssh", "glob": "*.ts", "pattern": "."}}), "secrets file")
+
+    def test_switching_the_guard_off_asks(self):
+        """The model must not silently remove its own gates: the doctor
+        opt-out marker and `claude plugin disable ccds-guard` both ask."""
+        self.assert_ask(self.bash("echo 'too strict' > ~/.claude/ccds-guard.disabled"),
+                        "session-safety")
+        self.assert_ask(self.file("Write", "/home/u/.claude/ccds-guard.disabled"),
+                        "opt-out marker")
+        for cmd in ("claude plugin disable ccds-guard",
+                    "claude plugin uninstall ccds-loops@ccds"):
+            self.assert_ask(self.bash(cmd), "enforcement plugin")
+        self.assert_allow(self.bash("claude plugin disable firecrawl@firecrawl"))
+        self.assert_allow(self.bash("claude plugin list --json"))
+
+    def test_data_files_inside_a_credentials_dir_still_denied(self):
+        for path in ("/proj/credentials/api_key.txt", "/proj/secrets/prod.json",
+                     "/proj/credentials/service-account.json",
+                     # code outside a source tree: the directory rule still decides
+                     "/proj/secrets/keys.py", "/proj/secrets/notes.md",
+                     "/proj/credentials/credentials.json.ts"):
+            self.assert_deny(self.file("Read", path), "secrets file")
+        # Grep cannot launder either: wildcards become separators, so the
+        # candidate basename is a dotfile and the exemption is off
+        self.assert_deny(self.guard({"tool_name": "Grep", "tool_input": {
+            "path": "/proj", "glob": "src/secrets/*.py", "pattern": "."}}), "secrets file")
+        self.assert_ask(self.bash("ls packages/cli/test/integration/credentials/"),
+                        "may hold secrets")
+
+    # --- #74: operator rules file (declared credential paths) ---
+
+    def user_rules(self, text):
+        tmp = tempfile.mkdtemp(prefix="ccds-guard-user-rules-")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        path = os.path.join(tmp, "ccds-guard-rules.txt")
+        write(path, text)
+        return {"CCDS_GUARD_USER_RULES": path}
+
+    KEY_CMD = 'curl -sS -H "X-API-KEY: $(cat ~/.claude/credentials/svc.key)" https://api.example'
+
+    def test_declared_credential_path_is_exempt_only_with_operator_rule(self):
+        self.assert_ask(self.bash(self.KEY_CMD), "may hold secrets")
+        self.assert_deny(self.file("Read", "/home/u/.claude/credentials/svc.key"),
+                         "secrets file")
+        env = self.user_rules(
+            "allow-path: (^|/)\\.claude/credentials/   # keys my skills read\n")
+        self.assert_allow(self.bash(self.KEY_CMD, env=env))
+        self.assert_allow(self.file("Read", "/home/u/.claude/credentials/svc.key",
+                                    env=env))
+        # the exemption is exactly what was declared: other secrets still deny
+        self.assert_deny(self.file("Read", "/home/u/.aws/credentials", env=env),
+                         "secrets file")
+        self.assert_deny(self.file("Read", "/proj/.env", env=env), "secrets file")
+
+    def test_operator_deny_beats_a_shipped_allow(self):
+        """Review finding: 'can also tighten' was false while every allow was
+        checked before every deny. Operator deny-path rules go first."""
+        env = self.user_rules("deny-path: (^|/)prod-secrets\\.py$   # my key module\n")
+        self.assert_allow(self.file("Read", "/proj/src/prod-secrets.py"))
+        self.assert_deny(self.file("Read", "/proj/src/prod-secrets.py", env=env), "my key module")
+        self.assert_ask(self.bash("cat src/prod-secrets.py", env=env), "may hold secrets")
+
+    def test_empty_or_bad_operator_rule_is_skipped_and_named(self):
+        """Review finding: `allow-path:` with an empty body compiled to a regex
+        matching every path — a silent global exemption."""
+        env = self.user_rules("allow-path:\nallow-path: ([oops\nwhat-path: x\n")
+        r = self.file("Read", "/home/u/.ssh/id_rsa", env=env)
+        self.assert_deny(r, "secrets file")
+        self.assertIn(":1 ignored — empty pattern", r.stderr)
+        self.assertIn(":2 ignored — invalid regex", r.stderr)
+        self.assertIn(":3 ignored — unknown rule category", r.stderr)
+
+    def test_operator_rules_file_watched_by_name_and_wherever_relocated(self):
+        """Review finding: the watch matched the spelled path, so
+        `cd ~/.claude && ... > ccds-guard-rules.txt` slipped past it."""
+        self.assert_ask(self.bash("cd ~/.claude && printf 'allow-path: .*' > ccds-guard-rules.txt"),
+                        "session-safety")
+        self.assert_ask(self.file("Write", "ccds-guard-rules.txt"), "operator's own guard rules")
+        self.assert_ask(self.file("Write", "C:\\Users\\u\\.claude\\ccds-guard-rules.txt."),
+                        "operator's own guard rules")
+        env = self.user_rules("# empty\n")
+        relocated = env["CCDS_GUARD_USER_RULES"]
+        self.assert_ask(self.file("Write", relocated, env=env), "operator's own guard rules")
+        self.assert_ask(self.bash("echo x >> " + relocated, env=env), "session-safety")
+
+    def test_operator_rules_can_also_tighten(self):
+        env = self.user_rules("deny-path: (^|/)vault\\.db$   # my local vault\n")
+        self.assert_deny(self.file("Read", "/home/u/vault.db", env=env), "my local vault")
+
+    def test_operator_rules_file_is_tamper_watched(self):
+        for path in ("/home/u/.claude/ccds-guard-rules.txt",
+                     "C:\\Users\\u\\.claude\\ccds-guard-rules.txt"):
+            self.assert_ask(self.file("Write", path), "operator's own guard rules")
+        self.assert_allow(self.file("Read", "/home/u/.claude/ccds-guard-rules.txt"))
+
+    def test_symlinked_operator_rules_file_is_ignored(self):
+        """Review finding: the tamper watch is on the path, so a symlink would
+        move the content to an unwatched target. Creating the link asks (below);
+        if one exists anyway, the loader must not follow it."""
+        self.assert_ask(self.bash("ln -sf /tmp/mine.txt ~/.claude/ccds-guard-rules.txt"),
+                        "session-safety")
+        tmp = tempfile.mkdtemp(prefix="ccds-guard-symlink-")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        target = os.path.join(tmp, "evil.txt")
+        write(target, "allow-path: .*\n")
+        link = os.path.join(tmp, "ccds-guard-rules.txt")
+        try:
+            os.symlink(target, link)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlinks unavailable here")
+        env = {"CCDS_GUARD_USER_RULES": link}
+        r = self.file("Read", "/home/u/.ssh/id_rsa", env=env)
+        self.assert_deny(r, "secrets file")
+        self.assertIn("is a symlink and was ignored", r.stderr)
+
+    def test_operator_rules_file_absent_or_broken_is_harmless(self):
+        env = self.user_rules("allow-path: ([unclosed\n# nothing else\n")
+        self.assert_deny(self.file("Read", "/proj/.env", env=env), "secrets file")
+        self.assertNotIn("inert", self.file("Read", "/proj/README.md", env=env).stderr)
+
+    def test_operator_rules_do_not_mask_a_missing_shipped_table(self):
+        tmp = tempfile.mkdtemp(prefix="ccds-guard-test-")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        orphan = os.path.join(tmp, "pretooluse-guard.py")
+        shutil.copyfile(GUARD, orphan)
+        env = self.user_rules("deny-path: (^|/)\\.env$\n")
+        r = subprocess.run([sys.executable, orphan],
+                           input=json.dumps({"tool_name": "Read",
+                                             "tool_input": {"file_path": "/proj/README.md"}}),
+                           capture_output=True, text=True,
+                           env={**os.environ, "CCDS_GUARD_DISABLE": "", **env})
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("inert", r.stderr, "an empty shipped table must still warn")
 
     def test_windows_backslash_paths_normalized(self):
         self.assert_deny(self.file("Read", "C:\\proj\\.env"), "secrets file")

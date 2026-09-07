@@ -1944,3 +1944,117 @@ run; naming the command is enough and reversible.
 ### Supersedes
 
 None.
+
+---
+
+## ADR-0021: The Guard Exempts Source Code and Takes Operator Rules
+
+**Date:** 2026-09-06
+**Status:** Accepted
+**Phase:** Hardening
+**Deciders:** Greg Grace
+
+### Context
+
+The guard was too strict to leave on: the maintainer disabled it (#74). The
+adjudicator's own transcripts showed why — 49 of 52 unattended adjudications
+in a month were the secrets-path rule, and the judge denied half of them. Two
+patterns accounted for nearly all hits: reads of an open-source repo's
+`src/credentials/` module (TypeScript files matched by the `credentials/`
+directory rule that ADR-0012's review round had deliberately restored), and
+key files the operator's own skills are designed to read, adjudicated on
+every single call because nothing let the operator declare them.
+
+A third, smaller issue: `ccds doctor` reports a disabled guard as FAIL by
+design (ADR-0016), which is right for an accidental state and wrong for a
+recorded decision.
+
+### Decision
+
+1. **Source code is exempt from the secret scan wherever it lives.** A new
+   `allow-path` for source extensions (`.ts .py .go .rs .java .md …`) means
+   `credentials/credentials.service.ts` passes while `credentials/api_key.txt`
+   and `credentials/service-account.json` still deny. The `credentials/` and
+   `secrets/` directory rules stay — narrowing them to dot-directories was
+   considered and rejected because it would have let data files in a repo's
+   `credentials/` through.
+2. **`allow-path` exempts from `deny-path` only.** The Bash path had let an
+   allow-path hit skip the tamper watch too; with hook scripts being `.py`
+   files, the new exemption made `sed -i … .claude/hooks/x.py` pass silently
+   until the panel matrix caught it. The file-tool path already had the
+   right contract; the Bash path now matches it.
+3. **Operator rules file** `~/.claude/ccds-guard-rules.txt`: same five
+   categories, loaded after the shipped table, never overwritten by a plugin
+   update, relocatable via `CCDS_GUARD_USER_RULES` (test seam). Declaring
+   `allow-path: (^|/)\.claude/credentials/` is the intended use; it can also
+   tighten. The file is tamper-watched (`ask-write-path`), so the model
+   cannot add an exemption silently — unattended, that write denies outright
+   like every other safety-config write. Operator rules never mask an empty
+   shipped table (the inert warning keys on the shipped file alone).
+4. **Deliberate opt-out marker** `~/.claude/ccds-guard.disabled`: with it
+   present and only `ccds-guard` disabled, doctor reports WARN "disabled on
+   purpose (<first line>)" instead of FAIL, in both dispatchers. A disabled
+   `ccds-loops` is never excused. Writing the marker asks (tamper watch), and
+   so does `claude plugin disable|uninstall|remove` of an enforcement plugin
+   — a gap the review probes found: the CLI edits settings.json out of the
+   guard's sight, so the command text itself is the only place to catch it.
+5. **The exemption cannot launder a key.** Review probes showed the first cut
+   let `.ssh/id_rsa.md`, `.ssh/config.ts` and `.env.ts` through. The
+   exemption is now off inside any dot-directory, for any dotfile, and for
+   key/env stems with a code suffix (`server.key.md`, `id_rsa.md`). Files the
+   shipped table never matched by shape (`credentials.md`, `backend.env.ts`)
+   remain out of scope, as before: the guard classifies by shape, not content.
+6. **A symlinked operator file is ignored, loudly.** The tamper watch is on
+   the path; a symlink would move the effective content to a target the watch
+   never sees (creating the link asks once, later writes to the target would
+   not — review finding). The loader refuses a symlink at the operator path
+   and says so on stderr; a symlinked `~/.claude` *directory* (dotfiles
+   managers) is still fine, since only the file itself is checked.
+
+7. **Review-panel refinements** (codex + a Claude reviewer, both read-only,
+   both REQUEST CHANGES on the first cut; grok returned nothing): the
+   exemption additionally requires a source-tree segment (`src/ lib/ app/
+   packages/ tests/ …`), so `secrets/keys.py` at a repo root denies as
+   before while `packages/cli/src/credentials/x.ts` passes; docs/data
+   suffixes (`.md .rst .sql`) are not exempt; operator `deny-path` rules are
+   checked before any exemption, so "can also tighten" is true; an empty rule
+   body (`allow-path:` alone would match every path), an invalid regex, or an
+   unknown category in the operator file is skipped and named on stderr with
+   file:line; the two tamper watches match by filename (and by the resolved
+   `CCDS_GUARD_USER_RULES` path), so `cd ~/.claude && … > ccds-guard-rules.txt`
+   and Windows trailing-dot aliases ask; the doctor marker must be a regular
+   file (PowerShell `-PathType Leaf`) and an unreadable one no longer aborts
+   the bash doctor under `pipefail`.
+
+### Rationale
+
+Telling the adjudicator about declared paths was the alternative for (3);
+exempting them before the scan is simpler and cheaper, and keeps the judge's
+"on its face" contract intact. Extension-based exemption over
+directory-narrowing (1) keeps the panel's earlier decision where it was
+right (data files in `credentials/`) and removes it only where the evidence
+showed it wrong (code). The allow-path contract fix (2) is a correctness
+change independent of the evidence and would have been needed anyway.
+
+### Consequences
+
+- Of the 49 real hits, every source read and every declared-key call clears;
+  a bare `ls …/credentials/` still asks (one hit), and reads of
+  `~/.aws/credentials`, `.env`, `.ssh` are unchanged.
+- The teaching messages now point at the operator file, not the plugin's
+  own rules table (which an update overwrites).
+- Follow-on: a `ccds guard` subcommand to add/list operator rules is
+  possible; not needed for the fix.
+- Follow-on (review finding, deliberately not in this change): in the Bash
+  path an unambiguous WRITE to a safety path (`> file`, `>>`, `tee`) is still
+  adjudicated unattended rather than denied outright like a file-tool write,
+  because a name in a command line does not prove a write (ADR-0015 comment).
+  Classifying redirection targets and `tee` arguments as tamper writes is a
+  precise improvement worth its own change and tests.
+- Known limitation, unchanged: shell quoting/concatenation
+  (`ccds-guard-rules'.txt'`) defeats every regex-over-string rule in the table
+  (ADR-0012 threat model, pinned by `test_known_limitation_quoting_bypasses_pinned`).
+
+### Supersedes
+
+None (amends ADR-0012's rule table and ADR-0016's doctor contract).

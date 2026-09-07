@@ -9,8 +9,9 @@ One script, two matchers (see hooks.json):
                                         package-install ask (slopsquatting)
   Read|Write|Edit|NotebookEdit|Grep  -> secret-path deny, config-tamper ask
 
-Rules are DATA (guard-rules.txt beside this script, five categories); editing
-the table tunes the guard without touching code. Checks that need path
+Rules are DATA (guard-rules.txt beside this script, five categories, plus the
+operator's ~/.claude/ccds-guard-rules.txt loaded after it — CCDS_GUARD_USER_RULES
+relocates it); editing the tables tunes the guard without touching code. Checks that need path
 resolution a regex cannot express live in CODE (lessons from three multi-model
 review rounds, ADR-0012 addendum):
   - recursive force-delete outside the project: targets are resolved (quotes,
@@ -85,6 +86,15 @@ import subprocess
 import sys
 import tempfile
 
+# Operator rules: same format, loaded AFTER the shipped table so a plugin
+# update never overwrites them. Lives under ~/.claude and is tamper-watched
+# (ask-write-path) because an allow-path line can exempt a secret file — the
+# model must not be able to add one silently. CCDS_GUARD_USER_RULES is the
+# test seam / relocation knob; it is read from the hook's own environment
+# (Claude Code's process), which a `VAR=x cmd` prefix inside a Bash tool call
+# cannot reach — only the session's launch environment can set it.
+USER_RULES_FILE = os.environ.get("CCDS_GUARD_USER_RULES", "").strip() or \
+    os.path.join(os.path.expanduser("~"), ".claude", "ccds-guard-rules.txt")
 RULES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                           "guard-rules.txt")
 
@@ -183,15 +193,53 @@ ALLOW: <short reason>   or   DENY: <short reason>
 
 
 def _load_rules():
-    """Return {category: [(compiled_regex, label), ...]}.
-    Unparseable lines/patterns are skipped, never fatal."""
+    """Return {category: [(compiled_regex, label), ...]} from the shipped
+    table plus the operator's file (if any). Operator deny-path rules are ALSO
+    kept in "deny-path-first", checked before any allow-path exemption, so an
+    operator can tighten what the shipped table exempts. A missing operator
+    file is the normal case; a symlinked one is ignored, loudly."""
     rules = {c: [] for c in CATEGORIES}
+    rules["deny-path-first"] = []
+    _load_rules_file(RULES_FILE, rules)
+    # The operator file is tamper-watched by PATH. A symlink at that path
+    # would move the effective content to a target the watch never sees
+    # (review finding): creating the link asks once, every later write to the
+    # target would not. So a symlinked operator file is ignored, loudly.
+    if os.path.islink(USER_RULES_FILE):
+        sys.stderr.write("ccds-guard: %s is a symlink and was ignored — the "
+                         "operator rules file must be a regular file.\n"
+                         % USER_RULES_FILE)
+    else:
+        _load_rules_file(USER_RULES_FILE, rules, operator=True)
+    # Whatever path the operator file resolves to (CCDS_GUARD_USER_RULES may
+    # relocate it), writes there are tamper-watched, not just the default name.
     try:
-        with open(RULES_FILE, encoding="utf-8") as f:
+        rules["ask-write-path"].append((
+            re.compile(re.escape(_norm(USER_RULES_FILE)) + r"[. ]*$", re.IGNORECASE),
+            "Claude Code is changing the operator's own guard rules - confirm you asked for this"))
+    except re.error:
+        pass
+    return rules
+
+
+def _load_rules_file(path, rules, operator=False):
+    """Parse one rules file into `rules`. Shipped-table problems are silent by
+    contract (a bad pattern disables itself, never the guard); operator-file
+    problems are reported on stderr with file:line, because a rule the
+    operator wrote and thinks is active must not fail silently. An EMPTY body
+    is skipped everywhere: `allow-path:` with nothing after it would compile
+    to a regex that matches every path (review finding)."""
+    try:
+        with open(path, encoding="utf-8") as f:
             lines = f.readlines()
     except (OSError, UnicodeDecodeError):
-        return rules
-    for raw in lines:
+        return
+
+    def complain(n, why):
+        if operator:
+            sys.stderr.write("ccds-guard: %s:%d ignored — %s\n" % (path, n, why))
+
+    for n, raw in enumerate(lines, 1):
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
@@ -203,13 +251,20 @@ def _load_rules():
                 if " # " in body:
                     body, label = body.split(" # ", 1)
                     body, label = body.strip(), label.strip()
+                if not body:
+                    complain(n, "empty pattern (would match every path)")
+                    break
                 try:
-                    rules[cat].append((re.compile(body, re.IGNORECASE),
-                                       label or body))
-                except re.error:
-                    pass  # a bad pattern disables itself, never the guard
+                    entry = (re.compile(body, re.IGNORECASE), label or body)
+                except re.error as exc:
+                    complain(n, "invalid regex (%s)" % exc)
+                    break
+                rules[cat].append(entry)
+                if operator and cat == "deny-path":
+                    rules["deny-path-first"].append(entry)
                 break
-    return rules
+        else:
+            complain(n, "unknown rule category")
 
 
 def _split_cmd(cmd):
@@ -377,8 +432,9 @@ def _ask(reasons, payload, tool, detail, tamper=False):
         "Verdict: %s\nGuard reason(s): %s\nFlagged input: %s\n"
         "Use a safer form (bare lockfile restores pass untouched), or leave "
         "the exact command for the operator to run themselves. Persistent "
-        "false positive? The operator can tune guard-rules.txt or set "
-        "CCDS_GUARD_ADJUDICATOR_CMD." % (why, "; ".join(reasons), detail))
+        "false positive? The operator can add an allow-path in "
+        "~/.claude/ccds-guard-rules.txt or set CCDS_GUARD_ADJUDICATOR_CMD."
+        % (why, "; ".join(reasons), detail))
 
 
 def _deny(msg):
@@ -546,10 +602,14 @@ def _guard_bash(cmd, payload, rules):
         cmd_word = posixpath.basename(_norm(toks[i])) if i < len(toks) else ""
         text_only = cmd_word in TEXT_COMMANDS
         for tok in _tokens_for_scan(seg):
-            if _match_any(rules["allow-path"], tok):
-                continue
-            if not secret_hit and not text_only \
-                    and _match_any(rules["deny-path"], tok):
+            # allow-path exempts from the SECRET scan only (the table's
+            # contract). The tamper watch must still see an exempt token:
+            # hook scripts are .py/.sh files, and the source-code exemption
+            # would otherwise let `sed -i ... .claude/hooks/x.py` pass silently.
+            exempt = _match_any(rules["allow-path"], tok)
+            if not secret_hit and not text_only and (
+                    _match_any(rules["deny-path-first"], tok)
+                    or (not exempt and _match_any(rules["deny-path"], tok))):
                 secret_hit = True
             if not tamper_hit and _match_any(rules["ask-write-path"], tok):
                 tamper_hit = True
@@ -632,9 +692,9 @@ def _guard_file(tool, tool_input, rules, payload):
         return 0
 
     for cand in candidates:
-        if _match_any(rules["allow-path"], cand):
-            continue
-        for rx, label in rules["deny-path"]:
+        exempt = _match_any(rules["allow-path"], cand)
+        for rx, label in rules["deny-path-first"] + (
+                [] if exempt else rules["deny-path"]):
             if rx.search(cand):
                 return _deny(
                     "ccds-guard: BLOCKED — %s looks like a secrets file/"
@@ -644,8 +704,8 @@ def _guard_file(tool, tool_input, rules, payload):
                     "needed, the operator opens it in their own editor; to "
                     "bootstrap config, copy the template (cp .env.example "
                     ".env) yourself. Persistent false positive? The operator "
-                    "can tune guard-rules.txt in the ccds-guard plugin."
-                    % (cand, label))
+                    "can exempt it in ~/.claude/ccds-guard-rules.txt "
+                    "(allow-path)." % (cand, label))
     if tool in WRITE_TOOLS:
         reasons = []
         for cand in candidates:
@@ -674,7 +734,10 @@ def main():
     if not isinstance(tool_input, dict):
         return 0
     rules = _load_rules()
-    if not any(rules.values()) and tool in ("Bash",) + FILE_TOOLS:
+    shipped = {c: [] for c in CATEGORIES}
+    shipped["deny-path-first"] = []
+    _load_rules_file(RULES_FILE, shipped)
+    if not any(shipped.values()) and tool in ("Bash",) + FILE_TOOLS:
         # Fail-open, but never silently: an empty table means the guard is
         # inert, and the operator should know (stderr on exit 0 = non-blocking).
         sys.stderr.write("ccds-guard: guard-rules.txt is missing or empty — "

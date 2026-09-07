@@ -32,8 +32,9 @@ postinst, `ccds setup`, `ccds sync`'s first run, and the installers all funnel t
 (ADR-0016). Put outlet-wide install behavior there, never in an installer.
 `ccds-loops` carries the process-enforcement hooks (ADR-0011) and
 `ccds-guard` the zero-config security guard (secret-path denies, dangerous-command
-blocks, install ask-gate, config tamper watch; rules in `hooks/guard-rules.txt`, kill
-switch `CCDS_GUARD_DISABLE=1`; in unattended/auto-accept sessions ask-gates are decided
+blocks, install ask-gate, config tamper watch; rules in `hooks/guard-rules.txt`,
+operator additions in `~/.claude/ccds-guard-rules.txt` (ADR-0021), kill switch
+`CCDS_GUARD_DISABLE=1`, deliberate opt-out marker `~/.claude/ccds-guard.disabled`; in unattended/auto-accept sessions ask-gates are decided
 by a fresh-context LLM adjudicator instead of a prompt, except safety-config writes,
 which deny outright — ADR-0015). That adjudicator sets the project's **minimum Claude
 Code version, v2.1.169** (the release that added `--safe-mode`); its three isolation
