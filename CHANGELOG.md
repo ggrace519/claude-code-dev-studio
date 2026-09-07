@@ -5,7 +5,20 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
-## [Unreleased]
+## v0.19.0 — 2026-09-06 — The guard stops fighting you, and the roster stops loading twice
+
+Two things were quietly wrong for everyone. The security guard flagged
+ordinary source code as secrets — 49 of 52 unattended adjudications in a
+month were one rule matching the word `credentials` in a path, and half of
+them were denied — so people switched it off. And anyone who installed both
+the marketplace plugins and the file installer had every agent loaded twice,
+with the stale file copy winning and `ccds doctor` saying PASS. This release
+fixes both, gives operators their own guard rules file for the key files their
+skills legitimately read, lets a deliberate guard opt-out be recorded instead
+of reported as broken, and closes a doctor blind spot that reported a disabled
+guard as enabled. It also adopts a `develop` integration branch (`main` stays
+the default because the plugin marketplace installs from it) and finally gives
+the 19 agents the display colors they were meant to have.
 
 ### Changed
 
