@@ -1796,3 +1796,265 @@ existing rather than trusting one developer's box:
 
 ### Supersedes
 None.
+
+---
+
+## ADR-0019: `develop` Integrates, `main` Releases and Stays the Default Branch
+
+**Date:** 2026-09-06
+**Status:** Accepted
+**Phase:** Deployment
+**Deciders:** Greg Grace
+
+### Context
+
+Until now the repo had one long-lived branch. Every feature PR targeted `main`,
+so `main` was simultaneously the integration branch and the branch that
+`/plugin marketplace add ggrace519/claude-code-dev-studio` installs from. Any
+merged-but-unreleased change was immediately live for every marketplace user.
+
+The standing convention across Greg's repos is a two-branch model: `develop`
+for integration, `main` for what is released, with `develop` set as the GitHub
+default branch so PRs, clones, and the UI target it. Applying that here hit a
+conflict specific to this repo: **the default branch is a distribution
+channel.** The Claude Code plugin-marketplaces documentation states that a
+marketplace source's `ref` "defaults to repository default branch", and that a
+marketplace added without a ref updates from the default branch. The local
+evidence agrees — the marketplace clone on this machine
+(`~/.claude/plugins/marketplaces/ccds`) is a shallow clone whose only fetch
+refspec is `+refs/heads/main:refs/remotes/origin/main`, i.e. whatever the
+default branch was at add time. Making `develop` the default would have put
+every new install, and existing installs on their next `marketplace update`,
+onto unreleased code.
+
+### Decision
+
+1. **`develop` is the integration branch.** Every feature/fix/docs branch is
+   cut from it and its PR targets it. Because `develop` is *not* the default
+   branch, the PR base must be passed explicitly: `gh pr create --base develop`.
+2. **`main` is the release branch and remains the GitHub default branch.**
+   Only promotion PRs (`develop` as head, `main` as base) land on it, merged as
+   a merge commit or fast-forward — never squash, which would diverge the two
+   branches and make every later promotion conflict. Releases are tagged on
+   `main`.
+3. **CI covers both.** `ci.yml` triggers on pushes and PRs to `main` *and*
+   `develop`. A `promotion-only` job fails any PR into `main` whose head branch
+   is not `develop`, so a mis-targeted feature PR is caught by a red check
+   rather than by someone noticing.
+4. **`develop` is never deleted** and must always be promotable — nothing
+   known-broken lands on it; unfinished work stays on a stacked branch.
+
+### Rationale
+
+Pinning the marketplace source to `@main` everywhere it is written down was
+considered and rejected: it fixes only the invocations this repo controls,
+while the unpinned form already exists in earlier changelog entries, in
+`known_marketplaces.json` on every existing install, and anywhere the
+one-liner has been copied. Keeping `main` as the default makes the unpinned
+form correct by construction. The cost — one `--base develop` flag on PR
+creation — is small and is backstopped by the CI guard.
+
+### Consequences
+
+- Changelog entries accumulate under `## [Unreleased]` on `develop`; the
+  promotion PR rolls them into the dated version heading that matches the tag.
+- The raw-URL installer one-liners (`.../main/install-playbook.sh`,
+  `.../main/Install-Playbook.ps1`) and the marketplace source stay exactly as
+  documented — they already name `main` and now mean "released".
+- Stacked PRs still get no CI (a known limitation noted in v0.17.0 notes);
+  the base branch for stacks is the parent branch, not `develop`.
+- Follow-on: if the marketplace source is ever made pinnable in the
+  installers (`owner/repo@main`), that is an optional hardening, not a
+  requirement of this model.
+
+### Supersedes
+
+None.
+
+---
+
+## ADR-0020: The Always-On Roster Has One Source — Plugins or File Copies, Never Both
+
+**Date:** 2026-09-06
+**Status:** Accepted
+**Phase:** Deployment
+**Deciders:** Greg Grace
+
+### Context
+
+ccds ships the same 19 agents and 18 cross-cutting skills by two routes: the
+plugin marketplace (`ccds-core` + one plugin per archetype pack) and the file
+installers, which copy them into `~/.claude/agents/` and `~/.claude/skills/`.
+The README presented the ZIP route as "additionally" providing the CLI and
+library, and nothing stopped a user from having both. Claude Code loads both:
+every agent then appears twice in the roster (`plan-architect` and
+`ccds-core:plan-architect`), the router sees two identical descriptions, the
+file copy owns the bare name, and the ~850 tokens of agent descriptions plus
+the skill listing are paid twice. The file copies also go stale the moment the
+plugins update, because only the plugins auto-update.
+
+This was found on the maintainer's own machine, where a v0.11.0 file install
+had sat under current marketplace plugins for weeks — and `ccds doctor` said
+PASS, because it checked each route in isolation. The same investigation found
+#70: the bash doctor's disabled-plugin branch could never match the real
+`claude plugin list --json`, which pretty-prints one field per line, so a
+disabled `ccds-guard` was reported as enabled.
+
+### Decision
+
+1. **One source.** The always-on agents and cross-cutting skills come from the
+   ccds content plugins *or* from file copies, never both. The enforcement
+   plugins (`ccds-guard`, `ccds-loops`) are orthogonal: hooks ship only via
+   plugins (ADR-0012) and every route installs them.
+2. **Setup gates the copies.** `ccds-user-setup.sh`, `ccds.ps1 setup` and
+   `Install-Playbook.ps1` probe `claude plugin list --json` (read-only; skipped
+   under `--skip-plugins`, which means "never touch the CLI", and under
+   `--dry-run`). If any content plugin is enabled, steps 1/1b are skipped with
+   a one-line explanation, and stale copies are named with the exact removal
+   command. Setup never deletes a user's files.
+3. **Doctor sees both routes.** `agents-installed` and `skills-installed`
+   report the plugin as the source when `ccds-core` is enabled, and their FAIL
+   remedies name both fixes. A new `plugin-file-overlap` check FAILs when a
+   content plugin is enabled and ccds-owned copies (names from `catalog.json`)
+   are present, printing the removal command; it WARNs when the CLI cannot be
+   read. Both dispatchers, same 12-check contract.
+4. **Parsers collapse newlines first** (bash `tr -d '\n\r'`, PowerShell
+   `-join` before `ConvertFrom-Json`), and the test stubs pretty-print their
+   JSON so the suite exercises the real shape. Fixes #70.
+
+### Rationale
+
+Removing the file route entirely was considered: the CLI and per-project
+`ccds sync` still need the library on disk, and .deb/.rpm users have no
+marketplace step, so the file route stays. Making setup delete stale copies was
+rejected: the installers must never remove files they did not write in this
+run; naming the command is enough and reversible.
+
+### Consequences
+
+- A file-route user who later installs `ccds-core@ccds` gets a doctor FAIL
+  with the removal command, not a silent double roster.
+- The `~/.claude/CLAUDE.md` ccds block no longer claims the agents "live in
+  `~/.claude/agents/`"; it names both routes.
+- First behavioral coverage of `ccds.ps1 doctor` (Windows CI job).
+- Follow-on: `ccds doctor` could compare the file-install version against the
+  marketplace commit to flag a stale file route even when no plugin is
+  enabled; not done here.
+
+### Supersedes
+
+None.
+
+---
+
+## ADR-0021: The Guard Exempts Source Code and Takes Operator Rules
+
+**Date:** 2026-09-06
+**Status:** Accepted
+**Phase:** Hardening
+**Deciders:** Greg Grace
+
+### Context
+
+The guard was too strict to leave on: the maintainer disabled it (#74). The
+adjudicator's own transcripts showed why — 49 of 52 unattended adjudications
+in a month were the secrets-path rule, and the judge denied half of them. Two
+patterns accounted for nearly all hits: reads of an open-source repo's
+`src/credentials/` module (TypeScript files matched by the `credentials/`
+directory rule that ADR-0012's review round had deliberately restored), and
+key files the operator's own skills are designed to read, adjudicated on
+every single call because nothing let the operator declare them.
+
+A third, smaller issue: `ccds doctor` reports a disabled guard as FAIL by
+design (ADR-0016), which is right for an accidental state and wrong for a
+recorded decision.
+
+### Decision
+
+1. **Source code is exempt from the secret scan wherever it lives.** A new
+   `allow-path` for source extensions (`.ts .py .go .rs .java .md …`) means
+   `credentials/credentials.service.ts` passes while `credentials/api_key.txt`
+   and `credentials/service-account.json` still deny. The `credentials/` and
+   `secrets/` directory rules stay — narrowing them to dot-directories was
+   considered and rejected because it would have let data files in a repo's
+   `credentials/` through.
+2. **`allow-path` exempts from `deny-path` only.** The Bash path had let an
+   allow-path hit skip the tamper watch too; with hook scripts being `.py`
+   files, the new exemption made `sed -i … .claude/hooks/x.py` pass silently
+   until the panel matrix caught it. The file-tool path already had the
+   right contract; the Bash path now matches it.
+3. **Operator rules file** `~/.claude/ccds-guard-rules.txt`: same five
+   categories, loaded after the shipped table, never overwritten by a plugin
+   update, relocatable via `CCDS_GUARD_USER_RULES` (test seam). Declaring
+   `allow-path: (^|/)\.claude/credentials/` is the intended use; it can also
+   tighten. The file is tamper-watched (`ask-write-path`), so the model
+   cannot add an exemption silently — unattended, that write denies outright
+   like every other safety-config write. Operator rules never mask an empty
+   shipped table (the inert warning keys on the shipped file alone).
+4. **Deliberate opt-out marker** `~/.claude/ccds-guard.disabled`: with it
+   present and only `ccds-guard` disabled, doctor reports WARN "disabled on
+   purpose (<first line>)" instead of FAIL, in both dispatchers. A disabled
+   `ccds-loops` is never excused. Writing the marker asks (tamper watch), and
+   so does `claude plugin disable|uninstall|remove` of an enforcement plugin
+   — a gap the review probes found: the CLI edits settings.json out of the
+   guard's sight, so the command text itself is the only place to catch it.
+5. **The exemption cannot launder a key.** Review probes showed the first cut
+   let `.ssh/id_rsa.md`, `.ssh/config.ts` and `.env.ts` through. The
+   exemption is now off inside any dot-directory, for any dotfile, and for
+   key/env stems with a code suffix (`server.key.md`, `id_rsa.md`). Files the
+   shipped table never matched by shape (`credentials.md`, `backend.env.ts`)
+   remain out of scope, as before: the guard classifies by shape, not content.
+6. **A symlinked operator file is ignored, loudly.** The tamper watch is on
+   the path; a symlink would move the effective content to a target the watch
+   never sees (creating the link asks once, later writes to the target would
+   not — review finding). The loader refuses a symlink at the operator path
+   and says so on stderr; a symlinked `~/.claude` *directory* (dotfiles
+   managers) is still fine, since only the file itself is checked.
+
+7. **Review-panel refinements** (codex + a Claude reviewer, both read-only,
+   both REQUEST CHANGES on the first cut; grok returned nothing): the
+   exemption additionally requires a source-tree segment (`src/ lib/ app/
+   packages/ tests/ …`), so `secrets/keys.py` at a repo root denies as
+   before while `packages/cli/src/credentials/x.ts` passes; docs/data
+   suffixes (`.md .rst .sql`) are not exempt; operator `deny-path` rules are
+   checked before any exemption, so "can also tighten" is true; an empty rule
+   body (`allow-path:` alone would match every path), an invalid regex, or an
+   unknown category in the operator file is skipped and named on stderr with
+   file:line; the two tamper watches match by filename (and by the resolved
+   `CCDS_GUARD_USER_RULES` path), so `cd ~/.claude && … > ccds-guard-rules.txt`
+   and Windows trailing-dot aliases ask; the doctor marker must be a regular
+   file (PowerShell `-PathType Leaf`) and an unreadable one no longer aborts
+   the bash doctor under `pipefail`.
+
+### Rationale
+
+Telling the adjudicator about declared paths was the alternative for (3);
+exempting them before the scan is simpler and cheaper, and keeps the judge's
+"on its face" contract intact. Extension-based exemption over
+directory-narrowing (1) keeps the panel's earlier decision where it was
+right (data files in `credentials/`) and removes it only where the evidence
+showed it wrong (code). The allow-path contract fix (2) is a correctness
+change independent of the evidence and would have been needed anyway.
+
+### Consequences
+
+- Of the 49 real hits, every source read and every declared-key call clears;
+  a bare `ls …/credentials/` still asks (one hit), and reads of
+  `~/.aws/credentials`, `.env`, `.ssh` are unchanged.
+- The teaching messages now point at the operator file, not the plugin's
+  own rules table (which an update overwrites).
+- Follow-on: a `ccds guard` subcommand to add/list operator rules is
+  possible; not needed for the fix.
+- Follow-on (review finding, deliberately not in this change): in the Bash
+  path an unambiguous WRITE to a safety path (`> file`, `>>`, `tee`) is still
+  adjudicated unattended rather than denied outright like a file-tool write,
+  because a name in a command line does not prove a write (ADR-0015 comment).
+  Classifying redirection targets and `tee` arguments as tamper writes is a
+  precise improvement worth its own change and tests.
+- Known limitation, unchanged: shell quoting/concatenation
+  (`ccds-guard-rules'.txt'`) defeats every regex-over-string rule in the table
+  (ADR-0012 threat model, pinned by `test_known_limitation_quoting_bypasses_pinned`).
+
+### Supersedes
+
+None (amends ADR-0012's rule table and ADR-0016's doctor contract).

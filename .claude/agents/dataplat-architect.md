@@ -1,7 +1,7 @@
 ---
 name: dataplat-architect
 model: opus
-color: "#0f766e"
+color: cyan
 description: Data Platform domain specialist. Use proactively on data-platform work — warehouse/lakehouse topology, batch vs streaming, partitioning and storage format, governance, ingestion, quality, and serving. Owns data-platform architecture and composes the dataplat-* implementation skills.
 ---
 

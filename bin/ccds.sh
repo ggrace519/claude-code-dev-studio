@@ -264,6 +264,48 @@ MIN_CLAUDE_VERSION="2.1.169"
 CLAUDE_CMD="${CCDS_CLAUDE_CMD:-claude}"
 ENFORCEMENT_PLUGINS=(ccds-guard ccds-loops)
 
+# Content plugins are the ccds-* plugins that ship agents and skills: ccds-core
+# and the archetype packs -- every ccds plugin except the hooks-only enforcement
+# pair above. When one is enabled, Claude Code already loads those agents and
+# skills from the plugin, so copies in ~/.claude/agents and ~/.claude/skills are
+# a SECOND load of the same roster. Echoes the enabled content-plugin names
+# (space-separated, possibly empty), or the literal "unknown" when the claude
+# CLI is absent or `claude plugin list --json` cannot be read. Cached per run.
+content_plugins_enabled() {
+    if [[ -z "${CONTENT_PLUGINS_CACHE+x}" ]]; then
+        local json
+        if ! command -v "$CLAUDE_CMD" >/dev/null 2>&1 \
+            || ! json="$("$CLAUDE_CMD" plugin list --json 2>/dev/null)"; then
+            CONTENT_PLUGINS_CACHE="unknown"
+        else
+            # The real CLI pretty-prints one field per line, so collapse newlines
+            # FIRST, then split into one object per line; keep the enabled ones,
+            # pull the "<name>@" id prefix, drop the hooks-only pair.
+            CONTENT_PLUGINS_CACHE="$(printf '%s' "$json" | tr -d '\n\r' | tr '{' '\n' \
+                | grep '"enabled"[[:space:]]*:[[:space:]]*true' \
+                | grep -o '"id"[[:space:]]*:[[:space:]]*"ccds-[a-z]*@' \
+                | sed -e 's/.*"\(ccds-[a-z]*\)@/\1/' \
+                | grep -v -x -e ccds-guard -e ccds-loops \
+                | sort -u | tr '\n' ' ' | sed -e 's/ $//' || true)"
+        fi
+    fi
+    printf '%s' "$CONTENT_PLUGINS_CACHE"
+}
+
+core_plugin_enabled() {  # true when ccds-core (the 5 core agents + cross-cutting skills) is enabled
+    case " $(content_plugins_enabled) " in *" ccds-core "*) return 0 ;; esac
+    return 1
+}
+
+# The authoritative GLOBAL_SKILLS list, read from the setup script at runtime --
+# never a second hardcoded copy that can drift. Prints one name per line;
+# prints nothing when the script is missing or the block cannot be parsed.
+global_skill_names() {
+    [[ -f "$SETUP_SCRIPT" ]] || return 0
+    sed -n '/^GLOBAL_SKILLS=(/,/^)/p' "$SETUP_SCRIPT" \
+        | sed -e '1d' -e '$d' -e 's/#.*$//' -e 's/[[:space:]]//g' | grep -v '^$' || true
+}
+
 # Numeric compare of dotted versions without sort -V (absent on some minimal
 # images). Echoes "older", "same" or "newer" for $1 relative to $2.
 version_cmp() {
@@ -332,7 +374,7 @@ doc_check_plugins() {
         # Match the plugin id from any marketplace: "<name>@<marketplace>".
         if ! printf '%s' "$json" | grep -q "\"id\"[[:space:]]*:[[:space:]]*\"${p}@"; then
             missing+=("$p")
-        elif printf '%s' "$json" \
+        elif printf '%s' "$json" | tr -d '\n\r' \
             | tr '{' '\n' | grep "\"${p}@" | grep -q '"enabled"[[:space:]]*:[[:space:]]*false'; then
             disabled+=("$p")
         fi
@@ -344,9 +386,22 @@ doc_check_plugins() {
         return
     fi
     if (( ${#disabled[@]} > 0 )); then
+        # A deliberate opt-out is not a broken install: the operator records
+        # the reason in ~/.claude/ccds-guard.disabled and doctor downgrades the
+        # guard line to WARN (ADR-0021). Only ccds-guard can be opted out; a
+        # disabled ccds-loops is still an incomplete install.
+        local marker="$HOME/.claude/ccds-guard.disabled"
+        if [[ "${disabled[*]}" == "ccds-guard" && -f "$marker" ]]; then
+            local why
+            why="$(head -n 1 "$marker" 2>/dev/null | tr -d '\r' || true)"
+            doc_line WARN plugins-installed \
+                "ccds-guard disabled on purpose (${marker}: ${why:-no reason recorded}); ccds-loops installed and enabled" \
+                "when the guard is revisited: claude plugin enable ccds-guard && rm $marker"
+            return
+        fi
         doc_line FAIL plugins-installed \
             "installed but DISABLED: ${disabled[*]} -- a disabled guard protects nothing" \
-            "claude plugin enable ${disabled[0]}"
+            "claude plugin enable ${disabled[0]} (or, if deliberate: echo 'reason' > $HOME/.claude/ccds-guard.disabled so doctor reports it as a choice)"
         return
     fi
     doc_line OK plugins-installed "${ENFORCEMENT_PLUGINS[*]} installed and enabled"
@@ -405,20 +460,26 @@ doc_check_version() {
 
 doc_check_agents() {
     local dir="$HOME/.claude/agents"
+    if core_plugin_enabled; then
+        doc_line OK agents-installed "supplied by the enabled ccds-core plugin (no file copies needed in $dir)"
+        return
+    fi
     if [[ -f "$dir/plan-architect.md" ]]; then
         local n
         n="$(find "$dir" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
         doc_line OK agents-installed "core sentinel plan-architect.md present ($n agent file(s) in $dir)"
     else
         doc_line FAIL agents-installed \
-            "plan-architect.md missing from $dir -- the always-on agents are not installed" \
-            "run 'ccds setup'"
+            "plan-architect.md missing from $dir and the ccds-core plugin is not enabled -- the always-on agents are not installed" \
+            "run 'ccds setup' (or: claude plugin install ccds-core@ccds --scope user)"
     fi
 }
 
 doc_check_skills() {
-    # Read the authoritative GLOBAL_SKILLS list from the setup script at
-    # runtime -- never a second hardcoded copy that can drift.
+    if core_plugin_enabled; then
+        doc_line OK skills-installed "supplied by the enabled ccds-core plugin (no file copies needed in $HOME/.claude/skills)"
+        return
+    fi
     if [[ ! -f "$SETUP_SCRIPT" ]]; then
         doc_line WARN skills-installed \
             "cannot determine expected skill list ($SETUP_SCRIPT not found)" \
@@ -426,8 +487,7 @@ doc_check_skills() {
         return
     fi
     local -a expected=()
-    mapfile -t expected < <(sed -n '/^GLOBAL_SKILLS=(/,/^)/p' "$SETUP_SCRIPT" \
-        | sed -e '1d' -e '$d' -e 's/#.*$//' -e 's/[[:space:]]//g' | grep -v '^$' || true)
+    mapfile -t expected < <(global_skill_names)
     if (( ${#expected[@]} == 0 )); then
         doc_line WARN skills-installed \
             "could not extract GLOBAL_SKILLS from $SETUP_SCRIPT" \
@@ -444,8 +504,64 @@ doc_check_skills() {
     else
         doc_line FAIL skills-installed \
             "${#missing[@]}/${#expected[@]} cross-cutting skills missing from $HOME/.claude/skills: ${missing[*]}" \
-            "run 'ccds setup'"
+            "run 'ccds setup' (or: claude plugin install ccds-core@ccds --scope user)"
     fi
+}
+
+doc_check_plugin_file_overlap() {
+    # The always-on agents and cross-cutting skills reach Claude Code by ONE of
+    # two routes: the ccds content plugins, or file copies written by setup.
+    # Both at once means every agent is in the roster twice (the router sees
+    # two identical descriptions and the stale file copy owns the bare name)
+    # and the descriptions cost context twice. Each route alone is fine.
+    local plugins
+    plugins="$(content_plugins_enabled)"
+    if [[ "$plugins" == "unknown" ]]; then
+        doc_line WARN plugin-file-overlap \
+            "cannot check: claude CLI not on PATH or 'claude plugin list --json' unreadable" \
+            "install Claude Code / run 'claude plugin list', then re-run 'ccds doctor'"
+        return
+    fi
+    # ccds-owned agent names come from catalog.json (authoritative, shipped in
+    # every layout); the package's agents/ dir is the fallback for an old tree.
+    local name
+    local -a owned=() agent_files=() skill_dirs=()
+    if [[ -f "$INSTALL_ROOT/catalog.json" ]]; then
+        mapfile -t owned < <(tr -d '\n\r' < "$INSTALL_ROOT/catalog.json" | tr '{' '\n' \
+            | grep '"kind"[[:space:]]*:[[:space:]]*"agent"' \
+            | grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' \
+            | sed -e 's/.*"\([^"]*\)"$/\1.md/' || true)
+    fi
+    if (( ${#owned[@]} == 0 )); then
+        local agents_src="$INSTALL_ROOT/agents" f
+        [[ -d "$agents_src" ]] || agents_src="$INSTALL_ROOT/.claude/agents"
+        for f in "$agents_src"/*.md; do [[ -f "$f" ]] && owned+=("$(basename "$f")"); done
+    fi
+    for name in "${owned[@]}"; do
+        [[ -f "$HOME/.claude/agents/$name" ]] && agent_files+=("$name")
+    done
+    while IFS= read -r name; do
+        [[ -n "$name" && -f "$HOME/.claude/skills/$name/SKILL.md" ]] && skill_dirs+=("$name")
+    done < <(global_skill_names)
+    if [[ -z "$plugins" ]]; then
+        doc_line OK plugin-file-overlap "no ccds content plugin enabled; agents and skills come from the file copies only"
+        return
+    fi
+    if (( ${#agent_files[@]} == 0 && ${#skill_dirs[@]} == 0 )); then
+        doc_line OK plugin-file-overlap "plugins ($plugins) supply the agents and skills; no file copies present"
+        return
+    fi
+    local -a cmds=()
+    if (( ${#agent_files[@]} > 0 )); then
+        cmds+=("rm -f $(printf "$HOME/.claude/agents/%s " "${agent_files[@]}" | sed -e 's/ $//')")
+    fi
+    if (( ${#skill_dirs[@]} > 0 )); then
+        cmds+=("rm -rf $(printf "$HOME/.claude/skills/%s " "${skill_dirs[@]}" | sed -e 's/ $//')")
+    fi
+    local remedy="remove the file copies (the plugins keep working): $(IFS='&'; printf '%s' "${cmds[*]}" | sed -e 's/&/ \&\& /g')"
+    doc_line FAIL plugin-file-overlap \
+        "loaded twice: plugin(s) $plugins are enabled AND ${#agent_files[@]} agent file(s) + ${#skill_dirs[@]} cross-cutting skill(s) from a file install (version $(installed_version)) sit in $HOME/.claude -- Claude Code loads both copies, and the file copies (which own the bare names) go stale the moment the plugins update" \
+        "$remedy"
 }
 
 doc_check_bom() {
@@ -550,6 +666,7 @@ cmd_doctor() {
         "path-and-duals:doc_check_path_duals"
         "claude-cli:doc_check_claude_cli"
         "plugins-installed:doc_check_plugins"
+        "plugin-file-overlap:doc_check_plugin_file_overlap"
     )
 
     echo "ccds doctor -- environment checks (version $(installed_version), $LAYOUT_KIND layout)"

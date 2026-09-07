@@ -15,7 +15,7 @@ its `<pack>-*` skills in a single coherent context. See `DECISIONS.md` ADR-0007.
 
 | Layer | Location | Loaded | Notes |
 |---|---|---|---|
-| 19 agents | `~/.claude/agents/` | always (session start) | 14 domain + 5 core; ~850 tokens of descriptions |
+| 19 agents | plugins (`ccds-core` + packs) **or** `~/.claude/agents/` — never both (ADR-0020) | always (session start) | 14 domain + 5 core; ~850 tokens of descriptions |
 | Cross-cutting skills | `~/.claude/skills/` | descriptions always; body JIT | `playbook-conventions`, `api-design`, `ux-design`, `security-checklist`, `code-review-checklist`, `inventive-engineer`, `common-*`, `loop-*` |
 | Domain skills | `~/.claude/playbook/skills/` → `.claude/skills/` | per project (JIT) | `<pack>-*`; staged by `ccds sync` (via the `sync-agents` skill) |
 | Gate templates | `~/.claude/playbook/templates/` → project files | per project (with sync) | settings denies, CLAUDE.md standards, pre-commit, CI — stack-matched via `stack-matrix.json`, never-destroy (ADR-0013); skip with `--no-gates` |
@@ -32,8 +32,9 @@ postinst, `ccds setup`, `ccds sync`'s first run, and the installers all funnel t
 (ADR-0016). Put outlet-wide install behavior there, never in an installer.
 `ccds-loops` carries the process-enforcement hooks (ADR-0011) and
 `ccds-guard` the zero-config security guard (secret-path denies, dangerous-command
-blocks, install ask-gate, config tamper watch; rules in `hooks/guard-rules.txt`, kill
-switch `CCDS_GUARD_DISABLE=1`; in unattended/auto-accept sessions ask-gates are decided
+blocks, install ask-gate, config tamper watch; rules in `hooks/guard-rules.txt`,
+operator additions in `~/.claude/ccds-guard-rules.txt` (ADR-0021), kill switch
+`CCDS_GUARD_DISABLE=1`, deliberate opt-out marker `~/.claude/ccds-guard.disabled`; in unattended/auto-accept sessions ask-gates are decided
 by a fresh-context LLM adjudicator instead of a prompt, except safety-config writes,
 which deny outright — ADR-0015). That adjudicator sets the project's **minimum Claude
 Code version, v2.1.169** (the release that added `--safe-mode`); its three isolation
@@ -128,6 +129,15 @@ skills — no domain agent; skills-only, like `common-`).
 
 ## Conventions
 
+- **Branch model (ADR-0019):** `develop` is the integration branch — cut every
+  feature/fix/docs branch from it and open the PR against it with an explicit
+  `gh pr create --base develop`. `main` is the release branch **and stays the GitHub
+  default branch**: `/plugin marketplace add ggrace519/claude-code-dev-studio` clones
+  and updates from the repository's default branch, so whatever `main` holds is what
+  every marketplace user installs. Promotion is a `develop` → `main` PR, merged as a
+  merge commit or fast-forward (never squash), then tagged on `main`. CI runs on both
+  branches, and the `promotion-only` job rejects any PR into `main` whose head is not
+  `develop`.
 - **Decisions are logged.** Every significant architectural/security/process decision is
   an ADR in `DECISIONS.md`. The shared `playbook-conventions` skill carries the ADR
   template and the output/handoff format — agents pull it rather than restating it.
@@ -148,10 +158,11 @@ skills — no domain agent; skills-only, like `common-`).
   `PATH`; `TestReleaseZipPs1` runs `build-release.ps1` unmodified on Windows).
 - **The suite runs on both platforms** (ADR-0018): `python3 -m unittest discover -s
   tests` on Linux, and the same command under Windows Python in CI. Sessions here run
-  in WSL on a Windows box, so both are reachable locally — `python.exe -m unittest
-  discover -s tests` runs the Windows half against the same checkout. Platform-specific
-  classes guard on `sys.platform`; never "cover" a platform by running one hand-picked
-  class on it.
+  on native Debian (since 2026-08-14; the WSL-on-Windows setup ADR-0018 describes is
+  gone), so the Windows half — `TestInstallPlaybookPs1`, `TestReleaseZipPs1`,
+  `TestCcdsDoctorPs1` — is verified by the `windows-latest` CI job, not locally.
+  Platform-specific classes guard on `sys.platform`; never "cover" a platform by
+  running one hand-picked class on it.
 
 ---
 

@@ -139,6 +139,19 @@ class TestLintPlaybook(FixtureCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("RESULT: PASS", r.stdout)
 
+    def test_hex_agent_color_fails(self):
+        """`color:` accepts eight names only; hex is silently ignored by Claude
+        Code, which is how all 19 agents rendered in the default color."""
+        body = read(self.agent_path())
+        body = body.replace("\nname: ", "\ncolor: \"#1a56db\"\nname: ", 1)
+        self.assertIn('color: "#1a56db"', body)
+        write(self.agent_path(), body)
+        self.regen_catalog()
+        r = self.lint()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("agent-colors", r.stdout)
+        self.assertIn("#1a56db", r.stdout)
+
     def test_ghost_skill_reference_fails(self):
         write(self.agent_path(), AGENT_TMPL.format(extra="Also pull `saas-ghost`."))
         r = self.lint()
@@ -1497,11 +1510,14 @@ class TestCcdsDoctor(unittest.TestCase):
             plugins = [{"id": "ccds-guard@ccds", "enabled": True},
                        {"id": "ccds-loops@ccds", "enabled": True}]
         path = os.path.join(self.root, "claude-stub")
+        # indent=2: the real CLI pretty-prints one field per line. A flat
+        # single-line stub hid #70 (the disabled-plugin branch could never
+        # match on real output), so the stub must keep the real shape.
         write(path, "#!/usr/bin/env bash\ncase \"$1\" in\n"
                     "  --version) printf '%%s\\n' %s ;;\n"
                     "  plugin)    printf '%%s\\n' %s ;;\n"
                     "esac\n" % (shlex.quote(version),
-                                shlex.quote(json.dumps(plugins))))
+                                shlex.quote(json.dumps(plugins, indent=2))))
         os.chmod(path, 0o755)
         return path
 
@@ -1565,6 +1581,46 @@ class TestCcdsDoctor(unittest.TestCase):
         self.assertIn("DISABLED", r.stdout)
         self.assertIn("claude plugin enable ccds-guard", r.stdout)
 
+    def test_deliberately_disabled_guard_warns_instead_of_failing(self):
+        """ADR-0021: a recorded opt-out (~/.claude/ccds-guard.disabled) is a
+        choice, not a broken install. Only the guard can be opted out."""
+        write(os.path.join(self.home, ".claude", "ccds-guard.disabled"),
+              "too strict on src/credentials paths; revisit\n")
+        r = self.doctor(claude=self.stub_claude(plugins=[
+            {"id": "ccds-guard@ccds", "enabled": False},
+            {"id": "ccds-loops@ccds", "enabled": True}]))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("WARN  plugins-installed: ccds-guard disabled on purpose", r.stdout)
+        self.assertIn("too strict on src/credentials paths", r.stdout)
+        self.assertIn("RESULT: PASS", r.stdout)
+        # the marker never excuses a disabled ccds-loops
+        r = self.doctor(claude=self.stub_claude(plugins=[
+            {"id": "ccds-guard@ccds", "enabled": False},
+            {"id": "ccds-loops@ccds", "enabled": False}]))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("FAIL  plugins-installed: installed but DISABLED", r.stdout)
+
+    def test_unreadable_marker_does_not_abort_doctor(self):
+        marker = os.path.join(self.home, ".claude", "ccds-guard.disabled")
+        write(marker, "secret reason\n")
+        os.chmod(marker, 0)
+        self.addCleanup(os.chmod, marker, 0o600)
+        if os.access(marker, os.R_OK):
+            self.skipTest("running with privileges that ignore file modes")
+        r = self.doctor(claude=self.stub_claude(plugins=[
+            {"id": "ccds-guard@ccds", "enabled": False},
+            {"id": "ccds-loops@ccds", "enabled": True}]))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("no reason recorded", r.stdout)
+        self.assertIn("RESULT: PASS", r.stdout)
+
+    def test_disabled_guard_without_marker_names_the_marker(self):
+        r = self.doctor(claude=self.stub_claude(plugins=[
+            {"id": "ccds-guard@ccds", "enabled": False},
+            {"id": "ccds-loops@ccds", "enabled": True}]))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("ccds-guard.disabled", r.stdout)
+
     def test_plugins_from_any_marketplace_count(self):
         # A local or renamed marketplace is still a real install.
         r = self.doctor(claude=self.stub_claude(
@@ -1581,6 +1637,51 @@ class TestCcdsDoctor(unittest.TestCase):
         self.assertIn("WARN  claude-cli", r.stdout)
         self.assertIn("WARN  plugins-installed", r.stdout)
         self.assertIn("RESULT: PASS", r.stdout)
+
+    CONTENT_PLUGINS = [{"id": "ccds-guard@ccds", "enabled": True},
+                       {"id": "ccds-loops@ccds", "enabled": True},
+                       {"id": "ccds-core@ccds", "enabled": True},
+                       {"id": "ccds-saas@ccds", "enabled": True}]
+
+    def test_plugin_and_file_copies_overlap_fails(self):
+        """ADR-0020: the roster reaches Claude Code by plugins OR file copies.
+        Both at once = every agent loaded twice; doctor must name the copies
+        and hand over the removal command rather than say PASS (which is what
+        it did on the maintainer's own machine for weeks)."""
+        r = self.doctor(claude=self.stub_claude(plugins=self.CONTENT_PLUGINS))
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("FAIL  plugin-file-overlap: loaded twice: plugin(s) ccds-core ccds-saas",
+                      r.stdout)
+        self.assertIn("1 agent file(s) + %d cross-cutting skill(s)"
+                      % len(self._global_skills()), r.stdout)
+        self.assertIn("rm -f " + os.path.join(self.home, ".claude", "agents",
+                                              "plan-architect.md"), r.stdout)
+        self.assertIn("rm -rf " + os.path.join(self.home, ".claude", "skills",
+                                               self._global_skills()[0]), r.stdout)
+        # the enforcement pair must never be reported as a content plugin
+        self.assertNotIn("ccds-guard ccds", r.stdout.split("plugin-file-overlap")[1])
+
+    def test_plugin_only_install_passes(self):
+        """No file copies + content plugins enabled is the recommended shape:
+        agents/skills checks report the plugin as the source and pass."""
+        shutil.rmtree(os.path.join(self.home, ".claude", "agents"))
+        shutil.rmtree(os.path.join(self.home, ".claude", "skills"))
+        r = self.doctor(claude=self.stub_claude(plugins=self.CONTENT_PLUGINS))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("OK  agents-installed: supplied by the enabled ccds-core plugin", r.stdout)
+        self.assertIn("OK  skills-installed: supplied by the enabled ccds-core plugin", r.stdout)
+        self.assertIn("OK  plugin-file-overlap: plugins (ccds-core ccds-saas) supply", r.stdout)
+        self.assertIn("RESULT: PASS", r.stdout)
+
+    def test_file_only_install_is_not_an_overlap(self):
+        r = self.doctor()
+        self.assertIn("OK  plugin-file-overlap: no ccds content plugin enabled", r.stdout)
+
+    def test_missing_core_agent_without_core_plugin_names_both_remedies(self):
+        os.remove(os.path.join(self.home, ".claude", "agents", "plan-architect.md"))
+        r = self.doctor()
+        self.assertIn("FAIL  agents-installed", r.stdout)
+        self.assertIn("claude plugin install ccds-core@ccds", r.stdout)
 
     def test_missing_core_agent_fails(self):
         os.remove(os.path.join(self.home, ".claude", "agents", "plan-architect.md"))
@@ -1738,6 +1839,7 @@ class TestDebPostinst(unittest.TestCase):
         r = self._run({"SUDO_USER": getpass.getuser()})
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(self.claude_calls(), [
+            "plugin list --json",   # ADR-0020 route probe, read-only
             "plugin marketplace add test-owner/test-repo",
             "plugin install ccds-guard@ccds --scope user",
             "plugin install ccds-loops@ccds --scope user",
@@ -1877,6 +1979,7 @@ class TestInstallPlaybook(unittest.TestCase):
         self.assertIn("# existing content", self.bashrc(),
                       "must not clobber the user's rc file")
         self.assertEqual(self.claude_calls(), [
+            "plugin list --json",   # ADR-0020 route probe, read-only
             "plugin marketplace add test-owner/test-repo",
             "plugin install ccds-guard@ccds --scope user",
             "plugin install ccds-loops@ccds --scope user",
@@ -2096,6 +2199,26 @@ class TestInstallPlaybookPs1(unittest.TestCase):
                         "completion block did not go to CCDS_PS_PROFILE")
         self.assertIn("# >>> ccds-completion >>>", read(self.profile))
         self.assertNotIn("ggrace519", " ".join(self.claude_calls()))
+
+    def test_enabled_content_plugin_skips_the_file_copies(self):
+        """ADR-0020: with ccds-core enabled the plugin already supplies the
+        roster, so the installer must not write a second copy into ~/.claude.
+        The stub prints pretty-printed JSON, the real CLI's shape."""
+        plugins_json = os.path.join(self.root, "plugins.json")
+        write(plugins_json, json.dumps(
+            [{"id": "ccds-guard@ccds", "enabled": True},
+             {"id": "ccds-core@ccds", "enabled": True}], indent=2))
+        write(self.claude,
+              "@echo off\r\necho %%* >> \"%s\"\r\n"
+              "if \"%%1\"==\"plugin\" if \"%%2\"==\"list\" type \"%s\"\r\n"
+              "exit /b 0\r\n" % (self.log, plugins_json))
+        r = self.install()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Supplied by enabled plugin(s): ccds-core", r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".claude", "agents")))
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".claude", "skills")))
+        self.assertTrue(os.path.isfile(os.path.join(self.home, ".claude", "CLAUDE.md")))
+        self.assertIn("install ccds-guard@ccds", " ".join(self.claude_calls()))
 
     def test_skip_plugins_makes_no_claude_calls(self):
         r = self.install("-SkipPlugins")
@@ -2489,6 +2612,113 @@ class TestReleaseStagingSh(unittest.TestCase):
         self.assertIn("package not found after fpm run", r.stdout + r.stderr)
 
 
+@unittest.skipUnless(PWSH, "bin/ccds.ps1 doctor is the Windows twin; "
+                           "runs under Windows PowerShell only")
+class TestCcdsDoctorPs1(unittest.TestCase):
+    """`ccds.ps1 doctor` — the first behavioral coverage of the PowerShell
+    doctor. Mirrors TestCcdsDoctor: an installed-layout root, a synthetic
+    healthy USERPROFILE, and a recording `claude.cmd` whose `plugin list
+    --json` pretty-prints like the real CLI (the shape that hid #70)."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="ccds-doctor-ps-")
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.inst = os.path.join(self.root, "playbook")
+        os.makedirs(os.path.join(self.inst, "bin"))
+        os.makedirs(os.path.join(self.inst, "scripts"))
+        shutil.copy(os.path.join(REPO_ROOT, "bin", "ccds.ps1"),
+                    os.path.join(self.inst, "bin", "ccds.ps1"))
+        shutil.copy(os.path.join(REPO_ROOT, "Sync-AgentPacks.ps1"),
+                    os.path.join(self.inst, "scripts", "Sync-AgentPacks.ps1"))
+        shutil.copy(os.path.join(REPO_ROOT, "Verify-Agents.ps1"),
+                    os.path.join(self.inst, "scripts", "Verify-Agents.ps1"))
+        shutil.copy(os.path.join(SCRIPTS, "ccds-user-setup.sh"),
+                    os.path.join(self.inst, "scripts", "ccds-user-setup.sh"))
+        shutil.copy(os.path.join(REPO_ROOT, "catalog.json"),
+                    os.path.join(self.inst, "catalog.json"))
+        write(os.path.join(self.inst, "version.txt"), "0.0.1\n")
+        self.home = os.path.join(self.root, "home")
+        write(os.path.join(self.home, ".claude", "agents", "plan-architect.md"),
+              "---\nname: plan-architect\ndescription: test\n---\nbody\n")
+        for name in GLOBAL_SKILLS:
+            write(os.path.join(self.home, ".claude", "skills", name, "SKILL.md"),
+                  "---\nname: %s\ndescription: test\n---\nbody\n" % name)
+        write(os.path.join(self.home, ".claude", "CLAUDE.md"),
+              "# my own notes\n\n# >>> ccds >>>\nblock body\n# <<< ccds <<<\n")
+
+    def stub_claude(self, plugins=None):
+        if plugins is None:
+            plugins = [{"id": "ccds-guard@ccds", "enabled": True},
+                       {"id": "ccds-loops@ccds", "enabled": True}]
+        plugins_json = os.path.join(self.root, "plugins.json")
+        write(plugins_json, json.dumps(plugins, indent=2))
+        path = os.path.join(self.root, "claude.cmd")
+        write(path, "@echo off\r\n"
+                    "if \"%%1\"==\"--version\" echo 2.1.224 (Claude Code)\r\n"
+                    "if \"%%1\"==\"plugin\" type \"%s\"\r\n"
+                    "exit /b 0\r\n" % plugins_json)
+        return path
+
+    def doctor(self, plugins=None):
+        return subprocess.run(
+            [PWSH, "-NoProfile", "-ExecutionPolicy", "Bypass",
+             "-File", os.path.join(self.inst, "bin", "ccds.ps1"), "doctor"],
+            capture_output=True, text=True,
+            env={**os.environ, "USERPROFILE": self.home,
+                 "CCDS_DOCTOR_RELEASE_URL": "http://127.0.0.1:9/releases/latest",
+                 "CCDS_CLAUDE_CMD": self.stub_claude(plugins)})
+
+    CONTENT_PLUGINS = [{"id": "ccds-guard@ccds", "enabled": True},
+                       {"id": "ccds-loops@ccds", "enabled": True},
+                       {"id": "ccds-core@ccds", "enabled": True},
+                       {"id": "ccds-saas@ccds", "enabled": True}]
+
+    def test_healthy_file_install_passes(self):
+        r = self.doctor()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("FAIL  : 0", r.stdout)
+        self.assertIn("OK  plugin-file-overlap: no ccds content plugin enabled", r.stdout)
+
+    def test_disabled_plugin_in_pretty_printed_json_fails(self):
+        """#70 twin: the disabled branch must match on the real multi-line shape."""
+        r = self.doctor(plugins=[{"id": "ccds-guard@ccds", "enabled": False},
+                                 {"id": "ccds-loops@ccds", "enabled": True}])
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("FAIL  plugins-installed: installed but DISABLED: ccds-guard", r.stdout)
+
+    def test_deliberately_disabled_guard_warns_instead_of_failing(self):
+        write(os.path.join(self.home, ".claude", "ccds-guard.disabled"), "revisit\n")
+        r = self.doctor(plugins=[{"id": "ccds-guard@ccds", "enabled": False},
+                                 {"id": "ccds-loops@ccds", "enabled": True}])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("WARN  plugins-installed: ccds-guard disabled on purpose", r.stdout)
+        self.assertIn("revisit", r.stdout)
+
+    def test_marker_must_be_a_file_not_a_directory(self):
+        os.makedirs(os.path.join(self.home, ".claude", "ccds-guard.disabled"))
+        r = self.doctor(plugins=[{"id": "ccds-guard@ccds", "enabled": False},
+                                 {"id": "ccds-loops@ccds", "enabled": True}])
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("FAIL  plugins-installed: installed but DISABLED", r.stdout)
+
+    def test_plugin_and_file_copies_overlap_fails(self):
+        r = self.doctor(plugins=self.CONTENT_PLUGINS)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("FAIL  plugin-file-overlap: loaded twice: plugin(s) ccds-core ccds-saas", r.stdout)
+        self.assertIn("Remove-Item -Force '%s'" % os.path.join(
+            self.home, ".claude", "agents", "plan-architect.md"), r.stdout)
+        self.assertIn("Remove-Item -Recurse -Force", r.stdout)
+
+    def test_plugin_only_install_passes(self):
+        shutil.rmtree(os.path.join(self.home, ".claude", "agents"))
+        shutil.rmtree(os.path.join(self.home, ".claude", "skills"))
+        r = self.doctor(plugins=self.CONTENT_PLUGINS)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("OK  agents-installed: supplied by the enabled ccds-core plugin", r.stdout)
+        self.assertIn("OK  skills-installed: supplied by the enabled ccds-core plugin", r.stdout)
+        self.assertIn("OK  plugin-file-overlap: plugins (ccds-core ccds-saas) supply", r.stdout)
+
+
 @unittest.skipUnless(PWSH, "build-release.ps1 is a PowerShell script "
                            "(Windows-targeted, like the ZIP it builds)")
 class TestReleaseZipPs1(unittest.TestCase):
@@ -2669,11 +2899,55 @@ class TestUserSetupPlugins(unittest.TestCase):
         r = self.setup()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(self.calls(), [
+            "plugin list --json",   # ADR-0020 route detection, read-only
             "plugin marketplace add test-owner/test-repo",
             "plugin install ccds-guard@ccds --scope user",
             "plugin install ccds-loops@ccds --scope user",
         ])
         self.assertIn("Plugins     : installed", r.stdout)
+        # the stub prints no plugins -> file route -> copies happen
+        self.assertTrue(os.path.isfile(os.path.join(
+            self.home, ".claude", "agents", "plan-architect.md")))
+        self.assertIn("Agents      : %s/.claude/agents/" % self.home, r.stdout)
+
+    def _plugin_stub(self, ids):
+        """A claude whose `plugin list --json` pretty-prints these enabled ids
+        (the real CLI's shape) and accepts every other command."""
+        body = json.dumps([{"id": i, "enabled": True} for i in ids], indent=2)
+        return self.stub_claude(
+            'case "$*" in "plugin list --json") cat <<\'JSON\'\n%s\nJSON\n;; esac\nexit 0'
+            % body)
+
+    def test_enabled_content_plugin_skips_the_file_copies(self):
+        """ADR-0020: with ccds-core enabled the plugin already supplies the
+        roster, so setup must not write a second copy into ~/.claude."""
+        r = self.setup(claude=self._plugin_stub(
+            ["ccds-guard@ccds", "ccds-loops@ccds", "ccds-core@ccds"]))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Supplied by enabled plugin(s): ccds-core", r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".claude", "agents")))
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".claude", "skills")))
+        self.assertIn("Agents      : from plugins (ccds-core)", r.stdout)
+        # the enforcement plugins are still installed on this route
+        self.assertIn("plugin install ccds-guard@ccds --scope user", self.calls())
+        # the ccds block still lands
+        self.assertTrue(os.path.isfile(os.path.join(self.home, ".claude", "CLAUDE.md")))
+
+    def test_enforcement_plugins_alone_do_not_skip_the_copies(self):
+        r = self.setup(claude=self._plugin_stub(["ccds-guard@ccds", "ccds-loops@ccds"]))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(os.path.isfile(os.path.join(
+            self.home, ".claude", "agents", "plan-architect.md")))
+        self.assertNotIn("Supplied by enabled plugin", r.stdout)
+
+    def test_stale_file_copies_next_to_plugins_are_named_not_deleted(self):
+        stale = os.path.join(self.home, ".claude", "agents", "plan-architect.md")
+        write(stale, "old copy\n")
+        r = self.setup(claude=self._plugin_stub(["ccds-core@ccds"]))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("loaded in ADDITION to the plugins", r.stderr)
+        self.assertIn("rm -f " + stale, r.stderr)
+        self.assertTrue(os.path.isfile(stale), "setup must never delete user files")
 
     def test_skip_plugins_suppresses_every_call(self):
         r = self.setup("--skip-plugins")
@@ -3158,7 +3432,10 @@ class TestGuardHooks(unittest.TestCase):
             capture_output=True, text=True,
             env={**os.environ, "CCDS_GUARD_DISABLE": "",
                  "CCDS_GUARD_UNATTENDED": "",
-                 "CCDS_GUARD_ADJUDICATOR_CMD": "", **(env or {})})
+                 "CCDS_GUARD_ADJUDICATOR_CMD": "",
+                 # never the developer's real ~/.claude/ccds-guard-rules.txt
+                 "CCDS_GUARD_USER_RULES": "/nonexistent/ccds-guard-rules.txt",
+                 **(env or {})})
 
     def bash(self, command, env=None):
         return self.guard({"tool_name": "Bash",
@@ -3214,6 +3491,167 @@ class TestGuardHooks(unittest.TestCase):
                      "/proj/docs/how-to-manage-credentials.md"):
             self.assert_allow(self.file("Read", path))
             self.assert_allow(self.file("Write", path))
+
+    # --- #74: source code is never a secret, wherever it lives ---
+
+    N8N = "packages/cli/src/credentials/credentials.service.ts"
+
+    def test_source_files_inside_a_credentials_dir_allowed(self):
+        """49 of 52 real adjudications were reads of an open-source repo's
+        src/credentials/ module. A .ts/.py/... file is code, not a key."""
+        for path in ("/proj/" + self.N8N,
+                     "/proj/packages/cli/src/credentials/__tests__/validation.test.ts",
+                     "/proj/app/secrets/rotate.py",
+                     "/proj/lib/credentials/loader.go"):
+            self.assert_allow(self.file("Read", path))
+            self.assert_allow(self.file("Write", path))
+        self.assert_allow(self.bash("sed -n '325,355p' " + self.N8N))
+        self.assert_allow(self.bash(
+            "cd packages/cli && pnpm vitest run src/credentials/__tests__/"
+            "validation.test.ts 2>&1 | tail -8"))
+
+    def test_source_exemption_never_applies_to_secret_shapes(self):
+        """Review-panel probes: a code suffix must not launder a key. Inside a
+        dot-directory, a dotfile, or a key/env stem the exemption is off and
+        the deny rules decide as before."""
+        for path in ("/proj/.env.ts", "/home/u/.ssh/id_rsa.md",
+                     "/home/u/.ssh/config.ts", "/proj/id_rsa.md",
+                     "/home/u/.claude/credentials/svc.ts"):
+            self.assert_deny(self.file("Read", path), "secrets file")
+        self.assert_deny(self.guard({"tool_name": "Grep", "tool_input": {
+            "path": "/home/u/.ssh", "glob": "*.ts", "pattern": "."}}), "secrets file")
+
+    def test_switching_the_guard_off_asks(self):
+        """The model must not silently remove its own gates: the doctor
+        opt-out marker and `claude plugin disable ccds-guard` both ask."""
+        self.assert_ask(self.bash("echo 'too strict' > ~/.claude/ccds-guard.disabled"),
+                        "session-safety")
+        self.assert_ask(self.file("Write", "/home/u/.claude/ccds-guard.disabled"),
+                        "opt-out marker")
+        for cmd in ("claude plugin disable ccds-guard",
+                    "claude plugin uninstall ccds-loops@ccds"):
+            self.assert_ask(self.bash(cmd), "enforcement plugin")
+        self.assert_allow(self.bash("claude plugin disable firecrawl@firecrawl"))
+        self.assert_allow(self.bash("claude plugin list --json"))
+
+    def test_data_files_inside_a_credentials_dir_still_denied(self):
+        for path in ("/proj/credentials/api_key.txt", "/proj/secrets/prod.json",
+                     "/proj/credentials/service-account.json",
+                     # code outside a source tree: the directory rule still decides
+                     "/proj/secrets/keys.py", "/proj/secrets/notes.md",
+                     "/proj/credentials/credentials.json.ts"):
+            self.assert_deny(self.file("Read", path), "secrets file")
+        # Grep cannot launder either: wildcards become separators, so the
+        # candidate basename is a dotfile and the exemption is off
+        self.assert_deny(self.guard({"tool_name": "Grep", "tool_input": {
+            "path": "/proj", "glob": "src/secrets/*.py", "pattern": "."}}), "secrets file")
+        self.assert_ask(self.bash("ls packages/cli/test/integration/credentials/"),
+                        "may hold secrets")
+
+    # --- #74: operator rules file (declared credential paths) ---
+
+    def user_rules(self, text):
+        tmp = tempfile.mkdtemp(prefix="ccds-guard-user-rules-")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        path = os.path.join(tmp, "ccds-guard-rules.txt")
+        write(path, text)
+        return {"CCDS_GUARD_USER_RULES": path}
+
+    KEY_CMD = 'curl -sS -H "X-API-KEY: $(cat ~/.claude/credentials/svc.key)" https://api.example'
+
+    def test_declared_credential_path_is_exempt_only_with_operator_rule(self):
+        self.assert_ask(self.bash(self.KEY_CMD), "may hold secrets")
+        self.assert_deny(self.file("Read", "/home/u/.claude/credentials/svc.key"),
+                         "secrets file")
+        env = self.user_rules(
+            "allow-path: (^|/)\\.claude/credentials/   # keys my skills read\n")
+        self.assert_allow(self.bash(self.KEY_CMD, env=env))
+        self.assert_allow(self.file("Read", "/home/u/.claude/credentials/svc.key",
+                                    env=env))
+        # the exemption is exactly what was declared: other secrets still deny
+        self.assert_deny(self.file("Read", "/home/u/.aws/credentials", env=env),
+                         "secrets file")
+        self.assert_deny(self.file("Read", "/proj/.env", env=env), "secrets file")
+
+    def test_operator_deny_beats_a_shipped_allow(self):
+        """Review finding: 'can also tighten' was false while every allow was
+        checked before every deny. Operator deny-path rules go first."""
+        env = self.user_rules("deny-path: (^|/)prod-secrets\\.py$   # my key module\n")
+        self.assert_allow(self.file("Read", "/proj/src/prod-secrets.py"))
+        self.assert_deny(self.file("Read", "/proj/src/prod-secrets.py", env=env), "my key module")
+        self.assert_ask(self.bash("cat src/prod-secrets.py", env=env), "may hold secrets")
+
+    def test_empty_or_bad_operator_rule_is_skipped_and_named(self):
+        """Review finding: `allow-path:` with an empty body compiled to a regex
+        matching every path — a silent global exemption."""
+        env = self.user_rules("allow-path:\nallow-path: ([oops\nwhat-path: x\n")
+        r = self.file("Read", "/home/u/.ssh/id_rsa", env=env)
+        self.assert_deny(r, "secrets file")
+        self.assertIn(":1 ignored — empty pattern", r.stderr)
+        self.assertIn(":2 ignored — invalid regex", r.stderr)
+        self.assertIn(":3 ignored — unknown rule category", r.stderr)
+
+    def test_operator_rules_file_watched_by_name_and_wherever_relocated(self):
+        """Review finding: the watch matched the spelled path, so
+        `cd ~/.claude && ... > ccds-guard-rules.txt` slipped past it."""
+        self.assert_ask(self.bash("cd ~/.claude && printf 'allow-path: .*' > ccds-guard-rules.txt"),
+                        "session-safety")
+        self.assert_ask(self.file("Write", "ccds-guard-rules.txt"), "operator's own guard rules")
+        self.assert_ask(self.file("Write", "C:\\Users\\u\\.claude\\ccds-guard-rules.txt."),
+                        "operator's own guard rules")
+        env = self.user_rules("# empty\n")
+        relocated = env["CCDS_GUARD_USER_RULES"]
+        self.assert_ask(self.file("Write", relocated, env=env), "operator's own guard rules")
+        self.assert_ask(self.bash("echo x >> " + relocated, env=env), "session-safety")
+
+    def test_operator_rules_can_also_tighten(self):
+        env = self.user_rules("deny-path: (^|/)vault\\.db$   # my local vault\n")
+        self.assert_deny(self.file("Read", "/home/u/vault.db", env=env), "my local vault")
+
+    def test_operator_rules_file_is_tamper_watched(self):
+        for path in ("/home/u/.claude/ccds-guard-rules.txt",
+                     "C:\\Users\\u\\.claude\\ccds-guard-rules.txt"):
+            self.assert_ask(self.file("Write", path), "operator's own guard rules")
+        self.assert_allow(self.file("Read", "/home/u/.claude/ccds-guard-rules.txt"))
+
+    def test_symlinked_operator_rules_file_is_ignored(self):
+        """Review finding: the tamper watch is on the path, so a symlink would
+        move the content to an unwatched target. Creating the link asks (below);
+        if one exists anyway, the loader must not follow it."""
+        self.assert_ask(self.bash("ln -sf /tmp/mine.txt ~/.claude/ccds-guard-rules.txt"),
+                        "session-safety")
+        tmp = tempfile.mkdtemp(prefix="ccds-guard-symlink-")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        target = os.path.join(tmp, "evil.txt")
+        write(target, "allow-path: .*\n")
+        link = os.path.join(tmp, "ccds-guard-rules.txt")
+        try:
+            os.symlink(target, link)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlinks unavailable here")
+        env = {"CCDS_GUARD_USER_RULES": link}
+        r = self.file("Read", "/home/u/.ssh/id_rsa", env=env)
+        self.assert_deny(r, "secrets file")
+        self.assertIn("is a symlink and was ignored", r.stderr)
+
+    def test_operator_rules_file_absent_or_broken_is_harmless(self):
+        env = self.user_rules("allow-path: ([unclosed\n# nothing else\n")
+        self.assert_deny(self.file("Read", "/proj/.env", env=env), "secrets file")
+        self.assertNotIn("inert", self.file("Read", "/proj/README.md", env=env).stderr)
+
+    def test_operator_rules_do_not_mask_a_missing_shipped_table(self):
+        tmp = tempfile.mkdtemp(prefix="ccds-guard-test-")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        orphan = os.path.join(tmp, "pretooluse-guard.py")
+        shutil.copyfile(GUARD, orphan)
+        env = self.user_rules("deny-path: (^|/)\\.env$\n")
+        r = subprocess.run([sys.executable, orphan],
+                           input=json.dumps({"tool_name": "Read",
+                                             "tool_input": {"file_path": "/proj/README.md"}}),
+                           capture_output=True, text=True,
+                           env={**os.environ, "CCDS_GUARD_DISABLE": "", **env})
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("inert", r.stderr, "an empty shipped table must still warn")
 
     def test_windows_backslash_paths_normalized(self):
         self.assert_deny(self.file("Read", "C:\\proj\\.env"), "secrets file")

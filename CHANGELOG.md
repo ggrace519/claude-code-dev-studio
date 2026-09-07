@@ -5,9 +5,85 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
-## [Unreleased]
+## v0.19.0 — 2026-09-06 — The guard stops fighting you, and the roster stops loading twice
+
+Two things were quietly wrong for everyone. The security guard flagged
+ordinary source code as secrets — 49 of 52 unattended adjudications in a
+month were one rule matching the word `credentials` in a path, and half of
+them were denied — so people switched it off. And anyone who installed both
+the marketplace plugins and the file installer had every agent loaded twice,
+with the stale file copy winning and `ccds doctor` saying PASS. This release
+fixes both, gives operators their own guard rules file for the key files their
+skills legitimately read, lets a deliberate guard opt-out be recorded instead
+of reported as broken, and closes a doctor blind spot that reported a disabled
+guard as enabled. It also adopts a `develop` integration branch (`main` stays
+the default because the plugin marketplace installs from it) and finally gives
+the 19 agents the display colors they were meant to have.
+
+### Changed
+
+- **Agent `color:` values are now the eight names Claude Code accepts** (`red`,
+  `blue`, `green`, `yellow`, `purple`, `orange`, `pink`, `cyan`). All 19 agents
+  carried hex values, which the sub-agents reference does not list, so the field
+  was silently ignored and every ccds agent rendered in the default color. A new
+  `agent-colors` lint check keeps it that way.
+- **`plan-architect` and `saas-architect` no longer "ask about constraints
+  first".** A subagent cannot converse with the user; that step returned a
+  question as the whole result and wasted the dispatch. They now take constraints
+  from the task and the repo, state the assumptions they design under where those
+  are silent, and hand back only the questions whose answers would change the
+  design — the shape the Claude 5 prompting guidance recommends for autonomous
+  work.
+
+### Added
+
+- **The guard takes operator rules and a deliberate opt-out** (ADR-0021).
+  `~/.claude/ccds-guard-rules.txt` accepts the same five rule categories as the
+  shipped table, loads after it, survives plugin updates, and is tamper-watched
+  — its intended use is `allow-path: (^|/)\.claude/credentials/` to declare the
+  key files your own skills read, so they stop being adjudicated on every call.
+  `~/.claude/ccds-guard.disabled` (first line = reason) makes `ccds doctor`
+  report a switched-off guard as WARN "disabled on purpose" instead of FAIL.
+  Switching the guard off now asks first: writing that marker, and
+  `claude plugin disable|uninstall|remove` of an enforcement plugin, are
+  tamper-watched like settings writes.
+
+- **`ccds doctor` now catches the double-loaded roster, and setup no longer
+  creates it** (ADR-0020). The 19 agents and cross-cutting skills reach Claude
+  Code either from the ccds plugins or from file copies in `~/.claude`; having
+  both means every agent is in the roster twice, with the stale file copy owning
+  the bare name. A new `plugin-file-overlap` check fails in that state and prints
+  the exact removal command (both dispatchers, first behavioral tests for the
+  PowerShell doctor). `ccds setup`, `ccds.ps1 setup` and `Install-Playbook.ps1`
+  skip the file copies when a content plugin is enabled and name any stale
+  copies instead of deleting them. `agents-installed` / `skills-installed`
+  report the plugin as the source when `ccds-core` is enabled.
 
 ### Fixed
+
+- **The guard flagged source code as secrets** (#74). Evidence from a month of
+  unattended adjudications: 49 of 52 were the secrets-path rule, and half were
+  denied — nearly all reads of an open-source repo's `src/credentials/` module
+  (TypeScript, matched by the `credentials/` directory rule) or key files the
+  operator's own skills are designed to read. Source-code files inside a
+  source tree (`src/`, `lib/`, `packages/`, `tests/` …) are now exempt from
+  the secret scan, while data files in a `credentials/` or `secrets/`
+  directory, code outside a source tree, dotfiles, anything under a
+  dot-directory, and key stems with a code suffix (`server.key.md`) still
+  block. Reviewed by a three-model panel before merge; its findings are folded
+  in (operator deny rules beat shipped exemptions, empty rules are rejected,
+  the watches match by filename, a symlinked operator file is ignored). Found on the way: in a
+  Bash command an `allow-path` hit also skipped the tamper watch, so with the
+  new exemption `sed -i … .claude/hooks/x.py` would have passed silently; the
+  Bash path now exempts from the secret scan only, matching the file-tool path.
+
+- **`ccds doctor` reported a DISABLED `ccds-guard` as enabled** (#70). The bash
+  check split `claude plugin list --json` into objects and looked for
+  `"enabled": false` on the same line as the plugin id — but the real CLI
+  pretty-prints one field per line, so the disabled branch could never match on
+  real output. The test stub emitted flat JSON, which is why the suite passed.
+  Newlines are now collapsed before splitting, the stub pretty-prints like the
+  CLI, and a regression test covers the disabled case on both platforms.
 
 - **`build-release.ps1` could build a structurally broken release ZIP without
   a single warning.** Entry names are produced by trimming the stage path off
@@ -30,6 +106,14 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ### Infrastructure
 
+- **The repo now has a `develop` integration branch; `main` is release-only and
+  stays the GitHub default** (ADR-0019). Feature PRs target `develop`
+  (`gh pr create --base develop`); `main` only receives `develop` → `main`
+  promotion PRs, merged without squashing and tagged. `main` has to remain the
+  default branch because `/plugin marketplace add` installs from the default
+  branch — flipping it would have shipped unreleased code to every marketplace
+  user. CI now runs on both branches, and a new `promotion-only` check fails
+  any PR into `main` that does not come from `develop`.
 - **Both release builders are now run for real in the test suite, and what they
   produce is asserted** (ADR-0017 amendment). The `release-parity` lint added
   in v0.18.0 proves the two builders' copy *lists* agree; nothing proved either

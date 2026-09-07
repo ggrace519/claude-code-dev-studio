@@ -404,6 +404,21 @@ def _zip_payload(src):
     return {m.group(2).replace("\\", "/") for m in PS_COPY_RE.finditer(src)}
 
 
+AGENT_COLORS = ("red", "blue", "green", "yellow", "purple", "orange", "pink", "cyan")
+
+
+def check_agent_colors():
+    """The subagent `color` field accepts exactly eight names (sub-agents doc:
+    "Accepts red, blue, green, yellow, purple, orange, pink, or cyan"). Every
+    agent shipped hex values for months; Claude Code ignored them silently."""
+    for fname in agent_files():
+        fm = frontmatter(read(os.path.join(AGENTS_DIR, fname)))
+        value = field(fm, "color") if fm else ""
+        if value and value not in AGENT_COLORS:
+            err("agent-colors", f"{fname}: color '{value}' is not one of "
+                f"{', '.join(AGENT_COLORS)} -- Claude Code ignores it")
+
+
 def check_release_parity():
     sh_path = os.path.join(REPO_ROOT, "build-release.sh")
     ps_path = os.path.join(REPO_ROOT, "build-release.ps1")
@@ -444,6 +459,7 @@ def main():
     check_process_skills()
     check_cli_parity()
     check_release_parity()
+    check_agent_colors()
     check_marketplace_fresh()
     check_descriptions_and_models()
 

@@ -78,8 +78,16 @@ updates, and enable/disable — no installer, no PATH, no restart dance.
 The guard stops model mistakes and casual prompt injection — it is a teaching
 backstop on top of Claude Code's permission modes, not a sandbox. Never run
 with permissions bypassed (`--dangerously-skip-permissions`) outside an
-isolated container, guard or no guard. Kill switch: `CCDS_GUARD_DISABLE=1`;
-tune rules in the plugin's `hooks/guard-rules.txt`. The hooks need `python3`
+isolated container, guard or no guard. Kill switch: `CCDS_GUARD_DISABLE=1`.
+Tune it without editing the plugin: `~/.claude/ccds-guard-rules.txt` takes the
+same five rule categories and loads after the shipped table (ADR-0021) — the
+usual entry is `allow-path: (^|/)\.claude/credentials/` to declare the key
+files your own skills are meant to read, so they stop being adjudicated on
+every call; the file is tamper-watched like settings, and its `deny-path`
+lines beat any shipped exemption. Source code inside a source tree is exempt
+from the secret scan (`src/credentials/foo.ts` is a module, not a key). If you switch the guard off on purpose, record why in
+`~/.claude/ccds-guard.disabled` and `ccds doctor` reports it as a choice
+(WARN) rather than a broken install. The hooks need `python3`
 on PATH (macOS/Linux/WSL have it; on native Windows install Python 3 or the
 guard is inert).
 
@@ -108,7 +116,13 @@ source by `scripts/build-marketplace.py` and gated for freshness in CI.
 
 The ZIP installer below remains fully supported — it additionally provides the
 `ccds` CLI, the global `~/.claude/playbook/` library, and per-project skill
-staging via `ccds sync`.
+staging via `ccds sync`. The two routes are **alternatives for the always-on
+agents and cross-cutting skills, not layers** (ADR-0020): with `ccds-core` or a
+pack plugin enabled, Claude Code already loads that roster, so `ccds setup` and
+the installers skip the `~/.claude/agents` / `~/.claude/skills` copies, and
+`ccds doctor` fails with the exact removal command if both are ever present
+(every agent would be in the roster twice). Using both the CLI and the plugins
+is fine — the enforcement plugins are installed by every route.
 
 ## Install
 
@@ -259,6 +273,7 @@ Optional, opt-in tab-completion for the Claude Code CLI itself — independent o
 - Agents live in a **flat** `.claude/agents/` directory; skills are `skills/<name>/SKILL.md` (one dir per skill). Claude Code does not recurse `.claude/agents/`. See ADR-0001 / ADR-0007.
 - Release ZIPs are named `ccds-<tag>.zip` with a matching `ccds-<tag>.zip.sha256` sidecar. Installers verify SHA256 before extracting.
 - The `~/.claude/CLAUDE.md` ccds block is delimited by `# >>> ccds >>>` / `# <<< ccds <<<` markers. The installer is idempotent — re-running updates the block in place. See ADR-0006 / ADR-0007.
+- Contributions branch from **`develop`** and PRs target it (`gh pr create --base develop`). `main` is release-only and stays the default branch because `/plugin marketplace add` installs from the default branch. See ADR-0019.
 
 ## License
 

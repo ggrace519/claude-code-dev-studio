@@ -151,6 +151,61 @@ $Script:MarketplaceSource = if ($env:CCDS_MARKETPLACE_SOURCE) {
 } else { "$Script:Owner/$Script:Repo" }
 $Script:ClaudeCmd = if ($env:CCDS_CLAUDE_CMD) { $env:CCDS_CLAUDE_CMD } else { 'claude' }
 
+# ADR-0020: the always-on agents and cross-cutting skills reach Claude Code by
+# ONE of two routes -- the ccds content plugins (ccds-core + the archetype
+# packs) or the file copies this installer writes. Both at once loads every
+# agent twice. Returns the enabled content-plugin names (empty when none, or
+# when the CLI is absent/unreadable -- then the file route is taken and
+# `ccds doctor` reports any overlap). Read-only probe.
+function Get-EnabledContentPlugins {
+    $names = @()
+    if (-not (Get-Command $Script:ClaudeCmd -ErrorAction SilentlyContinue)) { return $names }
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        # Join first: the real CLI pretty-prints one field per line.
+        $raw = @(& $Script:ClaudeCmd plugin list --json 2>$null) -join "`n"
+        if (-not $raw.Trim()) { return $names }
+        foreach ($pl in @($raw | ConvertFrom-Json)) {
+            if ($null -eq $pl -or -not $pl.enabled) { continue }
+            if ("$($pl.id)" -match '^(ccds-[a-z]+)@') {
+                $n = $Matches[1]
+                if ($n -ne 'ccds-guard' -and $n -ne 'ccds-loops') { $names += $n }
+            }
+        }
+    } catch {
+        return @()
+    } finally {
+        $ErrorActionPreference = $prevEap
+    }
+    return @($names | Sort-Object -Unique)
+}
+
+# Stale file copies next to enabled plugins: say so with the exact removal
+# command, but never delete a user's files from the installer.
+function Show-StaleFileCopies {
+    param([string]$Prefix)
+    $agentsDir = Join-Path $env:USERPROFILE '.claude\agents'
+    $skillsDir = Join-Path $env:USERPROFILE '.claude\skills'
+    $srcDir    = Join-Path $Prefix 'agents'
+    $staleAgents = @()
+    if (Test-Path $srcDir) {
+        $staleAgents = @(Get-ChildItem -LiteralPath $srcDir -Filter *.md -File -ErrorAction SilentlyContinue |
+            Where-Object { Test-Path -LiteralPath (Join-Path $agentsDir $_.Name) } | ForEach-Object { $_.Name })
+    }
+    $staleSkills = @($Script:GlobalSkills | Where-Object { Test-Path -LiteralPath (Join-Path $skillsDir "$_\SKILL.md") })
+    if ($staleAgents.Count -eq 0 -and $staleSkills.Count -eq 0) { return }
+    Write-WarnMsg "File copies from an earlier install are still present and are loaded in ADDITION to the plugins:"
+    Write-WarnMsg "  $($staleAgents.Count) agent file(s) in $agentsDir, $($staleSkills.Count) cross-cutting skill(s) in $skillsDir"
+    Write-WarnMsg "Remove them (the plugins keep working):"
+    if ($staleAgents.Count -gt 0) {
+        Write-WarnMsg ("  Remove-Item -Force " + (($staleAgents | ForEach-Object { "'" + (Join-Path $agentsDir $_) + "'" }) -join ', '))
+    }
+    if ($staleSkills.Count -gt 0) {
+        Write-WarnMsg ("  Remove-Item -Recurse -Force " + (($staleSkills | ForEach-Object { "'" + (Join-Path $skillsDir $_) + "'" }) -join ', '))
+    }
+}
+
 function Get-CcdsProfilePath {
     if ($env:CCDS_PS_PROFILE) { return $env:CCDS_PS_PROFILE }
     return $PROFILE.CurrentUserAllHosts
@@ -780,13 +835,23 @@ try {
         (Get-Content $installedVersionFile -Raw).Trim()
     } else { $resolvedTag }
 
-    # Copy all 19 always-on agents to ~/.claude/agents/ (always-loaded by Claude Code)
-    Write-Step "Installing always-on agents to $(Join-Path $env:USERPROFILE '.claude\agents')"
-    Install-AlwaysOnAgents -Prefix $Prefix -DryRun:$DryRun
+    # ADR-0020: plugins OR file copies, never both. -SkipPlugins means "never
+    # touch the claude CLI", so the probe is skipped with it too.
+    $contentPlugins = @()
+    if (-not $SkipPlugins) { $contentPlugins = @(Get-EnabledContentPlugins) }
+    if ($contentPlugins.Count -gt 0) {
+        Write-Step "Always-on agents and cross-cutting skills"
+        Write-OkMsg "Supplied by enabled plugin(s): $($contentPlugins -join ' ') -- skipping the file copies so Claude Code does not load the roster twice"
+        Show-StaleFileCopies -Prefix $Prefix
+    } else {
+        # Copy all 19 always-on agents to ~/.claude/agents/ (always-loaded by Claude Code)
+        Write-Step "Installing always-on agents to $(Join-Path $env:USERPROFILE '.claude\agents')"
+        Install-AlwaysOnAgents -Prefix $Prefix -DryRun:$DryRun
 
-    # Copy cross-cutting (global) skills to ~/.claude/skills/
-    Write-Step "Installing cross-cutting skills to $(Join-Path $env:USERPROFILE '.claude\skills')"
-    Install-GlobalSkills -Prefix $Prefix -DryRun:$DryRun
+        # Copy cross-cutting (global) skills to ~/.claude/skills/
+        Write-Step "Installing cross-cutting skills to $(Join-Path $env:USERPROFILE '.claude\skills')"
+        Install-GlobalSkills -Prefix $Prefix -DryRun:$DryRun
+    }
 
     # Inject/update ccds pointer block in ~/.claude/CLAUDE.md
     Write-Step "Updating ccds block in $(Join-Path $env:USERPROFILE '.claude\CLAUDE.md')"
@@ -865,7 +930,11 @@ try {
         Write-Host "Future shells : PATH update persists automatically." -ForegroundColor Yellow
     }
     Write-Host ""
-    Write-Host "Agents  : 19 always-on -> $(Join-Path $env:USERPROFILE '.claude\agents') (14 domain + 5 core)"
+    if ($contentPlugins.Count -gt 0) {
+        Write-Host "Agents  : 19 always-on from plugins ($($contentPlugins -join ' '))"
+    } else {
+        Write-Host "Agents  : 19 always-on -> $(Join-Path $env:USERPROFILE '.claude\agents') (14 domain + 5 core)"
+    }
     Write-Host "Skills  : $(Join-Path $Prefix 'skills') (domain skills, JIT per project; cross-cutting -> $(Join-Path $env:USERPROFILE '.claude\skills'))"
     Write-Host "CLAUDE  : $(Join-Path $env:USERPROFILE '.claude\CLAUDE.md') (ccds pointer block injected)"
     Write-Host "Plugins : $pluginsStatus"

@@ -365,12 +365,44 @@ function Invoke-SetupCommand {
     $skillsDst   = Join-Path $claudeHome 'skills'
     $claudeMd    = Join-Path $claudeHome 'CLAUDE.md'
 
-    # Step 1 -- always-on agents
-    Write-Host "==> Installing always-on agents to $agentsDst" -ForegroundColor Cyan
+    # Step 0 -- which route supplies the always-on roster? (ADR-0020) The
+    # roster reaches Claude Code by the ccds content plugins OR by the file
+    # copies below, never both: both at once loads every agent twice. Read-only
+    # probe; skipped under -SkipPlugins (never touch the CLI) and -DryRun.
+    $contentPlugins = @()
+    if (-not $Opts.SkipPlugins -and -not $Opts.DryRun) {
+        Resolve-ContentPlugins
+        if ($Script:ContentPluginsKnown) { $contentPlugins = @($Script:ContentPlugins) }
+    }
     $srcAgents = @()
     if (Test-Path -LiteralPath $agentsSrc) {
         $srcAgents = @(Get-ChildItem -LiteralPath $agentsSrc -Filter *.md -File -ErrorAction SilentlyContinue)
     }
+    $skillList = Get-GlobalSkillList
+    if ($contentPlugins.Count -gt 0) {
+        Write-Host "==> Always-on agents and cross-cutting skills" -ForegroundColor Cyan
+        Write-Host "OK  Supplied by enabled plugin(s): $($contentPlugins -join ' ') -- skipping the file copies so Claude Code does not load the roster twice" -ForegroundColor Green
+        # Stale copies next to enabled plugins: name them with the exact
+        # removal command, but never delete a user's files from setup.
+        $staleAgents = @($srcAgents | Where-Object { Test-Path -LiteralPath (Join-Path $agentsDst $_.Name) } | ForEach-Object { $_.Name })
+        $staleSkills = @()
+        if ($skillList) {
+            $staleSkills = @($skillList.Names | Where-Object { Test-Path -LiteralPath (Join-Path $skillsDst "$_\SKILL.md") })
+        }
+        if ($staleAgents.Count -gt 0 -or $staleSkills.Count -gt 0) {
+            Write-Host "!!  File copies from an earlier setup are still present and are loaded in ADDITION to the plugins:" -ForegroundColor Yellow
+            Write-Host "!!    $($staleAgents.Count) agent file(s) in $agentsDst, $($staleSkills.Count) cross-cutting skill(s) in $skillsDst" -ForegroundColor Yellow
+            Write-Host "!!  Remove them (the plugins keep working):" -ForegroundColor Yellow
+            if ($staleAgents.Count -gt 0) {
+                Write-Host ("!!    Remove-Item -Force " + (($staleAgents | ForEach-Object { "'" + (Join-Path $agentsDst $_) + "'" }) -join ', ')) -ForegroundColor Yellow
+            }
+            if ($staleSkills.Count -gt 0) {
+                Write-Host ("!!    Remove-Item -Recurse -Force " + (($staleSkills | ForEach-Object { "'" + (Join-Path $skillsDst $_) + "'" }) -join ', ')) -ForegroundColor Yellow
+            }
+        }
+    } else {
+    # Step 1 -- always-on agents
+    Write-Host "==> Installing always-on agents to $agentsDst" -ForegroundColor Cyan
     if ($Opts.DryRun) {
         Write-Host "    DRY RUN -- would copy $($srcAgents.Count) always-on agents to $agentsDst"
     } else {
@@ -387,7 +419,6 @@ function Invoke-SetupCommand {
 
     # Step 2 -- cross-cutting (global) skills
     Write-Host "==> Installing cross-cutting skills to $skillsDst" -ForegroundColor Cyan
-    $skillList = Get-GlobalSkillList
     if (-not $skillList) {
         Write-Error "cannot determine the global skill list (no parsable Install-Playbook.ps1 or scripts\ccds-user-setup.sh under $installRoot)" -ErrorAction Continue
         exit 2
@@ -413,6 +444,7 @@ function Invoke-SetupCommand {
         }
         Write-Host "OK  Copied $copied/$($skillList.Names.Count) cross-cutting skills to $skillsDst" -ForegroundColor Green
     }
+    } # end file route (Step 0 gate)
 
     # Step 3 -- ccds pointer block in ~/.claude/CLAUDE.md (idempotent)
     Write-Host "==> Updating ccds block in $claudeMd" -ForegroundColor Cyan
@@ -509,13 +541,20 @@ function Invoke-SetupCommand {
     } else {
         Write-Host ""
         Write-Host "User setup complete." -ForegroundColor Green
+        if ($contentPlugins.Count -gt 0) {
+            Write-Host "Agents      : from plugins ($($contentPlugins -join ' '))"
+            Write-Host "Skills      : from plugins ($($contentPlugins -join ' '))"
+        } else {
+            Write-Host "Agents      : $agentsDst (19 always-on)"
+            Write-Host "Skills      : $skillsDst ($(if ($skillList) { $skillList.Names.Count } else { '?' }) cross-cutting)"
+        }
         Write-Host "Plugins     : $pluginStatus"
     }
 }
 
 # ---------------------------------------------------------------------------
 # Command: doctor -- proactive environment health checks.
-# PowerShell twin of bin/ccds.sh cmd_doctor: same 11 checks, same output
+# PowerShell twin of bin/ccds.sh cmd_doctor: same 12 checks, same output
 # contract (one 'OK|WARN|FAIL  name: detail' line per check + indented remedy
 # on WARN/FAIL, summary block, exit 0 = no FAIL / 1 = FAIL found).
 #
@@ -617,17 +656,25 @@ function Test-DoctorVersion {
 
 function Test-DoctorAgents {
     $dir = Join-Path $env:USERPROFILE '.claude\agents'
+    if (Test-CorePluginEnabled) {
+        Write-DoctorLine OK 'agents-installed' "supplied by the enabled ccds-core plugin (no file copies needed in $dir)"
+        return
+    }
     if (Test-Path -LiteralPath (Join-Path $dir 'plan-architect.md')) {
         $n = @(Get-ChildItem -LiteralPath $dir -Filter *.md -File -ErrorAction SilentlyContinue).Count
         Write-DoctorLine OK 'agents-installed' "core sentinel plan-architect.md present ($n agent file(s) in $dir)"
     } else {
         Write-DoctorLine FAIL 'agents-installed' `
-            "plan-architect.md missing from $dir -- the always-on agents are not installed" `
-            "run 'ccds setup'"
+            "plan-architect.md missing from $dir and the ccds-core plugin is not enabled -- the always-on agents are not installed" `
+            "run 'ccds setup' (or: claude plugin install ccds-core@ccds --scope user)"
     }
 }
 
 function Test-DoctorSkills {
+    if (Test-CorePluginEnabled) {
+        Write-DoctorLine OK 'skills-installed' "supplied by the enabled ccds-core plugin (no file copies needed in $(Join-Path $env:USERPROFILE '.claude\skills'))"
+        return
+    }
     $skillList = Get-GlobalSkillList
     if (-not $skillList) {
         Write-DoctorLine WARN 'skills-installed' `
@@ -648,8 +695,65 @@ function Test-DoctorSkills {
     } else {
         Write-DoctorLine FAIL 'skills-installed' `
             "$($missing.Count)/$($skillList.Names.Count) cross-cutting skills missing from ${skillsDir}: $($missing -join ' ')" `
-            "run 'ccds setup'"
+            "run 'ccds setup' (or: claude plugin install ccds-core@ccds --scope user)"
     }
+}
+
+function Test-DoctorPluginFileOverlap {
+    # The always-on agents and cross-cutting skills reach Claude Code by ONE of
+    # two routes: the ccds content plugins, or file copies written by setup.
+    # Both at once means every agent is in the roster twice (two identical
+    # descriptions for the router, the stale file copy owns the bare name) and
+    # the descriptions cost context twice. Twin of bin/ccds.sh.
+    Resolve-ContentPlugins
+    if (-not $Script:ContentPluginsKnown) {
+        Write-DoctorLine WARN 'plugin-file-overlap' `
+            "cannot check: claude CLI not on PATH or 'claude plugin list --json' unreadable" `
+            "install Claude Code / run 'claude plugin list', then re-run 'ccds doctor'"
+        return
+    }
+    $agentsDir = Join-Path $env:USERPROFILE '.claude\agents'
+    $skillsDir = Join-Path $env:USERPROFILE '.claude\skills'
+    # ccds-owned agent names come from catalog.json (authoritative, shipped in
+    # every layout); the package's agents\ dir is the fallback for an old tree.
+    $owned = @()
+    $catalog = Join-Path $installRoot 'catalog.json'
+    if (Test-Path -LiteralPath $catalog) {
+        try {
+            $entries = @([System.IO.File]::ReadAllText($catalog) | ConvertFrom-Json)
+            $owned = @($entries | Where-Object { $_.kind -eq 'agent' } | ForEach-Object { "$($_.name).md" })
+        } catch { $owned = @() }
+    }
+    if ($owned.Count -eq 0) {
+        $src = Join-Path $installRoot 'agents'
+        if (-not (Test-Path -LiteralPath $src)) { $src = Join-Path $installRoot '.claude\agents' }
+        if (Test-Path -LiteralPath $src) {
+            $owned = @(Get-ChildItem -LiteralPath $src -Filter *.md -File -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
+        }
+    }
+    $agentFiles = @($owned | Where-Object { Test-Path -LiteralPath (Join-Path $agentsDir $_) })
+    $skillList = Get-GlobalSkillList
+    $skillNames = if ($skillList) { @($skillList.Names) } else { @() }
+    $skillDirs = @($skillNames | Where-Object { Test-Path -LiteralPath (Join-Path $skillsDir "$_\SKILL.md") })
+    if ($Script:ContentPlugins.Count -eq 0) {
+        Write-DoctorLine OK 'plugin-file-overlap' 'no ccds content plugin enabled; agents and skills come from the file copies only'
+        return
+    }
+    $pluginNames = $Script:ContentPlugins -join ' '
+    if ($agentFiles.Count -eq 0 -and $skillDirs.Count -eq 0) {
+        Write-DoctorLine OK 'plugin-file-overlap' "plugins ($pluginNames) supply the agents and skills; no file copies present"
+        return
+    }
+    $cmds = @()
+    if ($agentFiles.Count -gt 0) {
+        $cmds += 'Remove-Item -Force ' + (($agentFiles | ForEach-Object { "'" + (Join-Path $agentsDir $_) + "'" }) -join ', ')
+    }
+    if ($skillDirs.Count -gt 0) {
+        $cmds += 'Remove-Item -Recurse -Force ' + (($skillDirs | ForEach-Object { "'" + (Join-Path $skillsDir $_) + "'" }) -join ', ')
+    }
+    Write-DoctorLine FAIL 'plugin-file-overlap' `
+        "loaded twice: plugin(s) $pluginNames are enabled AND $($agentFiles.Count) agent file(s) + $($skillDirs.Count) cross-cutting skill(s) from a file install (version $(Get-InstalledVersion)) sit in $(Join-Path $env:USERPROFILE '.claude') -- Claude Code loads both copies, and the file copies (which own the bare names) go stale the moment the plugins update" `
+        ("remove the file copies (the plugins keep working): " + ($cmds -join '; '))
 }
 
 function Test-DoctorBom {
@@ -788,6 +892,47 @@ function Get-ClaudeCommand {
     return 'claude'
 }
 
+# Content plugins are the ccds-* plugins that ship agents and skills (ccds-core
+# + the archetype packs) -- every ccds plugin except the hooks-only enforcement
+# pair. When one is enabled, Claude Code already loads that roster from the
+# plugin, so file copies in ~/.claude/{agents,skills} are a SECOND load.
+# Twin of bin/ccds.sh content_plugins_enabled. Sets two script variables:
+#   $Script:ContentPluginsKnown  $false when the CLI is absent / unreadable
+#   $Script:ContentPlugins       enabled content-plugin names (may be empty)
+# Probed once per run.
+$Script:ContentPluginsProbed = $false
+$Script:ContentPluginsKnown  = $false
+$Script:ContentPlugins       = @()
+
+function Resolve-ContentPlugins {
+    if ($Script:ContentPluginsProbed) { return }
+    $Script:ContentPluginsProbed = $true
+    $claudeCmd = Get-ClaudeCommand
+    if (-not (Get-Command $claudeCmd -ErrorAction SilentlyContinue)) { return }
+    $plugins = $null
+    try {
+        # Join first: the real CLI pretty-prints one field per line, and a
+        # line-by-line pipe into ConvertFrom-Json parses each line alone.
+        $raw = @(& $claudeCmd plugin list --json 2>$null) -join "`n"
+        if ($raw.Trim()) { $plugins = @($raw | ConvertFrom-Json) } else { $plugins = @() }
+    } catch { return }
+    $names = @()
+    foreach ($pl in $plugins) {
+        if ($null -eq $pl -or -not $pl.enabled) { continue }
+        if ("$($pl.id)" -match '^(ccds-[a-z]+)@') {
+            $n = $Matches[1]
+            if ($n -ne 'ccds-guard' -and $n -ne 'ccds-loops') { $names += $n }
+        }
+    }
+    $Script:ContentPluginsKnown = $true
+    $Script:ContentPlugins = @($names | Sort-Object -Unique)
+}
+
+function Test-CorePluginEnabled {
+    Resolve-ContentPlugins
+    return ($Script:ContentPluginsKnown -and ($Script:ContentPlugins -contains 'ccds-core'))
+}
+
 function Test-DoctorClaudeCli {
     # WARN, not FAIL: an older CLI does not break ccds -- the guard's deny and
     # ask tiers work unchanged. It silently costs the unattended adjudicator.
@@ -830,8 +975,9 @@ function Test-DoctorPlugins {
     }
     $plugins = $null
     try {
-        $raw = & $claudeCmd plugin list --json 2>$null
-        $plugins = @($raw | ConvertFrom-Json)
+        # Join first: the real CLI pretty-prints one field per line (see #70).
+        $raw = @(& $claudeCmd plugin list --json 2>$null) -join "`n"
+        $plugins = if ($raw.Trim()) { @($raw | ConvertFrom-Json) } else { @() }
     } catch { }
     if ($null -eq $plugins) {
         Write-DoctorLine 'WARN' 'plugins-installed' `
@@ -853,9 +999,22 @@ function Test-DoctorPlugins {
         return
     }
     if ($disabled.Count -gt 0) {
+        # A deliberate opt-out is not a broken install: the operator records
+        # the reason in ~/.claude/ccds-guard.disabled and doctor downgrades the
+        # guard line to WARN (ADR-0021). Only ccds-guard can be opted out.
+        $marker = Join-Path $env:USERPROFILE '.claude\ccds-guard.disabled'
+        if ($disabled.Count -eq 1 -and $disabled[0] -eq 'ccds-guard' -and (Test-Path -LiteralPath $marker -PathType Leaf)) {
+            $why = ''
+            try { $why = @(Get-Content -LiteralPath $marker -TotalCount 1 -ErrorAction Stop)[0] } catch { }
+            if (-not $why) { $why = 'no reason recorded' }
+            Write-DoctorLine 'WARN' 'plugins-installed' `
+                "ccds-guard disabled on purpose (${marker}: $why); ccds-loops installed and enabled" `
+                "when the guard is revisited: claude plugin enable ccds-guard; Remove-Item '$marker'"
+            return
+        }
         Write-DoctorLine 'FAIL' 'plugins-installed' `
             "installed but DISABLED: $($disabled -join ' ') -- a disabled guard protects nothing" `
-            "claude plugin enable $($disabled[0])"
+            "claude plugin enable $($disabled[0]) (or, if deliberate: Set-Content '$marker' 'reason' so doctor reports it as a choice)"
         return
     }
     Write-DoctorLine 'OK' 'plugins-installed' 'ccds-guard ccds-loops installed and enabled'
@@ -876,6 +1035,7 @@ function Invoke-DoctorCommand {
         @{ Name = 'path-and-duals'  ; Fn = ${function:Test-DoctorPathDuals} }
         @{ Name = 'claude-cli'      ; Fn = ${function:Test-DoctorClaudeCli} }
         @{ Name = 'plugins-installed'; Fn = ${function:Test-DoctorPlugins} }
+        @{ Name = 'plugin-file-overlap'; Fn = ${function:Test-DoctorPluginFileOverlap} }
     )
 
     Write-Host "ccds doctor -- environment checks (version $(Get-InstalledVersion), $layoutKind layout)"
