@@ -5,6 +5,11 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ---
 
+## [Unreleased]
+
+### Infrastructure
+- A `promote` workflow opens the single `develop` → `main` promotion pull request after CI passes on a develop push, and refreshes its commit and file summary on later develop pushes. It uses the shared `ggrace519/.github` workflow.
+
 ## v0.19.0 — 2026-09-06 — The guard stops fighting you, and the roster stops loading twice
 
 Two things were quietly wrong for everyone. The security guard flagged

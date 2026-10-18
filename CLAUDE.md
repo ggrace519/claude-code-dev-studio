@@ -170,3 +170,7 @@ skills — no domain agent; skills-only, like `common-`).
 
 For long sessions or on resume: summarize current phase, last 3 decisions, open blockers;
 re-confirm active agents/skills; review `DECISIONS.md`; state the next 2–3 concrete actions.
+
+## Promotion workflow
+
+`.github/workflows/promote.yml` opens and refreshes the develop → main promotion PR after CI passes on a develop push. It calls the shared `ggrace519/.github` workflow at `@v1`. An open promotion PR is not approval: merging it is still the maintainer's call, as a merge commit, never a squash.
