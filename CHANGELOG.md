@@ -8,6 +8,7 @@ New sessions should read this file first to get up to speed before doing anythin
 ## [Unreleased]
 
 ### Infrastructure
+- The promotion workflow now pins the shared `promote` workflow to a commit SHA (v1.0.2) instead of the moving `v1` tag, so upstream changes can't silently alter what runs in this repo's CI.
 - A `promote` workflow opens the single `develop` → `main` promotion pull request after CI passes on a develop push, and refreshes its commit and file summary on later develop pushes. It uses the shared `ggrace519/.github` workflow.
 
 ## v0.19.0 — 2026-09-06 — The guard stops fighting you, and the roster stops loading twice
