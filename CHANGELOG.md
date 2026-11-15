@@ -7,12 +7,17 @@ New sessions should read this file first to get up to speed before doing anythin
 
 ## [Unreleased]
 
+## [0.19.1] - 2026-11-15 — Releases are cut from the changelog
+
 ### Infrastructure
+- Releases are now made by CI. Merging the `develop` → `main` promotion PR tags `vX.Y.Z` from the top version in `CHANGELOG.md`, creates the GitHub release with that section as its notes, then builds the ZIP, `.deb` and `.rpm` and attaches them with the install notes. The promotion PR runs the same check as a dry run, so a missing or stale version heading fails before merge. Tags are no longer pushed by hand, so release tags are no longer GPG-signed (ADR-0022).
+- Version headings now use the Keep a Changelog form `## [X.Y.Z] - YYYY-MM-DD`, which the release workflow reads; the titles stay after the date.
+- Dependabot now watches the GitHub Actions workflows weekly, so a new release of the shared `ggrace519/.github` workflows, or of any action, arrives as a pull request against `develop` instead of a hand-edited pin.
 - `promote`: a merge into develop reliably refreshes the develop → main promotion PR again. The merge also re-runs lint on the open promotion PR, and that run's promote job is always skipped. Because both runs shared one concurrency group, the skipped run could cancel the push-triggered run that does the work. Now only push-triggered and manual runs share the group (ggrace519/.github#17).
-- The promotion workflow now pins the shared `promote` workflow to a commit SHA (v1.0.2) instead of the moving `v1` tag, so upstream changes can't silently alter what runs in this repo's CI.
+- The promotion workflow now pins the shared `promote` workflow to a commit SHA (now v1.2.0) instead of the moving `v1` tag, so upstream changes can't silently alter what runs in this repo's CI.
 - A `promote` workflow opens the single `develop` → `main` promotion pull request after CI passes on a develop push, and refreshes its commit and file summary on later develop pushes. It uses the shared `ggrace519/.github` workflow.
 
-## v0.19.0 — 2026-09-06 — The guard stops fighting you, and the roster stops loading twice
+## [0.19.0] - 2026-09-06 — The guard stops fighting you, and the roster stops loading twice
 
 Two things were quietly wrong for everyone. The security guard flagged
 ordinary source code as secrets — 49 of 52 unattended adjudications in a
@@ -139,7 +144,7 @@ the 19 agents the display colors they were meant to have.
 
 ---
 
-## v0.18.0 — 2026-08-07 — Windows was never actually tested. Now it is.
+## [0.18.0] - 2026-08-07 — Windows was never actually tested. Now it is.
 
 ccds ships a bash half and a PowerShell half, and CI only ever ran the test
 suite on Linux. Running it on Windows for the first time found **three
@@ -224,7 +229,7 @@ turned out to mean bash users never had completion on any outlet.
 
 ---
 
-## v0.17.0 — 2026-08-07 — Making the silent failures loud
+## [0.17.0] - 2026-08-07 — Making the silent failures loud
 
 Three bugs shipped this week and every one had the same character: a safety
 mechanism stopped working and nothing told you. This release is the response —
@@ -268,7 +273,7 @@ remedy line names the fix.
 
 ---
 
-## v0.16.1 — 2026-08-07 — The guard stops walling off your own config
+## [0.16.1] - 2026-08-07 — The guard stops walling off your own config
 
 A same-day follow-up to v0.15.0: the new unattended hard deny on
 safety-config writes was applied too broadly on the Bash path, so an
@@ -296,7 +301,7 @@ Update if you run unattended loops.
 
 ---
 
-## v0.16.0 — 2026-08-07 — The security layer actually reaches every install
+## [0.16.0] - 2026-08-07 — The security layer actually reaches every install
 
 If you installed ccds any way other than the two script installers — the
 `.deb`/`.rpm`, `ccds setup`, or letting `ccds sync` set itself up — you have
@@ -340,7 +345,7 @@ said so. This release fixes that for every outlet. After updating, run
 
 ---
 
-## v0.15.0 — 2026-08-07 — Unattended loops stop stalling on the guard's ask-gates
+## [0.15.0] - 2026-08-07 — Unattended loops stop stalling on the guard's ask-gates
 
 **Heads-up: this release raises the minimum Claude Code version to v2.1.169**
 (the release that added `--safe-mode`, which the new adjudicator needs to
@@ -398,7 +403,7 @@ up in the deny message.
 
 ---
 
-## v0.14.0 — 2026-08-05 — Gate 5: AI-review principles complete the pipeline
+## [0.14.0] - 2026-08-05 — Gate 5: AI-review principles complete the pipeline
 
 The final layer of the five-gate quality/security pipeline: the review skills
 and agents now encode how AI-generated code is reviewed (untrusted contributor
@@ -426,7 +431,7 @@ shipped across v0.13.0 and v0.14.0.
 
 ---
 
-## v0.13.0 — 2026-08-04 — Quality/security pipeline: ccds-guard plugin + gate staging
+## [0.13.0] - 2026-08-04 — Quality/security pipeline: ccds-guard plugin + gate staging
 
 The first two layers of the five-gate quality/security pipeline for
 zero-config projects: the `ccds-guard` security plugin (Gate 1, ADR-0012) and
@@ -530,7 +535,7 @@ regression test.
 
 ---
 
-## v0.12.0 — 2026-07-11 — Loop enforcement layer + the inventive-engineer skill
+## [0.12.0] - 2026-07-11 — Loop enforcement layer + the inventive-engineer skill
 
 Two things ship: the loop enforcement layer, and `inventive-engineer` as a new
 core cross-cutting skill. The loop layer turns the `loop-*` process skills
@@ -616,7 +621,7 @@ thinking. New ADR-0011 records the layer.
 
 ---
 
-## v0.11.0 — 2026-07-04 — Measure the system, then act on it: doctor, routing evals, baselines — with full dispatcher parity
+## [0.11.0] - 2026-07-04 — Measure the system, then act on it: doctor, routing evals, baselines — with full dispatcher parity
 
 ### What changed
 
@@ -668,7 +673,7 @@ cli-parity forced-fail demonstrated both directions.
 
 ---
 
-## v0.10.1 — 2026-07-03 — Windows parity: `ccds loop init` twin + dispatcher exit-code fix
+## [0.10.1] - 2026-07-03 — Windows parity: `ccds loop init` twin + dispatcher exit-code fix
 
 ### What changed
 
@@ -704,7 +709,7 @@ post-release verification notes from #35).
 
 ---
 
-## v0.10.0 — 2026-07-03 — The `loop-` pack: agent-loop process skills, enforced and measured
+## [0.10.0] - 2026-07-03 — The `loop-` pack: agent-loop process skills, enforced and measured
 
 ### What changed
 
@@ -774,7 +779,7 @@ baseline.
 
 ---
 
-## v0.9.2 — 2026-06-18 — Fix: warn against editing inside the ccds `CLAUDE.md` block
+## [0.9.2] - 2026-06-18 — Fix: warn against editing inside the ccds `CLAUDE.md` block
 
 ### What changed
 
@@ -798,7 +803,7 @@ Documentation-only: no agent, skill, catalog, or marketplace content changed.
 Existing installs pick up the new header on their next `ccds update` followed by
 `ccds setup`/`sync`.
 
-## v0.9.1 — 2026-06-16 — Fix: `.deb`/`.rpm` per-user setup
+## [0.9.1] - 2026-06-16 — Fix: `.deb`/`.rpm` per-user setup
 
 ### What changed
 
@@ -812,7 +817,7 @@ Patch release fixing the Linux native packages (PR #17). The v0.9.0 (and earlier
 
 No agent, skill, catalog, or marketplace content changed; this release is packaging-only. The ZIP installer and the plugin-marketplace channel were unaffected by the bug.
 
-## v0.9.0 — 2026-06-12 — Native plugin marketplace, skill-voice rewrite, lint + tests
+## [0.9.0] - 2026-06-12 — Native plugin marketplace, skill-voice rewrite, lint + tests
 
 ### What changed
 
@@ -848,7 +853,7 @@ Five merged PRs (#12–#15 plus release prep) turn the v0.8.0 library into a dis
 
 ---
 
-## v0.8.0 — 2026-06-03 — Domain-agent + skills architecture (ADR-0007)
+## [0.8.0] - 2026-06-03 — Domain-agent + skills architecture (ADR-0007)
 
 ### What changed
 
@@ -883,7 +888,7 @@ Projects with old per-project `.claude/agents/*-expert.md` keep working until re
 
 ---
 
-## v0.7.3 — 2026-05-02
+## [0.7.3] - 2026-05-02
 
 ### Bug fixes
 

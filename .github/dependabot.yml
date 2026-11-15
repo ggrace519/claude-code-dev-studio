@@ -1,0 +1,18 @@
+version: 2
+updates:
+  # Keep the actions and the shared ggrace519/.github reusable workflows current. Callers pin
+  # those workflows to a release commit SHA, so a new release reaches this repo only through
+  # the pull request Dependabot opens here; it bumps the SHA and the version comment together.
+  - package-ecosystem: github-actions
+    directory: /
+    # Explicit rather than "the default branch", so a default-branch change cannot silently
+    # redirect updates onto main.
+    target-branch: develop
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      github-actions:
+        patterns: ["*"]

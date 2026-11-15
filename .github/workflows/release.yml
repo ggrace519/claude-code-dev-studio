@@ -1,31 +1,59 @@
 name: Release
 
+# Merging the develop → main promotion PR is the release (ADR-0022). The shared
+# ggrace519/.github release workflow reads the top `## [X.Y.Z] - YYYY-MM-DD`
+# section of CHANGELOG.md, tags vX.Y.Z on main and creates the GitHub release
+# with that section as its notes. A tag pushed with GITHUB_TOKEN starts no other
+# workflow, so the ZIP and package builds are chained here with `needs:` and
+# attach their files to that release. On the promotion PR the same check runs
+# as a dry run, so a missing or already-tagged version fails before the merge.
+# If a build fails after the release exists, "Re-run failed jobs" retries the
+# builds only; the tag and release stay.
+
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  release:
+    name: Tag and release from CHANGELOG.md
+    permissions:
+      contents: write
+    uses: ggrace519/.github/.github/workflows/release.yml@0e67344dbe377d259b4973d7546a08da0864c620 # v1.2.0
+    with:
+      dry-run: ${{ github.event_name == 'pull_request' }}
+
   # ---------------------------------------------------------------------------
   # Windows: build ZIP + SHA256 sidecar
   # ---------------------------------------------------------------------------
   build-zip:
     name: Build ZIP (Windows)
     runs-on: windows-latest
+    needs: release
+    if: github.event_name == 'push' && needs.release.outputs.released == 'true'
     outputs:
       version:    ${{ steps.version.outputs.version }}
       prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
-      - name: Resolve version from tag
+      - name: Resolve version from the release tag
         id: version
         shell: pwsh
+        env:
+          TAG: ${{ needs.release.outputs.tag }}
         run: |
-          $tag = "$env:GITHUB_REF_NAME"
+          $tag = "$env:TAG"
           if ($tag -notmatch '^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
               throw "Tag '$tag' does not match vMAJOR.MINOR.PATCH[-suffix]"
           }
@@ -66,10 +94,10 @@ jobs:
   build-packages:
     name: Build packages (Linux)
     runs-on: ubuntu-latest
-    needs: build-zip
+    needs: [release, build-zip]
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Install fpm
         run: |
@@ -101,15 +129,17 @@ jobs:
             dist/*.rpm
 
   # ---------------------------------------------------------------------------
-  # Publish: collect all artifacts and create GitHub Release
+  # Publish: attach all artifacts and the install notes to the release
   # ---------------------------------------------------------------------------
   publish:
-    name: Publish GitHub Release
+    name: Attach assets to the GitHub Release
     runs-on: ubuntu-latest
-    needs: [build-zip, build-packages]
+    needs: [release, build-zip, build-packages]
+    permissions:
+      contents: write
     steps:
       - name: Checkout (for release body template)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           sparse-checkout: |
             .github/release-body.md.tmpl
@@ -164,18 +194,31 @@ jobs:
           echo "--- rendered release body ---"
           cat release-body.md
 
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name:               ${{ needs.build-zip.outputs.version }}
-          name:                   ${{ needs.build-zip.outputs.version }}
-          prerelease:             ${{ needs.build-zip.outputs.prerelease }}
-          # body_path is prepended to the auto-generated "What's Changed" section.
-          body_path:              release-body.md
-          generate_release_notes: true
-          fail_on_unmatched_files: true
-          files: |
-            dist/ccds-*.zip
-            dist/ccds-*.zip.sha256
-            dist/ccds_*.deb
+      - name: Attach assets and install notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # --clobber keeps a re-run of this job idempotent.
+          gh release upload "$TAG" --clobber \
+            dist/ccds-*.zip \
+            dist/ccds-*.zip.sha256 \
+            dist/ccds_*.deb \
             dist/ccds-*.rpm
+          # The release notes are the CHANGELOG.md section; put the install
+          # instructions above them, once.
+          gh release view "$TAG" --json body --jq .body > changelog-notes.md
+          if grep -qF '<!-- ccds-install-notes -->' changelog-notes.md; then
+            echo "Install notes already on $TAG."
+          else
+            {
+              echo '<!-- ccds-install-notes -->'
+              cat release-body.md
+              printf '\n---\n\n'
+              cat changelog-notes.md
+            } > release-notes.md
+            gh release edit "$TAG" --notes-file release-notes.md
+          fi
+          gh release view "$TAG" --json url,assets --jq '"\(.url)\n\(.assets | map(.name) | join("\n"))"'
