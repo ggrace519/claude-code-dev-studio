@@ -17,7 +17,7 @@ A universal, stack-agnostic Claude Code playbook: **19 always-on agents** (14 do
 | `Verify-Agents.ps1` / `verify-agents.sh` | Validate agents and skills against ADR-0001 invariants |
 | `build-release.ps1` | Build reproducible release ZIP + sidecar SHA256 |
 | `scripts/jit-claude.md` | Canonical source for the ccds pointer block injected into `~/.claude/CLAUDE.md` |
-| `.github/workflows/release.yml` | Tag-driven release build + GitHub Release publication |
+| `.github/workflows/release.yml` | Merging to `main` tags the top `CHANGELOG.md` version, then builds and attaches the release files (ADR-0022) |
 | `DECISIONS.md` | Architecture decision records (ADR-0001 … ADR-0009) |
 | `CHANGELOG.md` | Session-by-session history |
 | `CONTRIBUTING.md` | Contribution terms |

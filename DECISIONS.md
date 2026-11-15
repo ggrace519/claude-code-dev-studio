@@ -2058,3 +2058,65 @@ change independent of the evidence and would have been needed anyway.
 ### Supersedes
 
 None (amends ADR-0012's rule table and ADR-0016's doctor contract).
+
+---
+
+## ADR-0022: Releases Are Cut by CI From the Changelog
+
+**Date:** 2026-11-15
+**Status:** Accepted
+**Phase:** Deployment
+**Deciders:** Greg Grace
+
+### Context
+
+Releases were tagged by hand: after a promotion PR merged, a signed annotated
+tag `vX.Y.Z` was pushed to `main`, and `release.yml` ran on that tag push to
+build the ZIP, `.deb` and `.rpm` and publish the GitHub release with
+auto-generated "What's Changed" notes. The changelog version heading and the
+tag were kept in step by hand, and nothing checked that they matched.
+
+Greg's other repositories (hermes-graphlm, nut-upsd, tetris-c) now release
+through the shared `ggrace519/.github` `release` workflow: merging to `main`
+tags the top `## [X.Y.Z] - YYYY-MM-DD` version of `CHANGELOG.md` and creates
+the release with that section as its notes.
+
+### Decision
+
+1. **Merging the promotion PR is the release.** `release.yml` runs on pushes
+   to `main` and calls the shared `release` workflow, which creates the tag and
+   the GitHub release from the top changelog version. Nobody tags by hand.
+2. **The promotion PR is checked first.** The same workflow runs as a dry run
+   on PRs into `main`, so a missing version heading, entries left under
+   `[Unreleased]`, or a version that is already tagged or not newer than the
+   latest tag fails before the merge.
+3. **The builds are chained, not tag-triggered.** A tag pushed with
+   `GITHUB_TOKEN` starts no other workflow, so the ZIP and package builds run
+   after the release job with `needs:` and attach their files and the install
+   notes to the release it created.
+4. **Version headings use the Keep a Changelog form**
+   `## [X.Y.Z] - YYYY-MM-DD`, with the release title kept after the date.
+
+### Rationale
+
+One mechanism across all of Greg's repos, and the changelog becomes the single
+source of the version and the release notes. Passing a personal token to the
+shared workflow, so the existing tag-triggered build could stay, was rejected:
+it adds a long-lived secret to the repo to save one `needs:` edge.
+
+### Consequences
+
+- Release tags are lightweight tags made by `github-actions[bot]`; they are no
+  longer GPG-signed by Greg. The release commit on `main` is still the merge
+  of a reviewed promotion PR.
+- Release notes are the changelog section, not GitHub's auto-generated PR
+  list.
+- The release exists for a few minutes before its files are attached. If a
+  build fails, "Re-run failed jobs" retries the builds; the tag and release
+  stay.
+- Every promotion must carry a new version heading, or the release check on
+  the promotion PR fails.
+
+### Supersedes
+
+None (amends ADR-0019's "Releases are tagged on `main`": they still are, by CI).
