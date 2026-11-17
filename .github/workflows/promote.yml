@@ -1,6 +1,9 @@
 name: promote
 
-# Opens or refreshes the single develop → main promotion pull request after CI passes on a develop push.
+# After CI passes on a develop push, rolls CHANGELOG.md's [Unreleased] entries into the next
+# version and opens the changelog roll-up pull request into develop. Once that is merged, the
+# run it starts has nothing left to roll and opens or refreshes the single develop → main
+# promotion pull request, whose release dry run then finds a dated, untagged version to cut.
 # The logic lives in ggrace519/.github; see its README.
 
 on:
@@ -10,9 +13,10 @@ on:
     branches: [develop]
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pull-requests: write
+# Each job is granted only what it uses: version opens the roll-up PR, promote the promotion PR.
+# Both open them as the GitHub App in RELEASE_APP_CLIENT_ID / RELEASE_APP_PRIVATE_KEY when those
+# are set, so their checks run without an "Approve and run" click.
+permissions: {}
 
 # Only push-triggered and manual runs share the group, so a newer one cancels a superseded one.
 # A develop merge also fires lint on the open promotion PR (event pull_request). Its promote run
@@ -25,15 +29,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  promote:
+  # Rolls [Unreleased] into the next version on chore/roll-changelog and opens or updates the
+  # roll-up PR into develop. Merging it is the decision to release.
+  version:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push')
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: ggrace519/.github/.github/workflows/version.yml@8217a8363cd8f8222471a39df2a0892e0fec2c00 # v2.0.0
+    with:
+      ref: ${{ github.event.workflow_run.head_sha }}
+      app-client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+    secrets:
+      app-private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+  promote:
+    needs: version
+    # Not while a roll-up PR is open, nor for a commit develop has moved past.
+    if: needs.version.outputs.promote == 'true'
+    permissions:
+      contents: read
+      pull-requests: write
     uses: ggrace519/.github/.github/workflows/promote.yml@8217a8363cd8f8222471a39df2a0892e0fec2c00 # v2.0.0
     with:
+      ref: ${{ needs.version.outputs.sha }}
       app-client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
-      ref: ${{ github.event.workflow_run.head_sha }}
       merge-note: "Merging to main tags vX.Y.Z from the top CHANGELOG.md version and publishes the release with its ZIP, .deb and .rpm."
     secrets:
       app-private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
