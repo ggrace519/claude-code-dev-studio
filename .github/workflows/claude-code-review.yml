@@ -12,11 +12,15 @@ on:
 
 jobs:
   claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+    # claude-code-action fails any run on a pull request a bot opened ("Workflow initiated by
+    # non-human actor"), and runs Dependabot triggers get only Dependabot secrets, so
+    # CLAUDE_CODE_OAUTH_TOKEN is empty there. Skip both. Bot-opened pull requests are the
+    # promotion and changelog roll-up PRs (github-actions[bot] or the release app) and
+    # Dependabot's bumps; the promotion's commits were each reviewed in their own PRs.
+    # claude[bot] pushing to a person's pull request stays allowed below (allowed_bots).
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      github.event.pull_request.user.type != 'Bot'
 
     runs-on: ubuntu-latest
     permissions:
