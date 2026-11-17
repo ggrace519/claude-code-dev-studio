@@ -8,6 +8,7 @@ New sessions should read this file first to get up to speed before doing anythin
 ## [Unreleased]
 
 ### Infrastructure
+- `promote` now runs the shared `version` workflow before opening the promotion pull request. After CI passes on `develop` it rolls the `[Unreleased]` entries into a dated `## [X.Y.Z] - YYYY-MM-DD` section and opens a `chore(release): roll changelog into X.Y.Z` pull request into `develop`; once that is merged, the promotion pull request opens with the rolled changelog. Without it, every promotion since 0.19.1 failed the release dry run ("[Unreleased] still has entries"), because nothing ever rolled the changelog.
 - The Claude Code Review check no longer fails on pull requests a bot opened. claude-code-action refuses runs on them ("Workflow initiated by non-human actor"), so the promotion pull requests went red, and Dependabot's runs also lack the review's OAuth token, which only exists as a repository secret. The review is now skipped on Dependabot runs and on every bot-authored pull request; pull requests people open are reviewed as before.
 
 ## [0.19.1] - 2026-11-15 — Releases are cut from the changelog
